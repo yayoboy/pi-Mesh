@@ -11,7 +11,7 @@ Per riprendere il lavoro: trova il primo `[ ]` e segui il piano in
 ## M1 — Core Backend
 - [x] M1-S0 setup
 - [x] M1-S1 `config.py` + `config.env` + `requirements.txt`
-- [ ] M1-S2 `database.py`
+- [x] M1-S2 `database.py`
 - [ ] M1-S3 `meshtastic_client.py`
 - [ ] M1-S4 `watchdog.py`
 
