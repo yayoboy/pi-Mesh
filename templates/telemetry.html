@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="padding: 4px 8px; overflow-y: auto; height: 100%;">
+
+  <!-- Sensori I2C locali -->
+  <div id="sensors-section" style="display:flex; gap:8px; flex-wrap:wrap; padding:4px 0; border-bottom:1px solid var(--border); margin-bottom:8px;">
+    <div id="sensor-display" style="font-size:12px; color:var(--muted);">Nessun sensore rilevato</div>
+  </div>
+
+  <!-- Selezione nodo -->
+  <div style="display:flex; gap:4px; align-items:center; margin-bottom:4px;">
+    <label style="font-size:12px; color:var(--muted); flex-shrink:0;">Nodo:</label>
+    <select id="node-select" style="min-height:32px; font-size:12px;" onchange="loadNodeTelemetry(this.value)">
+      {% for n in nodes %}
+      <option value="{{ n.id }}">{{ n.short_name or n.id }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Grafici -->
+  <div class="chart-wrap"><canvas id="chart-snr"     height="80"></canvas></div>
+  <div class="chart-wrap"><canvas id="chart-battery" height="80"></canvas></div>
+
+</div>
+
+<script src="/static/chart.min.js"></script>
+<script>
+let snrChart = null, battChart = null
+
+function initCharts() {
+  const opts = { responsive: true, animation: false,
+    scales: { x: { display: false }, y: { ticks: { color: '#888', font:{size:10} }, grid: { color: '#333' } } },
+    plugins: { legend: { labels: { color: '#e0e0e0', font:{size:10} } } }
+  }
+  snrChart  = new Chart(document.getElementById('chart-snr'),     { type:'line', data:{ labels:[], datasets:[{label:'SNR (dB)',  data:[], borderColor:'#4a9eff', borderWidth:1.5, pointRadius:0, tension:0.3}] }, options: opts })
+  battChart = new Chart(document.getElementById('chart-battery'), { type:'line', data:{ labels:[], datasets:[{label:'Batteria %', data:[], borderColor:'#4caf50', borderWidth:1.5, pointRadius:0, tension:0.3}] }, options: opts })
+}
+
+async function loadNodeTelemetry(nodeId) {
+  const [snrData, battData] = await Promise.all([
+    fetch(`/api/telemetry/${nodeId}/deviceMetrics`).then(r=>r.json()),
+    fetch(`/api/telemetry/${nodeId}/deviceMetrics`).then(r=>r.json()),
+  ])
+  const labels = snrData.map(d => new Date(d.timestamp*1000).toLocaleTimeString('it',{hour:'2-digit',minute:'2-digit'})).reverse()
+  snrChart.data.labels  = labels
+  battChart.data.labels = labels
+  snrChart.data.datasets[0].data  = snrData.map(d => d.values?.snr ?? null).reverse()
+  battChart.data.datasets[0].data = battData.map(d => d.values?.batteryLevel ?? null).reverse()
+  snrChart.update(); battChart.update()
+}
+
+// Aggiornamenti live
+window.addEventListener('telemetry-update', e => {
+  const { node_id, type, values } = e.detail
+  const sel = document.getElementById('node-select')
+  if (!sel || sel.value !== node_id) return
+  const ts = new Date().toLocaleTimeString('it',{hour:'2-digit',minute:'2-digit'})
+  if (type === 'deviceMetrics') {
+    if (values.snr != null) { snrChart.data.labels.push(ts); snrChart.data.datasets[0].data.push(values.snr); if(snrChart.data.labels.length>100){snrChart.data.labels.shift();snrChart.data.datasets[0].data.shift()} snrChart.update() }
+    if (values.batteryLevel != null) { battChart.data.labels.push(ts); battChart.data.datasets[0].data.push(values.batteryLevel); if(battChart.data.labels.length>100){battChart.data.labels.shift();battChart.data.datasets[0].data.shift()} battChart.update() }
+  }
+})
+
+// Sensori I2C
+window.addEventListener('sensor-update', e => {
+  const { sensor, values } = e.detail
+  const container = document.getElementById('sensor-display')
+  let el = document.getElementById('sensor-' + sensor)
+  if (!el) {
+    el = document.createElement('div')
+    el.id = 'sensor-' + sensor
+    el.style.cssText = 'padding:4px 8px; background:var(--bg2); border-radius:4px; font-size:12px;'
+    container.innerHTML = ''
+    container.appendChild(el)
+  }
+  el.innerHTML = `<b>${sensor}</b><br>` + Object.entries(values).map(([k,v])=>`${k}: ${v}`).join('<br>')
+})
+
+document.addEventListener('DOMContentLoaded', () => {
+  initCharts()
+  const sel = document.getElementById('node-select')
+  if (sel && sel.value) loadNodeTelemetry(sel.value)
+})
+</script>
+{% endblock %}
