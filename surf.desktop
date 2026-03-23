@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=Surf Browser
+Exec=surf -x http://localhost:8080/messages
+X-GNOME-Autostart-enabled=true
