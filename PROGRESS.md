@@ -35,4 +35,4 @@ Per riprendere il lavoro: trova il primo `[ ]` e segui il piano in
 - [x] M4-S1 admin nodi remoti
 - [x] M4-S2 config nodo avanzata (ruoli + LoRa preset)
 - [x] M4-S3 framework bot
-- [ ] M4-S4 collaudo completo
+- [x] M4-S4 collaudo completo
