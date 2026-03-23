@@ -21,7 +21,7 @@ Per riprendere il lavoro: trova il primo `[ ]` e segui il piano in
 - [x] M2-S3 `app.js` WebSocket client
 - [x] M2-S4 `messages.html`
 - [x] M2-S5 `nodes.html`
-- [ ] M2-S6 `map.html` + tile offline
+- [x] M2-S6 `map.html` + tile offline
 
 ## M3 — UI Estesa
 - [ ] M3-S1 `gpio_handler.py`
