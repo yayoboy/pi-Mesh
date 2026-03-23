@@ -19,7 +19,7 @@ Per riprendere il lavoro: trova il primo `[ ]` e segui il piano in
 - [x] M2-S1 `main.py` scheletro + WebSocket
 - [x] M2-S2 `style.css` + `base.html` dual-orientation
 - [x] M2-S3 `app.js` WebSocket client
-- [ ] M2-S4 `messages.html`
+- [x] M2-S4 `messages.html`
 - [ ] M2-S5 `nodes.html`
 - [ ] M2-S6 `map.html` + tile offline
 

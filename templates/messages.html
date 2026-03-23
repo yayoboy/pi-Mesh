@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="msg-list" style="height: calc(100% - 52px); overflow-y:auto; padding: 4px 0;">
+  {% for m in messages|reverse %}
+  <div class="msg-row {% if m.is_outgoing %}outgoing{% endif %}">
+    <div class="msg-bubble">{{ m.text }}</div>
+    <div class="msg-meta">
+      {% if not m.is_outgoing %}{{ m.node_id }} · {% endif %}
+      {{ m.timestamp|int }}
+      {% if m.rx_snr is not none %} · {{ m.rx_snr }}dB{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  <div id="load-more"></div>
+</div>
+<form id="send-form" onsubmit="sendMsg(event)">
+  <select id="ch-select" style="width:48px; min-height:36px; font-size:13px; flex-shrink:0;">
+    <option value="0">0</option>
+    <option value="1">1</option>
+    <option value="2">2</option>
+  </select>
+  <input id="msg-input" type="text" placeholder="Messaggio..." autocomplete="off">
+  <button type="submit">▶</button>
+</form>
+<script>
+async function sendMsg(e) {
+  e.preventDefault()
+  const text = document.getElementById('msg-input').value.trim()
+  const ch   = parseInt(document.getElementById('ch-select').value)
+  if (!text) return
+  const r = await fetch('/send', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ text, channel: ch })
+  })
+  if (r.ok) document.getElementById('msg-input').value = ''
+}
+
+// Scroll infinito verso il passato
+const sentinel = document.getElementById('load-more')
+let loadingMore = false
+let oldestId = null
+
+new IntersectionObserver(async ([entry]) => {
+  if (!entry.isIntersecting || loadingMore) return
+  const items = document.querySelectorAll('.msg-row')
+  if (items.length === 0) return
+  loadingMore = true
+  const firstId = items[0].dataset.msgId
+  if (!firstId) { loadingMore = false; return }
+  const resp = await fetch(`/api/messages?channel=0&limit=50&before_id=${firstId}`)
+  const msgs = await resp.json()
+  const list = document.getElementById('msg-list')
+  const prevH = list.scrollHeight
+  msgs.forEach(m => {
+    const div = document.createElement('div')
+    div.className = 'msg-row' + (m.is_outgoing ? ' outgoing' : '')
+    div.dataset.msgId = m.id
+    div.innerHTML = `<div class="msg-bubble">${m.text}</div><div class="msg-meta">${m.node_id} · ${new Date(m.timestamp*1000).toLocaleTimeString('it',{hour:'2-digit',minute:'2-digit'})}</div>`
+    list.insertBefore(div, list.firstChild)
+  })
+  list.scrollTop = list.scrollHeight - prevH
+  loadingMore = false
+}).observe(sentinel)
+</script>
+{% endblock %}
