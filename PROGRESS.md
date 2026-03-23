@@ -16,7 +16,7 @@ Per riprendere il lavoro: trova il primo `[ ]` e segui il piano in
 - [x] M1-S4 `watchdog.py`
 
 ## M2 — UI Base
-- [ ] M2-S1 `main.py` scheletro + WebSocket
+- [x] M2-S1 `main.py` scheletro + WebSocket
 - [ ] M2-S2 `style.css` + `base.html` dual-orientation
 - [ ] M2-S3 `app.js` WebSocket client
 - [ ] M2-S4 `messages.html`
