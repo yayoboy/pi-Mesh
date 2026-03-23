@@ -257,7 +257,12 @@ function updateMapMarker(node) {
     const marker = L.circleMarker([node.latitude, node.longitude], {
       radius: 8, color, fillColor: color, fillOpacity: 0.8
     })
-    marker.bindPopup(`<b>${node.short_name || node.id}</b><br>${node.long_name || ''}<br>SNR: ${node.snr ?? '—'} dB<br>Batt: ${node.battery_level ?? '—'}%`)
+    marker.bindPopup(
+      `<b>${escHtml(String(node.short_name || node.id))}</b><br>` +
+      `${escHtml(String(node.long_name || ''))}<br>` +
+      `SNR: ${escHtml(String(node.snr ?? '—'))} dB<br>` +
+      `Batt: ${escHtml(String(node.battery_level ?? '—'))}%`
+    )
     marker.addTo(leafletMap)
     markerCache.set(node.id, marker)
   }

@@ -2,7 +2,7 @@
 {% block content %}
 <div id="node-list">
 {% for n in nodes %}
-<div class="list-item" onclick="toggleDetail('{{ n.id }}')" style="flex-direction:column; align-items:stretch; cursor:pointer;">
+<div class="list-item" data-node-id="{{ n.id }}" style="flex-direction:column; align-items:stretch; cursor:pointer;">
   <div style="display:flex; align-items:center; gap:8px;">
     <div class="node-badge" id="badge-{{ n.id }}"></div>
     <div style="flex:1">
@@ -17,7 +17,7 @@
   <div id="detail-{{ n.id }}" style="display:none; padding-top:8px; font-size:12px; color:var(--muted); border-top:1px solid var(--border); margin-top:8px;">
     HW: {{ n.hw_model or '—' }}<br>
     {% if n.latitude %}Pos: {{ '%.4f'|format(n.latitude) }}, {{ '%.4f'|format(n.longitude) }}<br>{% endif %}
-    <button onclick="reqPos('{{ n.id }}')" style="min-height:32px; margin-top:4px; width:auto; padding:0 12px; font-size:12px;">📍 Richiedi pos</button>
+    <button data-req-pos="{{ n.id }}" style="min-height:32px; margin-top:4px; width:auto; padding:0 12px; font-size:12px;">📍 Richiedi pos</button>
   </div>
 </div>
 {% endfor %}
@@ -47,17 +47,25 @@ function updateBadge(id, lastHeard) {
 updateBadge('{{ n.id }}', {{ n.last_heard or 0 }})
 {% endfor %}
 
-function toggleDetail(id) {
-  const el = document.getElementById('detail-' + id)
-  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'
-}
-
-async function reqPos(nodeId) {
-  await fetch('/send', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ text: '', destination: nodeId, type: 'position_request' })
-  })
-}
+// Event delegation per toggle dettaglio e richiesta posizione
+document.getElementById('node-list').addEventListener('click', e => {
+  const item = e.target.closest('[data-node-id]')
+  const reqBtn = e.target.closest('[data-req-pos]')
+  if (reqBtn) {
+    e.stopPropagation()
+    const nodeId = reqBtn.dataset.reqPos
+    fetch('/send', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ text: '', destination: nodeId, type: 'position_request' })
+    })
+    return
+  }
+  if (item) {
+    const nodeId = item.dataset.nodeId
+    const el = document.getElementById('detail-' + nodeId)
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'
+  }
+})
 </script>
 {% endblock %}

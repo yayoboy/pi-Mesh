@@ -81,7 +81,8 @@ window.addEventListener('sensor-update', e => {
     container.innerHTML = ''
     container.appendChild(el)
   }
-  el.innerHTML = `<b>${sensor}</b><br>` + Object.entries(values).map(([k,v])=>`${k}: ${v}`).join('<br>')
+  el.innerHTML = `<b>${escHtml(String(sensor))}</b><br>` +
+    Object.entries(values).map(([k, v]) => `${escHtml(String(k))}: ${escHtml(String(v))}`).join('<br>')
 })
 
 document.addEventListener('DOMContentLoaded', () => {
