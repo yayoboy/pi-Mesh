@@ -1,0 +1,221 @@
+/* ===== TEMI ===== */
+.theme-dark {
+  --bg:       #1a1a1a;
+  --bg2:      #242424;
+  --border:   #333;
+  --text:     #e0e0e0;
+  --muted:    #888;
+  --accent:   #4a9eff;
+  --ok:       #4caf50;
+  --warn:     #ff9800;
+  --danger:   #f44336;
+}
+.theme-light {
+  --bg:       #f5f5f5;
+  --bg2:      #ffffff;
+  --border:   #ddd;
+  --text:     #1a1a1a;
+  --muted:    #666;
+  --accent:   #1565c0;
+  --ok:       #2e7d32;
+  --warn:     #e65100;
+  --danger:   #c62828;
+}
+.theme-hc {
+  --bg:       #000000;
+  --bg2:      #111111;
+  --border:   #ffffff;
+  --text:     #ffffff;
+  --muted:    #cccccc;
+  --accent:   #ffff00;
+  --ok:       #00ff00;
+  --warn:     #ff8800;
+  --danger:   #ff0000;
+}
+
+/* ===== RESET ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ===== BODY LANDSCAPE (default 480×320) ===== */
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: sans-serif;
+  font-size: 14px;
+  width: 480px;
+  height: 320px;
+  overflow: hidden;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: none;
+}
+
+/* ===== BODY PORTRAIT (320×480) ===== */
+@media (orientation: portrait) {
+  body {
+    width: 320px;
+    height: 480px;
+  }
+}
+
+/* ===== LAYOUT VARIABILI ===== */
+:root {
+  --tabbar-h:    48px;
+  --statusbar-h: 20px;
+}
+
+/* ===== STATUS BAR ===== */
+#status-bar {
+  height: var(--statusbar-h);
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+}
+
+/* ===== CONTENT AREA ===== */
+#content {
+  height: calc(320px - var(--statusbar-h) - var(--tabbar-h));
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  background: var(--bg);
+}
+#content::-webkit-scrollbar { display: none; }
+
+@media (orientation: portrait) {
+  #content {
+    height: calc(480px - var(--statusbar-h) - var(--tabbar-h));
+  }
+}
+
+/* ===== TAB BAR ===== */
+#tabbar {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: var(--tabbar-h);
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  display: flex;
+}
+.tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 10px;
+  flex-direction: column;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+.tab.active { color: var(--accent); }
+.tab svg { width: 20px; height: 20px; fill: currentColor; }
+
+/* ===== BADGE CONNESSIONE ===== */
+#connection-badge { color: var(--danger); font-size: 14px; line-height: 1; }
+#connection-badge.connected { color: var(--ok); }
+
+/* ===== INPUT/BUTTON ===== */
+input, select, button, textarea {
+  min-height: 44px;
+  font-size: 16px;
+  background: var(--bg2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 10px;
+  width: 100%;
+}
+button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+button:active { opacity: 0.8; }
+
+/* ===== LISTE ===== */
+.list-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  min-height: 48px;
+}
+.list-item:active { background: var(--bg2); }
+
+/* ===== MESSAGGI ===== */
+#msg-list { padding: 4px 0; }
+.msg-row {
+  padding: 4px 12px;
+  max-width: 100%;
+}
+.msg-row.outgoing { text-align: right; }
+.msg-bubble {
+  display: inline-block;
+  background: var(--bg2);
+  border-radius: 8px;
+  padding: 4px 8px;
+  max-width: 85%;
+  word-break: break-word;
+}
+.msg-row.outgoing .msg-bubble { background: var(--accent); color: #fff; }
+.msg-meta { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+/* ===== FORM INVIO ===== */
+#send-form {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  position: sticky;
+  bottom: 0;
+}
+#send-form input { flex: 1; min-height: 36px; font-size: 14px; }
+#send-form button { width: 60px; min-height: 36px; flex-shrink: 0; }
+
+/* ===== MAPPA ===== */
+#map-container { width: 100%; height: 100%; }
+
+/* ===== BADGE STATO NODO ===== */
+.node-badge {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+.node-badge.online  { background: var(--ok); }
+.node-badge.recent  { background: var(--warn); }
+.node-badge.offline { background: var(--muted); }
+
+/* ===== GRAFICI ===== */
+.chart-wrap { padding: 8px; }
+canvas { max-width: 100%; }
+
+/* ===== SETTINGS ===== */
+.settings-section { padding: 8px 12px; }
+.settings-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 0;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.settings-row label { flex: 1; font-size: 13px; }
+.settings-row input,
+.settings-row select { flex: 1; min-height: 36px; font-size: 13px; }
