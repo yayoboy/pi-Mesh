@@ -23,7 +23,12 @@ function initWS() {
   }
 
   ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data)
+    let msg
+    try {
+      msg = JSON.parse(event.data)
+    } catch (e) {
+      return
+    }
     const handlers = {
       init:      handleInit,
       message:   handleMessage,
@@ -37,7 +42,7 @@ function initWS() {
     handlers[msg.type]?.(msg.data)
   }
 
-  setInterval(() => { if (wsReady) ws.send('ping') }, 20000)
+  setInterval(() => { if (wsReady && ws.readyState === WebSocket.OPEN) ws.send('ping') }, 20000)
 }
 
 // ===== HANDLER MESSAGGI WS =====
@@ -141,12 +146,16 @@ async function navigateTo(tabName) {
   if (tabName === activeTab.name) return
   activeTab.name = tabName
 
-  const response = await fetch('/' + tabName)
-  const html     = await response.text()
-  const parser   = new DOMParser()
-  const doc      = parser.parseFromString(html, 'text/html')
-  const newContent = doc.getElementById('content')
-  if (newContent) document.getElementById('content').innerHTML = newContent.innerHTML
+  try {
+    const response  = await fetch('/' + tabName)
+    const html      = await response.text()
+    const parser    = new DOMParser()
+    const doc       = parser.parseFromString(html, 'text/html')
+    const newContent = doc.getElementById('content')
+    if (newContent) document.getElementById('content').innerHTML = newContent.innerHTML
+  } catch (e) {
+    console.error('navigateTo error:', e)
+  }
 
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.toggle('active', t.dataset.tab === tabName)
