@@ -25,7 +25,7 @@ Per riprendere il lavoro: trova il primo `[ ]` e segui il piano in
 
 ## M3 — UI Estesa
 - [x] M3-S1 `gpio_handler.py`
-- [ ] M3-S2 `sensor_handler.py`
+- [x] M3-S2 `sensor_handler.py`
 - [ ] M3-S3 `telemetry.html`
 - [ ] M3-S4 `settings.html` base
 - [ ] M3-S5 temi UI (light/dark/high-contrast)
