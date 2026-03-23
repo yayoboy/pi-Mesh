@@ -46,6 +46,9 @@ body {
   height: 320px;
   overflow: hidden;
   touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
   -webkit-text-size-adjust: none;
 }
 
@@ -61,6 +64,10 @@ body {
 :root {
   --tabbar-h:    48px;
   --statusbar-h: 20px;
+  --body-h:      320px;
+}
+@media (orientation: portrait) {
+  :root { --body-h: 480px; }
 }
 
 /* ===== STATUS BAR ===== */
@@ -79,19 +86,13 @@ body {
 
 /* ===== CONTENT AREA ===== */
 #content {
-  height: calc(320px - var(--statusbar-h) - var(--tabbar-h));
+  height: calc(var(--body-h) - var(--statusbar-h) - var(--tabbar-h));
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
   background: var(--bg);
 }
 #content::-webkit-scrollbar { display: none; }
-
-@media (orientation: portrait) {
-  #content {
-    height: calc(480px - var(--statusbar-h) - var(--tabbar-h));
-  }
-}
 
 /* ===== TAB BAR ===== */
 #tabbar {
@@ -141,6 +142,10 @@ button {
   cursor: pointer;
 }
 button:active { opacity: 0.8; }
+input:focus, select:focus, textarea:focus, button:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
 
 /* ===== LISTE ===== */
 .list-item {
