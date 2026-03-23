@@ -7,6 +7,15 @@ const activeTab = { name: document.querySelector('.tab.active')?.dataset.tab || 
 const nodeCache = new Map()
 const messageCache = []
 
+// ===== UTILITY =====
+function reexecScripts(container) {
+  container.querySelectorAll('script').forEach(oldScript => {
+    const s = document.createElement('script')
+    s.textContent = oldScript.textContent
+    oldScript.parentNode.replaceChild(s, oldScript)
+  })
+}
+
 // ===== WEBSOCKET =====
 function initWS() {
   ws = new WebSocket(`ws://${window.location.host}/ws`)
@@ -42,7 +51,6 @@ function initWS() {
     handlers[msg.type]?.(msg.data)
   }
 
-  setInterval(() => { if (wsReady && ws.readyState === WebSocket.OPEN) ws.send('ping') }, 20000)
 }
 
 // ===== HANDLER MESSAGGI WS =====
@@ -152,7 +160,10 @@ async function navigateTo(tabName) {
     const parser    = new DOMParser()
     const doc       = parser.parseFromString(html, 'text/html')
     const newContent = doc.getElementById('content')
-    if (newContent) document.getElementById('content').innerHTML = newContent.innerHTML
+    if (newContent) {
+      document.getElementById('content').innerHTML = newContent.innerHTML
+      reexecScripts(document.getElementById('content'))
+    }
   } catch (e) {
     console.error('navigateTo error:', e)
   }
@@ -261,6 +272,7 @@ function updateNodeRow(data) { window.dispatchEvent(new CustomEvent('node-update
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
   initWS()
+  setInterval(() => { if (wsReady && ws.readyState === WebSocket.OPEN) ws.send('ping') }, 20000)
   attachKeyboardListeners()
   // link tab bar a navigateTo
   document.getElementById('tabbar')?.addEventListener('click', e => {
