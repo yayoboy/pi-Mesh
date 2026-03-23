@@ -9,7 +9,7 @@ const messageCache = []
 
 // ===== WEBSOCKET =====
 function initWS() {
-  ws = new WebSocket('ws://localhost:8080/ws')
+  ws = new WebSocket(`ws://${window.location.host}/ws`)
 
   ws.onopen = () => {
     wsReady = true
@@ -180,6 +180,7 @@ function appendMessage(m) {
   if (!list) return
   const div = document.createElement('div')
   div.className = 'msg-row' + (m.is_outgoing ? ' outgoing' : '')
+  div.dataset.msgId = m.id
   const name = nodeCache.get(m.node_id)?.short_name || m.node_id
   const ts   = new Date(m.timestamp * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
   div.innerHTML = `
@@ -253,10 +254,10 @@ document.addEventListener('DOMContentLoaded', () => {
   initWS()
   attachKeyboardListeners()
   // link tab bar a navigateTo
-  document.querySelectorAll('.tab[data-tab]').forEach(t => {
-    t.addEventListener('click', e => {
-      e.preventDefault()
-      navigateTo(t.dataset.tab)
-    })
+  document.getElementById('tabbar')?.addEventListener('click', e => {
+    const tab = e.target.closest('.tab[data-tab]')
+    if (!tab) return
+    e.preventDefault()
+    navigateTo(tab.dataset.tab)
   })
 })
