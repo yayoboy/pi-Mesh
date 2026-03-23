@@ -1,5 +1,70 @@
-# gpio_handler.py — stub (implementato in M3-S1)
+import asyncio, logging, time
 
-def init(enc1_pins: tuple, enc2_pins: tuple, broadcast_fn):
-    """Inizializza rotary encoder GPIO. No-op su Mac/senza hardware."""
-    pass
+_loop      = None
+_broadcast = None
+_conn      = None
+
+try:
+    from gpiozero import RotaryEncoder, Button
+    from gpiozero.pins.pigpio import PiGPIOFactory
+    _factory = PiGPIOFactory()
+    _GPIO_AVAILABLE = True
+except Exception:
+    logging.warning("gpiozero/pigpio non disponibile — GPIO disabilitato")
+    _GPIO_AVAILABLE = False
+
+def init(enc1_pins: tuple, enc2_pins: tuple, broadcast_fn, loop=None):
+    global _loop, _broadcast
+    _broadcast = broadcast_fn
+    _loop = loop or asyncio.get_event_loop()
+
+    if not _GPIO_AVAILABLE:
+        return
+
+    enc1 = RotaryEncoder(enc1_pins[0], enc1_pins[1], pin_factory=_factory, wrap=False, max_steps=0)
+    btn1 = Button(enc1_pins[2], pin_factory=_factory, hold_time=1.0)
+    enc2 = RotaryEncoder(enc2_pins[0], enc2_pins[1], pin_factory=_factory, wrap=False, max_steps=0)
+    btn2 = Button(enc2_pins[2], pin_factory=_factory, hold_time=1.0)
+
+    def make_handler(encoder_num, action):
+        def handler():
+            _bridge_event(encoder_num, action)
+        return handler
+
+    enc1.when_rotated_clockwise          = make_handler(1, "cw")
+    enc1.when_rotated_counter_clockwise  = make_handler(1, "ccw")
+    btn1.when_pressed                    = make_handler(1, "press")
+    btn1.when_held                       = make_handler(1, "long_press")
+    enc2.when_rotated_clockwise          = make_handler(2, "cw")
+    enc2.when_rotated_counter_clockwise  = make_handler(2, "ccw")
+    btn2.when_pressed                    = make_handler(2, "press")
+    btn2.when_held                       = make_handler(2, "long_press")
+
+    # Gesture shutdown: press lungo simultaneo entrambi gli encoder per 3s
+    def check_shutdown():
+        if btn1.is_held and btn2.is_held:
+            logging.info("Gesture shutdown rilevata")
+            _bridge_coroutine(_graceful_shutdown())
+    btn1.when_held = check_shutdown
+    btn2.when_held = check_shutdown
+
+def _bridge_event(encoder_num: int, action: str):
+    if _loop and not _loop.is_closed():
+        asyncio.run_coroutine_threadsafe(
+            _broadcast({"type": "encoder", "data": {
+                "encoder": encoder_num,
+                "action":  action,
+                "ts":      int(time.time())
+            }}),
+            _loop
+        )
+
+def _bridge_coroutine(coro):
+    if _loop and not _loop.is_closed():
+        asyncio.run_coroutine_threadsafe(coro, _loop)
+
+async def _graceful_shutdown():
+    import database, os
+    if _conn:
+        await database.sync_to_sd(_conn)
+    os.system("sudo shutdown -h now")

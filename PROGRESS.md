@@ -24,7 +24,7 @@ Per riprendere il lavoro: trova il primo `[ ]` e segui il piano in
 - [x] M2-S6 `map.html` + tile offline
 
 ## M3 — UI Estesa
-- [ ] M3-S1 `gpio_handler.py`
+- [x] M3-S1 `gpio_handler.py`
 - [ ] M3-S2 `sensor_handler.py`
 - [ ] M3-S3 `telemetry.html`
 - [ ] M3-S4 `settings.html` base
