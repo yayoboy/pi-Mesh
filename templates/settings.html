@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="overflow-y:auto; height:100%; padding-bottom:8px;">
+
+  <!-- NODO -->
+  <div class="settings-section">
+    <div class="settings-label">Nodo locale</div>
+    <div class="settings-row"><label>Nome lungo</label><input type="text" id="long-name" value="{{ node.long_name if node else '' }}" maxlength="36"></div>
+    <div class="settings-row"><label>Nome breve</label><input type="text" id="short-name" value="{{ node.short_name if node else '' }}" maxlength="4"></div>
+    <div class="settings-row">
+      <label>Ruolo</label>
+      <select id="node-role">
+        <option value="CLIENT">Client</option>
+        <option value="CLIENT_MUTE">Client (muto)</option>
+        <option value="ROUTER">Router</option>
+        <option value="ROUTER_CLIENT">Router+Client</option>
+        <option value="REPEATER">Repeater</option>
+        <option value="TRACKER">Tracker</option>
+      </select>
+    </div>
+    <button onclick="saveNodeConfig()" style="margin-top:4px; min-height:36px;">Salva nodo</button>
+    <div id="node-status" style="font-size:11px; color:var(--muted); margin-top:4px;"></div>
+  </div>
+
+  <!-- LORA -->
+  <div class="settings-section" style="border-top:1px solid var(--border);">
+    <div class="settings-label">LoRa</div>
+    <div class="settings-row">
+      <label>Regione</label>
+      <select id="lora-region">
+        <option value="EU_868">EU 868MHz</option>
+        <option value="US_915">US 915MHz</option>
+        <option value="EU_433">EU 433MHz</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <label>Preset</label>
+      <select id="lora-preset">
+        <option value="LONG_FAST">Long Fast</option>
+        <option value="LONG_SLOW">Long Slow</option>
+        <option value="MEDIUM_FAST">Medium Fast</option>
+        <option value="SHORT_FAST">Short Fast</option>
+      </select>
+    </div>
+    <button onclick="saveLoraConfig()" style="margin-top:4px; min-height:36px;">Salva LoRa</button>
+  </div>
+
+  <!-- TEMA -->
+  <div class="settings-section" style="border-top:1px solid var(--border);">
+    <div class="settings-label">Tema UI</div>
+    <div style="display:flex; gap:8px;">
+      <button onclick="setTheme('dark')"  style="flex:1; min-height:36px; font-size:12px;">🌙 Dark</button>
+      <button onclick="setTheme('light')" style="flex:1; min-height:36px; font-size:12px;">☀️ Light</button>
+      <button onclick="setTheme('hc')"    style="flex:1; min-height:36px; font-size:12px;">⬛ HC</button>
+    </div>
+  </div>
+
+  <!-- ADMIN REMOTO -->
+  <div class="settings-section" style="border-top:1px solid var(--border);">
+    <div class="settings-label">Admin nodo remoto</div>
+    <div class="settings-row">
+      <label>Nodo target</label>
+      <select id="remote-node-select">
+        <option value="">— seleziona —</option>
+        <!-- popolato via JS -->
+      </select>
+    </div>
+    <div class="settings-row"><label>Nuovo nome</label><input type="text" id="remote-long-name" maxlength="36"></div>
+    <div class="settings-row">
+      <label>Ruolo</label>
+      <select id="remote-role">
+        <option value="CLIENT">Client</option>
+        <option value="ROUTER">Router</option>
+        <option value="REPEATER">Repeater</option>
+      </select>
+    </div>
+    <button onclick="sendRemoteConfig()" style="margin-top:4px; min-height:36px;">Invia configurazione</button>
+    <div id="remote-status" style="font-size:11px; color:var(--muted); margin-top:4px;"></div>
+  </div>
+
+  <!-- HARDWARE: GPIO / I2C -->
+  <div class="settings-section" style="border-top:1px solid var(--border);">
+    <div class="settings-label">Hardware GPIO</div>
+    <div class="settings-row"><label>ENC1 A/B/SW</label>
+      <input type="text" id="enc1-pins" value="{{ enc1[0] }},{{ enc1[1] }},{{ enc1[2] }}" style="width:80px; flex:unset;">
+    </div>
+    <div class="settings-row"><label>ENC2 A/B/SW</label>
+      <input type="text" id="enc2-pins" value="{{ enc2[0] }},{{ enc2[1] }},{{ enc2[2] }}" style="width:80px; flex:unset;">
+    </div>
+    <div class="settings-label" style="margin-top:8px;">Sensori I2C</div>
+    <div class="settings-row"><label>Config (es: bme280:0x76)</label>
+      <input type="text" id="i2c-sensors" value="{{ i2c_sensors | map(attribute='name') | zip(i2c_sensors | map(attribute='address') | map('hex')) | map('join', ':') | join(',') if i2c_sensors else '' }}">
+    </div>
+    <div class="settings-label" style="margin-top:8px;">Display</div>
+    <div class="settings-row">
+      <label>Rotazione</label>
+      <select id="display-rotation">
+        <option value="0"  {% if display_rotation==0  %}selected{% endif %}>Landscape (0°)</option>
+        <option value="1"  {% if display_rotation==1  %}selected{% endif %}>Portrait (90°)</option>
+        <option value="2"  {% if display_rotation==2  %}selected{% endif %}>Landscape inv (180°)</option>
+        <option value="3"  {% if display_rotation==3  %}selected{% endif %}>Portrait inv (270°)</option>
+      </select>
+    </div>
+    <button onclick="saveHardwareConfig()" style="margin-top:4px; min-height:36px;">Salva hardware</button>
+    <div id="hw-status" style="font-size:11px; color:var(--muted); margin-top:4px;">Richiede riavvio display per rotazione</div>
+  </div>
+
+  <!-- BOT -->
+  <div class="settings-section" style="border-top:1px solid var(--border);">
+    <div class="settings-label">Bot</div>
+    <div class="settings-row"><label>Echo bot</label>
+      <input type="checkbox" id="bot-echo" style="width:auto; min-height:auto; height:24px; width:24px;">
+    </div>
+    <button onclick="saveBotConfig()" style="margin-top:4px; min-height:36px;">Salva bot</button>
+  </div>
+
+  <!-- INFO SISTEMA -->
+  <div class="settings-section" style="border-top:1px solid var(--border);">
+    <div class="settings-label">Sistema</div>
+    <div id="sys-info" style="font-size:11px; color:var(--muted);"></div>
+  </div>
+
+</div>
+
+<script>
+// Popola nodi remoti
+fetch('/api/nodes').then(r=>r.json()).then(nodes => {
+  const sel = document.getElementById('remote-node-select')
+  nodes.filter(n=>!n.is_local).forEach(n => {
+    const opt = document.createElement('option')
+    opt.value = n.id
+    opt.textContent = (n.short_name || n.id) + ' — ' + (n.long_name || '')
+    sel.appendChild(opt)
+  })
+})
+
+// Info sistema
+fetch('/api/status').then(r=>r.json()).then(s => {
+  document.getElementById('sys-info').innerHTML =
+    `Connesso: ${s.connected ? '✓' : '✗'} | Nodi: ${s.node_count} | RAM: ${s.ram_mb}MB`
+})
+
+async function saveNodeConfig() {
+  const payload = {
+    device: {
+      role: document.getElementById('node-role').value
+    },
+    owner: {
+      longName:  document.getElementById('long-name').value,
+      shortName: document.getElementById('short-name').value,
+    }
+  }
+  const r = await fetch('/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+  document.getElementById('node-status').textContent = r.ok ? '✓ Salvato' : '✗ Errore'
+}
+
+async function saveLoraConfig() {
+  const payload = { lora: { region: document.getElementById('lora-region').value, modemPreset: document.getElementById('lora-preset').value } }
+  const r = await fetch('/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+}
+
+async function setTheme(theme) {
+  await fetch('/api/set-theme', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({theme})})
+  document.body.className = 'theme-' + theme
+  document.documentElement.className = 'theme-' + theme
+}
+
+async function sendRemoteConfig() {
+  const nodeId = document.getElementById('remote-node-select').value
+  if (!nodeId) return
+  const payload = {
+    remote_node_id: nodeId,
+    owner: { longName: document.getElementById('remote-long-name').value },
+    device: { role: document.getElementById('remote-role').value }
+  }
+  const r = await fetch('/api/remote-config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+  document.getElementById('remote-status').textContent = r.ok ? '✓ Inviato' : '✗ Errore'
+}
+
+async function saveHardwareConfig() {
+  const payload = {
+    enc1_pins:        document.getElementById('enc1-pins').value,
+    enc2_pins:        document.getElementById('enc2-pins').value,
+    i2c_sensors:      document.getElementById('i2c-sensors').value,
+    display_rotation: document.getElementById('display-rotation').value,
+  }
+  const r = await fetch('/api/hardware-config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+  document.getElementById('hw-status').textContent = r.ok ? '✓ Salvato (riavvia display per rotazione)' : '✗ Errore'
+}
+
+async function saveBotConfig() {
+  const payload = { echo: document.getElementById('bot-echo').checked }
+  await fetch('/api/bot-config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+}
+</script>
+{% endblock %}

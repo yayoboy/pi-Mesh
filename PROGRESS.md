@@ -27,12 +27,12 @@ Per riprendere il lavoro: trova il primo `[ ]` e segui il piano in
 - [x] M3-S1 `gpio_handler.py`
 - [x] M3-S2 `sensor_handler.py`
 - [x] M3-S3 `telemetry.html`
-- [ ] M3-S4 `settings.html` base
-- [ ] M3-S5 temi UI (light/dark/high-contrast)
-- [ ] M3-S6 config GPIO/I2C da UI
+- [x] M3-S4 `settings.html` base
+- [x] M3-S5 temi UI (light/dark/high-contrast)
+- [x] M3-S6 config GPIO/I2C da UI
 
 ## M4 — Feature Avanzate
-- [ ] M4-S1 admin nodi remoti
-- [ ] M4-S2 config nodo avanzata (ruoli + LoRa preset)
+- [x] M4-S1 admin nodi remoti
+- [x] M4-S2 config nodo avanzata (ruoli + LoRa preset)
 - [ ] M4-S3 framework bot
 - [ ] M4-S4 collaudo completo
