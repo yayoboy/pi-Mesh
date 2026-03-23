@@ -12,7 +12,7 @@ Per riprendere il lavoro: trova il primo `[ ]` e segui il piano in
 - [x] M1-S0 setup
 - [x] M1-S1 `config.py` + `config.env` + `requirements.txt`
 - [x] M1-S2 `database.py`
-- [ ] M1-S3 `meshtastic_client.py`
+- [x] M1-S3 `meshtastic_client.py`
 - [ ] M1-S4 `watchdog.py`
 
 ## M2 — UI Base
