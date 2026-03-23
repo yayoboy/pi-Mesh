@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="node-list">
+{% for n in nodes %}
+<div class="list-item" onclick="toggleDetail('{{ n.id }}')" style="flex-direction:column; align-items:stretch; cursor:pointer;">
+  <div style="display:flex; align-items:center; gap:8px;">
+    <div class="node-badge" id="badge-{{ n.id }}"></div>
+    <div style="flex:1">
+      <div style="font-weight:bold;">{{ n.short_name or n.id }}</div>
+      <div style="font-size:11px; color:var(--muted);">{{ n.long_name or '' }}</div>
+    </div>
+    <div style="font-size:11px; color:var(--muted); text-align:right;">
+      {% if n.battery_level is not none %}🔋{{ n.battery_level }}%{% endif %}<br>
+      {% if n.snr is not none %}SNR {{ n.snr }}dB{% endif %}
+    </div>
+  </div>
+  <div id="detail-{{ n.id }}" style="display:none; padding-top:8px; font-size:12px; color:var(--muted); border-top:1px solid var(--border); margin-top:8px;">
+    HW: {{ n.hw_model or '—' }}<br>
+    {% if n.latitude %}Pos: {{ '%.4f'|format(n.latitude) }}, {{ '%.4f'|format(n.longitude) }}<br>{% endif %}
+    <button onclick="reqPos('{{ n.id }}')" style="min-height:32px; margin-top:4px; width:auto; padding:0 12px; font-size:12px;">📍 Richiedi pos</button>
+  </div>
+</div>
+{% endfor %}
+</div>
+<script>
+// Badge stato in base a last_heard
+document.querySelectorAll('[id^="badge-"]').forEach(badge => {
+  const nodeId = badge.id.replace('badge-','')
+  // last_heard è iniettato come data attribute nel template
+})
+
+// Aggiorna badge via JS con nodeCache dal parent
+window.addEventListener('node-update', e => {
+  const n = e.detail
+  updateBadge(n.id, n.last_heard)
+})
+
+function updateBadge(id, lastHeard) {
+  const badge = document.getElementById('badge-' + id)
+  if (!badge) return
+  const ago = Date.now()/1000 - lastHeard
+  badge.className = 'node-badge ' + (ago < 300 ? 'online' : ago < 1800 ? 'recent' : 'offline')
+}
+
+// Inizializza badge
+{% for n in nodes %}
+updateBadge('{{ n.id }}', {{ n.last_heard or 0 }})
+{% endfor %}
+
+function toggleDetail(id) {
+  const el = document.getElementById('detail-' + id)
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'
+}
+
+async function reqPos(nodeId) {
+  await fetch('/send', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ text: '', destination: nodeId, type: 'position_request' })
+  })
+}
+</script>
+{% endblock %}
