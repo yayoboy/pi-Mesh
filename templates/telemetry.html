@@ -37,14 +37,21 @@ function initCharts() {
 }
 
 async function loadNodeTelemetry(nodeId) {
-  const data = await fetch(`/api/telemetry/${nodeId}/deviceMetrics`).then(r => r.json())
-  const labels = data.map(d => new Date(d.timestamp * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })).reverse()
-  snrChart.data.labels  = labels
-  battChart.data.labels = labels
-  snrChart.data.datasets[0].data  = data.map(d => d.values?.snr ?? null).reverse()
-  battChart.data.datasets[0].data = data.map(d => d.values?.batteryLevel ?? null).reverse()
-  snrChart.update()
-  battChart.update()
+  try {
+    const r = await fetch(`/api/telemetry/${nodeId}/deviceMetrics`)
+    if (!r.ok) return
+    const data = await r.json()
+    if (!Array.isArray(data)) return
+    const labels = data.map(d => new Date(d.timestamp * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })).reverse()
+    snrChart.data.labels  = labels
+    battChart.data.labels = labels
+    snrChart.data.datasets[0].data  = data.map(d => d.values?.snr ?? null).reverse()
+    battChart.data.datasets[0].data = data.map(d => d.values?.batteryLevel ?? null).reverse()
+    snrChart.update()
+    battChart.update()
+  } catch (e) {
+    // rete non disponibile o nodo senza telemetria — grafici vuoti
+  }
 }
 
 function pushChartPoint(chart, ts, value) {

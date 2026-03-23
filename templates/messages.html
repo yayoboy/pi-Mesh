@@ -25,15 +25,26 @@
 <script>
 async function sendMsg(e) {
   e.preventDefault()
-  const text = document.getElementById('msg-input').value.trim()
-  const ch   = parseInt(document.getElementById('ch-select').value)
+  const text  = document.getElementById('msg-input').value.trim()
+  const ch    = parseInt(document.getElementById('ch-select').value)
+  const input = document.getElementById('msg-input')
   if (!text) return
-  const r = await fetch('/send', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ text, channel: ch })
-  })
-  if (r.ok) document.getElementById('msg-input').value = ''
+  try {
+    const r = await fetch('/send', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ text, channel: ch })
+    })
+    if (r.ok) {
+      input.value = ''
+    } else {
+      input.style.borderColor = 'var(--danger)'
+      setTimeout(() => { input.style.borderColor = '' }, 1500)
+    }
+  } catch (err) {
+    input.style.borderColor = 'var(--danger)'
+    setTimeout(() => { input.style.borderColor = '' }, 1500)
+  }
 }
 
 // Scroll infinito verso il passato
