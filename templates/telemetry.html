@@ -37,16 +37,25 @@ function initCharts() {
 }
 
 async function loadNodeTelemetry(nodeId) {
-  const [snrData, battData] = await Promise.all([
-    fetch(`/api/telemetry/${nodeId}/deviceMetrics`).then(r=>r.json()),
-    fetch(`/api/telemetry/${nodeId}/deviceMetrics`).then(r=>r.json()),
-  ])
-  const labels = snrData.map(d => new Date(d.timestamp*1000).toLocaleTimeString('it',{hour:'2-digit',minute:'2-digit'})).reverse()
+  const data = await fetch(`/api/telemetry/${nodeId}/deviceMetrics`).then(r => r.json())
+  const labels = data.map(d => new Date(d.timestamp * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })).reverse()
   snrChart.data.labels  = labels
   battChart.data.labels = labels
-  snrChart.data.datasets[0].data  = snrData.map(d => d.values?.snr ?? null).reverse()
-  battChart.data.datasets[0].data = battData.map(d => d.values?.batteryLevel ?? null).reverse()
-  snrChart.update(); battChart.update()
+  snrChart.data.datasets[0].data  = data.map(d => d.values?.snr ?? null).reverse()
+  battChart.data.datasets[0].data = data.map(d => d.values?.batteryLevel ?? null).reverse()
+  snrChart.update()
+  battChart.update()
+}
+
+function pushChartPoint(chart, ts, value) {
+  if (value == null) return
+  chart.data.labels.push(ts)
+  chart.data.datasets[0].data.push(value)
+  if (chart.data.labels.length > 100) {
+    chart.data.labels.shift()
+    chart.data.datasets[0].data.shift()
+  }
+  chart.update()
 }
 
 // Aggiornamenti live
@@ -54,11 +63,10 @@ window.addEventListener('telemetry-update', e => {
   const { node_id, type, values } = e.detail
   const sel = document.getElementById('node-select')
   if (!sel || sel.value !== node_id) return
-  const ts = new Date().toLocaleTimeString('it',{hour:'2-digit',minute:'2-digit'})
-  if (type === 'deviceMetrics') {
-    if (values.snr != null) { snrChart.data.labels.push(ts); snrChart.data.datasets[0].data.push(values.snr); if(snrChart.data.labels.length>100){snrChart.data.labels.shift();snrChart.data.datasets[0].data.shift()} snrChart.update() }
-    if (values.batteryLevel != null) { battChart.data.labels.push(ts); battChart.data.datasets[0].data.push(values.batteryLevel); if(battChart.data.labels.length>100){battChart.data.labels.shift();battChart.data.datasets[0].data.shift()} battChart.update() }
-  }
+  if (type !== 'deviceMetrics') return
+  const ts = new Date().toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
+  pushChartPoint(snrChart,  ts, values.snr)
+  pushChartPoint(battChart, ts, values.batteryLevel)
 })
 
 // Sensori I2C
