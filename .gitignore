@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+data/*.db
+data/*.db-wal
+data/*.db-shm
+/tmp/
+static/tiles/osm/
+static/tiles/topo/

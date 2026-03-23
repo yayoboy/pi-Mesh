@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+meshtastic
+pypubsub
+aiosqlite
+gpiozero
+smbus2
