@@ -166,9 +166,9 @@ All variables can be set in `config.env` (or as environment variables via the sy
 | `SERIAL_PORT` | `/dev/ttyMESHTASTIC` | USB serial device for the radio |
 | `DB_PERSISTENT` | `/home/pi/meshtastic-pi/data/mesh.db` | SD-card path for database persistence |
 | `DB_SYNC_INTERVAL` | `300` | Seconds between RAM→SD database syncs |
-| `ENC1_A/B/SW` | `17/27/22` | GPIO BCM pins for encoder 1 (tab navigation) |
+| `ENC1_A/B/SW` | `23/24/22` | GPIO BCM pins for encoder 1 (tab navigation) |
 | `ENC2_A/B/SW` | `5/6/13` | GPIO pins for encoder 2 (scroll/zoom) |
-| `BUZZER_PIN` | `0` (disabled) | GPIO pin for piezo buzzer; `0` = off |
+| `BUZZER_PIN` | `0` (disabled) | GPIO pin for piezo buzzer; `0` = off. GPIO 12 (pin 32) recommended — PWM-capable and free |
 | `I2C_SENSORS` | `` (empty) | Comma-separated sensor list, e.g. `bme280:0x76,ina219:0x40` |
 | `MAP_LAT_MIN/MAX` | `41.0/43.0` | Map bounding box latitude |
 | `MAP_LON_MIN/MAX` | `11.5/14.5` | Map bounding box longitude |
@@ -307,6 +307,41 @@ The FastAPI backend exposes these JSON endpoints (used internally by the UI and 
 ```
 
 ---
+
+## GPIO Pinout
+
+The Waveshare 3.5" SPI display occupies the following BCM pins — **do not use them for other peripherals**:
+
+| BCM | Function | Physical pin |
+|-----|----------|-------------|
+| 7 | Touch CS (CE1) | 26 |
+| 8 | LCD CS (CE0) | 24 |
+| 9 | SPI MISO | 21 |
+| 10 | SPI MOSI | 19 |
+| 11 | SPI SCLK | 23 |
+| 17 | Touch IRQ | 11 |
+| 18 | Backlight PWM | 12 |
+| 25 | LCD DC | 22 |
+| 27 | LCD RST | 13 |
+
+**Free BCM pins** available for encoders, buzzer, and other peripherals:
+
+```
+4 (pin 7)   5 (pin 29)  6 (pin 31)  12 (pin 32) ← PWM
+13 (pin 33) ← PWM       16 (pin 36) 19 (pin 35) 20 (pin 38)
+21 (pin 40) 22 (pin 15) 23 (pin 16) 24 (pin 18) 26 (pin 37)
+```
+
+I2C (GPIO 2/3, pins 3/5) is reserved for sensors. UART (GPIO 14/15, pins 8/10) is reserved for the serial console.
+
+**Default wiring** (as configured in `config.env`):
+
+```
+Encoder 1 (tab nav)  → A=GPIO23  B=GPIO24  SW=GPIO22
+Encoder 2 (scroll)   → A=GPIO5   B=GPIO6   SW=GPIO13
+Buzzer (optional)    → GPIO12  (PWM hardware)
+I2C sensors          → SDA=GPIO2  SCL=GPIO3
+```
 
 ## Troubleshooting
 
