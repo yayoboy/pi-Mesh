@@ -308,6 +308,109 @@ The FastAPI backend exposes these JSON endpoints (used internally by the UI and 
 
 ---
 
+## Creating Custom Themes
+
+The theme system is based on **CSS custom properties**. Each theme is a single CSS class that defines 9 variables; the rest of the stylesheet uses only those variables, so a new theme requires no other CSS changes.
+
+### Step 1 — Define the CSS variables in `static/style.css`
+
+Add a new block following the existing pattern. All 9 variables are required:
+
+```css
+/* static/style.css */
+.theme-forest {
+  --bg:       #1b2a1b;   /* main background */
+  --bg2:      #243324;   /* cards, inputs, status bar, tab bar */
+  --border:   #3a5c3a;   /* dividers and borders */
+  --text:     #d4edda;   /* primary text */
+  --muted:    #7aab7a;   /* secondary / dimmed text, icons */
+  --accent:   #56c56a;   /* active tab, buttons, outgoing message bubbles */
+  --ok:       #4caf50;   /* connected badge, online node dot */
+  --warn:     #ffc107;   /* recent node dot */
+  --danger:   #f44336;   /* disconnected badge, send error */
+}
+```
+
+| Variable | Used for |
+|----------|---------|
+| `--bg` | Page background, content area |
+| `--bg2` | Status bar, tab bar, cards, inputs, message bubbles (incoming) |
+| `--border` | All `border` and `border-top/bottom` rules |
+| `--text` | All body text, input values |
+| `--muted` | Timestamps, labels, dimmed metadata, tab icons (inactive) |
+| `--accent` | Active tab color, `<button>` background, outgoing message bubbles, focus outline, map markers (local node) |
+| `--ok` | WebSocket connected dot, online node badge |
+| `--warn` | Recent-but-not-online node badge |
+| `--danger` | WebSocket disconnected dot, input error flash |
+
+### Step 2 — Allow the theme name in `main.py`
+
+The `/api/set-theme` endpoint validates the theme name against a hardcoded set. Add your new name:
+
+```python
+# main.py  ~line 203
+@app.post("/api/set-theme")
+async def set_theme(payload: dict):
+    theme = payload.get("theme", "dark")
+    if theme not in ("dark", "light", "hc", "forest"):   # ← add here
+        return JSONResponse({"ok": False}, status_code=400)
+    ...
+```
+
+### Step 3 — Set it as default (optional)
+
+```env
+# config.env
+UI_THEME=forest
+```
+
+Or switch at runtime via the API:
+
+```bash
+curl -X POST http://<pi-ip>:8080/api/set-theme \
+     -H "Content-Type: application/json" \
+     -d '{"theme": "forest"}'
+```
+
+### Step 4 — Add a button in Settings (optional)
+
+If you want to switch to the new theme from the touchscreen, add a button in `templates/settings.html` inside the "Tema UI" section:
+
+```html
+<!-- templates/settings.html  ~line 54 -->
+<div style="display:flex; gap:8px;">
+  <button onclick="setTheme('dark')"   style="flex:1; min-height:36px; font-size:12px;">🌙 Dark</button>
+  <button onclick="setTheme('light')"  style="flex:1; min-height:36px; font-size:12px;">☀️ Light</button>
+  <button onclick="setTheme('hc')"     style="flex:1; min-height:36px; font-size:12px;">⬛ HC</button>
+  <button onclick="setTheme('forest')" style="flex:1; min-height:36px; font-size:12px;">🌲 Forest</button>
+</div>
+```
+
+### Theme design tips
+
+The display is 480×320 px and is typically viewed in outdoor or low-light conditions:
+
+- Keep `--bg` and `--bg2` close in lightness to avoid harsh contrast on the panel
+- Use `--accent` for interactive elements only — it should be clearly distinct from `--text`
+- Test `--ok`, `--warn`, `--danger` against `--bg2` (they appear as 8 px dots on top of it)
+- For outdoor use, prefer saturated colors and high `--text`/`--bg` contrast (≥ 4.5:1)
+
+### Complete example — "Red Night" theme for cockpit/vehicle use
+
+```css
+.theme-rednight {
+  --bg:       #1a0000;
+  --bg2:      #2a0000;
+  --border:   #5c0000;
+  --text:     #ffcccc;
+  --muted:    #cc6666;
+  --accent:   #ff4444;
+  --ok:       #cc0000;
+  --warn:     #ff6600;
+  --danger:   #ff0000;
+}
+```
+
 ## GPIO Pinout
 
 The Waveshare 3.5" SPI display occupies the following BCM pins — **do not use them for other peripherals**:
