@@ -207,6 +207,8 @@ async def set_theme(payload: dict):
     cfg.UI_THEME = theme
     return {"ok": True}
 
+_ALLOWED_REMOTE_CONFIG_SECTIONS = {"device", "display", "network", "telemetry", "lora", "bluetooth", "position"}
+
 @app.post("/api/remote-config")
 async def remote_config(payload: dict):
     node_id = payload.pop("remote_node_id", None)
@@ -215,11 +217,16 @@ async def remote_config(payload: dict):
     try:
         node = meshtastic_client._interface.getNode(node_id)
         for section, values in payload.items():
+            if section not in _ALLOWED_REMOTE_CONFIG_SECTIONS:
+                logging.warning(f"remote-config: sezione '{section}' non permessa, ignorata")
+                continue
+            if not isinstance(values, dict):
+                continue
             cfg_section = getattr(node.localConfig, section, None) or getattr(node.moduleConfig, section, None)
             if cfg_section:
                 for k, v in values.items():
                     setattr(cfg_section, k, v)
-                node.writeConfig(section)
+                await asyncio.to_thread(node.writeConfig, section)  # non-blocking
         return {"ok": True}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)

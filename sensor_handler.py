@@ -49,12 +49,26 @@ class INA219Driver(BaseSensor):
     @property
     def name(self): return "ina219"
 
+    def __init__(self, address: int):
+        super().__init__(address)
+        self._driver = None
+        if _SMBUS_AVAILABLE:
+            try:
+                from ina219 import INA219
+                self._driver = INA219(0.1, busnum=1, address=self.address)
+                self._driver.configure()
+            except Exception as e:
+                logging.error(f"INA219 init error: {e}")
+
     def read(self) -> dict | None:
+        if not self._driver:
+            return None
         try:
-            from ina219 import INA219
-            ina = INA219(0.1, busnum=1, address=self.address)
-            ina.configure()
-            return {"voltage": round(ina.voltage(), 2), "current": round(ina.current(), 1), "power": round(ina.power(), 1)}
+            return {
+                "voltage": round(self._driver.voltage(), 2),
+                "current": round(self._driver.current(), 1),
+                "power":   round(self._driver.power(), 1),
+            }
         except Exception as e:
             logging.error(f"INA219 read error: {e}")
             return None

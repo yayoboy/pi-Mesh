@@ -32,3 +32,17 @@ async def test_polling_calls_broadcast(tmp_path):
     task.cancel()
     assert broadcast.called
     await conn.close()
+
+def test_ina219_driver_init_called_once():
+    """INA219 driver must be instantiated in __init__, not in read()."""
+    import inspect
+    from sensor_handler import INA219Driver
+    source = inspect.getsource(INA219Driver.__init__)
+    assert '_driver' in source, "INA219Driver.__init__ must cache driver in self._driver"
+
+def test_ina219_read_does_not_reimport():
+    """read() must use self._driver, not create a new INA219 instance."""
+    import inspect
+    from sensor_handler import INA219Driver
+    source = inspect.getsource(INA219Driver.read)
+    assert 'INA219(' not in source, "read() must not instantiate INA219 — use self._driver"
