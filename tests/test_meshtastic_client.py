@@ -56,3 +56,51 @@ async def test_connect_sets_connected_on_success():
         mc._broadcast = AsyncMock()
         await mc.connect()
         assert mc.is_connected() is True
+
+# Bug 1: concurrent connect() calls must not stack — SerialInterface called only once
+@pytest.mark.asyncio
+async def test_connect_not_reentrant():
+    import meshtastic_client as mc
+    mc._loop = asyncio.get_event_loop()
+    mc._broadcast = AsyncMock()
+    si_call_count = 0
+
+    class SlowSI:
+        def __init__(self, *a, **kw):
+            nonlocal si_call_count
+            si_call_count += 1
+
+    with patch("meshtastic.serial_interface.SerialInterface", SlowSI):
+        # Fire two concurrent connect() tasks
+        t1 = asyncio.create_task(mc.connect())
+        t2 = asyncio.create_task(mc.connect())
+        await asyncio.gather(t1, t2, return_exceptions=True)
+
+    # _is_connecting guard must ensure SerialInterface is only created once
+    assert si_call_count == 1, f"Expected 1 SerialInterface init, got {si_call_count}"
+
+# Bug 2: send_message must use asyncio.to_thread
+@pytest.mark.asyncio
+async def test_send_message_uses_to_thread():
+    import meshtastic_client as mc
+    mock_iface = MagicMock()
+    mc._interface = mock_iface
+    with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_thread:
+        await mc.send_message("ciao", 0, "^all")
+        mock_thread.assert_called_once()
+
+# Bug 7: _bridge logs errors from failed coroutines
+def test_bridge_adds_done_callback():
+    import meshtastic_client as mc
+    loop = asyncio.new_event_loop()
+    mc._loop = loop
+    async def failing():
+        raise ValueError("test error")
+    future = MagicMock()
+    future.cancelled.return_value = False
+    future.result.side_effect = ValueError("test error")
+    with patch("asyncio.run_coroutine_threadsafe", return_value=future) as mock_rcts:
+        mc._bridge(failing())
+        mock_rcts.assert_called_once()
+        future.add_done_callback.assert_called_once()
+    loop.close()

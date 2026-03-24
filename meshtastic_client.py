@@ -16,11 +16,12 @@ except ImportError:
 
 import config as cfg
 
-_interface   = None
-_loop        = None
-_broadcast   = None
-_connected   = False
-_conn_getter = None
+_interface    = None
+_loop         = None
+_broadcast    = None
+_connected    = False
+_is_connecting = False
+_conn_getter  = None
 
 def init(loop, broadcast_fn, conn_getter=None):
     global _loop, _broadcast, _conn_getter
@@ -38,23 +39,32 @@ def init(loop, broadcast_fn, conn_getter=None):
 
 def _bridge(coro):
     if _loop and not _loop.is_closed():
-        asyncio.run_coroutine_threadsafe(coro, _loop)
+        fut = asyncio.run_coroutine_threadsafe(coro, _loop)
+        fut.add_done_callback(
+            lambda f: logging.error(f"_bridge error: {f.exception()}") if not f.cancelled() and f.exception() else None
+        )
 
 async def connect():
-    global _interface, _connected
+    global _interface, _connected, _is_connecting
+    if _is_connecting or _connected:
+        return
     if not _MESHTASTIC_AVAILABLE:
         logging.warning("meshtastic non disponibile, connect() no-op")
         return
-    while True:
-        try:
-            _interface = meshtastic.serial_interface.SerialInterface(cfg.SERIAL_PORT)
-            _connected = True
-            logging.info("Connesso a Heltec V3")
-            return
-        except Exception as e:
-            _connected = False
-            logging.warning(f"Connessione fallita ({e}), riprovo in 10s...")
-            await asyncio.sleep(10)
+    _is_connecting = True
+    try:
+        while True:
+            try:
+                _interface = meshtastic.serial_interface.SerialInterface(cfg.SERIAL_PORT)
+                _connected = True
+                logging.info("Connesso a Heltec V3")
+                return
+            except Exception as e:
+                _connected = False
+                logging.warning(f"Connessione fallita ({e}), riprovo in 10s...")
+                await asyncio.sleep(10)
+    finally:
+        _is_connecting = False
 
 async def disconnect():
     global _interface, _connected
@@ -86,7 +96,7 @@ def get_local_node():
 async def send_message(text: str, channel: int = 0, destination: str = "^all"):
     if not _interface:
         raise RuntimeError("Non connesso")
-    _interface.sendText(text, channelIndex=channel, destinationId=destination)
+    await asyncio.to_thread(_interface.sendText, text, channelIndex=channel, destinationId=destination)
 
 async def set_config(config_dict: dict):
     if not _interface:
@@ -99,7 +109,7 @@ async def set_config(config_dict: dict):
         if cfg_section:
             for k, v in values.items():
                 setattr(cfg_section, k, v)
-            node.writeConfig(section)
+            await asyncio.to_thread(node.writeConfig, section)
 
 async def request_position(node_id: str):
     if _interface:
