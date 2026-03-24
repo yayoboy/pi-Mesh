@@ -46,3 +46,61 @@ def test_ina219_read_does_not_reimport():
     from sensor_handler import INA219Driver
     source = inspect.getsource(INA219Driver.read)
     assert 'INA219(' not in source, "read() must not instantiate INA219 — use self._driver"
+
+
+# ── Driver registry completeness ──────────────────────────────────────────────
+
+def test_all_expected_drivers_registered():
+    """Every driver documented in the README must appear in _DRIVER_MAP."""
+    import sensor_handler
+    expected = {
+        "bme280", "bme680",
+        "bmp280", "bmp085", "bmp180",
+        "sht31", "shtc3", "mcp9808", "lps22hb",
+        "pmsa003i", "sen5x",
+        "veml7700", "tsl2591", "rcwl9620",
+        "ina219", "ina260", "ina3221", "max17048",
+    }
+    missing = expected - set(sensor_handler._DRIVER_MAP.keys())
+    assert not missing, f"Missing from _DRIVER_MAP: {missing}"
+
+
+def test_bmp180_alias_maps_to_bmp085_driver():
+    import sensor_handler
+    assert sensor_handler._DRIVER_MAP["bmp180"] is sensor_handler._DRIVER_MAP["bmp085"]
+
+
+# ── Structural contract for all drivers ───────────────────────────────────────
+
+_ADAFRUIT_DRIVERS = [
+    "BMP280Driver", "BMP085Driver", "SHT31Driver", "SHTC3Driver",
+    "MCP9808Driver", "LPS22HBDriver", "PMSA003IDriver",
+    "VEML7700Driver", "TSL2591Driver", "RCWL9620Driver",
+    "INA260Driver", "INA3221Driver", "MAX17048Driver",
+]
+
+import pytest
+@pytest.mark.parametrize("cls_name", _ADAFRUIT_DRIVERS)
+def test_adafruit_driver_caches_in_init(cls_name):
+    """Each Adafruit driver must cache its hardware object in self._driver inside __init__."""
+    import inspect, sensor_handler
+    cls = getattr(sensor_handler, cls_name)
+    src = inspect.getsource(cls.__init__)
+    assert "self._driver" in src, f"{cls_name}.__init__ must assign self._driver"
+
+
+@pytest.mark.parametrize("cls_name", _ADAFRUIT_DRIVERS)
+def test_adafruit_driver_read_guards_on_driver(cls_name):
+    """Each Adafruit driver's read() must guard on self._driver before doing any I/O."""
+    import inspect, sensor_handler
+    cls = getattr(sensor_handler, cls_name)
+    src = inspect.getsource(cls.read)
+    assert "self._driver" in src, f"{cls_name}.read() must reference self._driver"
+
+
+@pytest.mark.parametrize("cls_name", _ADAFRUIT_DRIVERS + ["BME680Driver", "INA219Driver"])
+def test_driver_has_name_property(cls_name):
+    import sensor_handler
+    cls = getattr(sensor_handler, cls_name)
+    # name must be a string (not raise NotImplementedError)
+    assert isinstance(cls.__dict__.get("name") or getattr(cls, "name"), property)

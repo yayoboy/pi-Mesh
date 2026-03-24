@@ -222,8 +222,25 @@ Live readings appear in the **Telemetry** tab and are saved to the database (wit
 
 | Name | Address | Measures | Python library |
 |------|---------|----------|----------------|
-| `bme280` | `0x76` / `0x77` | Temperature, humidity, pressure | `RPi.bme280` |
+| `bme280` | `0x76` / `0x77` | Temp, humidity, pressure | `RPi.bme280` |
+| `bme680` | `0x76` / `0x77` | Temp, humidity, pressure, VOC | `bme680` |
+| `bmp280` | `0x76` / `0x77` | Temp, pressure | `adafruit-circuitpython-bmp280` |
+| `bmp085` / `bmp180` | `0x77` | Temp, pressure (legacy) | `adafruit-circuitpython-bmp085` |
+| `sht31` | `0x44` / `0x45` | Temp, humidity | `adafruit-circuitpython-sht31d` |
+| `shtc3` | `0x70` | Temp, humidity | `adafruit-circuitpython-shtc3` |
+| `mcp9808` | `0x18`–`0x1F` | Temperature (±0.0625 °C) | `adafruit-circuitpython-mcp9808` |
+| `lps22hb` | `0x5C` / `0x5D` | Pressure, temp | `adafruit-circuitpython-lps2x` |
+| `pmsa003i` | `0x12` | PM1.0, PM2.5, PM10 | `adafruit-circuitpython-pm25` |
+| `sen5x` | `0x69` | PM, NOx, VOC, temp, humidity | `sensirion-i2c-sen5x` |
+| `veml7700` | `0x10` | Ambient lux | `adafruit-circuitpython-veml7700` |
+| `tsl2591` | `0x29` | Lux, IR, visible | `adafruit-circuitpython-tsl2591` |
+| `rcwl9620` | `0x13` | Distance (cm) | `adafruit-circuitpython-rcwl9620` |
 | `ina219` | `0x40`–`0x4F` | Voltage, current, power | `pi-ina219` |
+| `ina260` | `0x40`–`0x4F` | Voltage, current, power | `adafruit-circuitpython-ina260` |
+| `ina3221` | `0x40`–`0x43` | 3-channel voltage/current | `adafruit-circuitpython-ina3221` |
+| `max17048` | `0x36` | LiPo voltage, state of charge % | `adafruit-circuitpython-max1704x` |
+
+> **Adafruit drivers** (all except `bme280`, `bme680`, `ina219`) require `adafruit-blinka` to be installed on the Pi. See `requirements.txt` for install commands.
 
 #### Meshtastic firmware sensor support
 
