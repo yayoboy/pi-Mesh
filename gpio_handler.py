@@ -13,9 +13,10 @@ except Exception:
     logging.warning("gpiozero/pigpio non disponibile — GPIO disabilitato")
     _GPIO_AVAILABLE = False
 
-def init(enc1_pins: tuple, enc2_pins: tuple, broadcast_fn, loop=None):
-    global _loop, _broadcast
+def init(enc1_pins: tuple, enc2_pins: tuple, broadcast_fn, db_conn=None, loop=None):
+    global _loop, _broadcast, _conn
     _broadcast = broadcast_fn
+    _conn = db_conn
     _loop = loop or asyncio.get_event_loop()
 
     if not _GPIO_AVAILABLE:
@@ -34,19 +35,22 @@ def init(enc1_pins: tuple, enc2_pins: tuple, broadcast_fn, loop=None):
     enc1.when_rotated_clockwise          = make_handler(1, "cw")
     enc1.when_rotated_counter_clockwise  = make_handler(1, "ccw")
     btn1.when_pressed                    = make_handler(1, "press")
-    btn1.when_held                       = make_handler(1, "long_press")
     enc2.when_rotated_clockwise          = make_handler(2, "cw")
     enc2.when_rotated_counter_clockwise  = make_handler(2, "ccw")
     btn2.when_pressed                    = make_handler(2, "press")
-    btn2.when_held                       = make_handler(2, "long_press")
 
-    # Gesture shutdown: press lungo simultaneo entrambi gli encoder per 3s
-    def check_shutdown():
-        if btn1.is_held and btn2.is_held:
-            logging.info("Gesture shutdown rilevata")
-            _bridge_coroutine(_graceful_shutdown())
-    btn1.when_held = check_shutdown
-    btn2.when_held = check_shutdown
+    def make_held_handler(encoder_num):
+        def handler():
+            # Always send long_press for UI navigation
+            _bridge_event(encoder_num, "long_press")
+            # Shutdown only when BOTH buttons are held simultaneously
+            if btn1.is_held and btn2.is_held:
+                logging.info("Gesture shutdown rilevata")
+                _bridge_coroutine(_graceful_shutdown())
+        return handler
+
+    btn1.when_held = make_held_handler(1)
+    btn2.when_held = make_held_handler(2)
 
 def _bridge_event(encoder_num: int, action: str):
     if _loop and not _loop.is_closed():

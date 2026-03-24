@@ -26,3 +26,22 @@ def test_bridge_event_sends_to_loop():
     # non crashare
     gpio_handler._bridge_event(1, 'cw')
     loop.close()
+
+def test_long_press_not_overwritten_by_shutdown():
+    """init() signature must accept db_conn parameter."""
+    import inspect
+    import gpio_handler
+    sig = inspect.signature(gpio_handler.init)
+    assert 'db_conn' in sig.parameters, "init() must accept db_conn parameter"
+
+def test_init_stores_db_conn():
+    import gpio_handler, asyncio
+    async def fake_broadcast(data): pass
+    loop = asyncio.new_event_loop()
+    conn = object()  # sentinel
+    gpio_handler.init(
+        (17, 27, 22), (5, 6, 13),
+        fake_broadcast, db_conn=conn, loop=loop
+    )
+    assert gpio_handler._conn is conn
+    loop.close()

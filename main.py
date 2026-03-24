@@ -43,7 +43,8 @@ async def lifespan(app: FastAPI):
     gpio_handler.init(
         (cfg.ENC1_A, cfg.ENC1_B, cfg.ENC1_SW),
         (cfg.ENC2_A, cfg.ENC2_B, cfg.ENC2_SW),
-        broadcast
+        broadcast,
+        db_conn=_conn
     )
 
     watchdog.start_all(_conn, broadcast)
