@@ -22,6 +22,7 @@ _broadcast    = None
 _connected    = False
 _is_connecting = False
 _conn_getter  = None
+_shutdown     = False
 
 def init(loop, broadcast_fn, conn_getter=None):
     global _loop, _broadcast, _conn_getter
@@ -40,9 +41,12 @@ def init(loop, broadcast_fn, conn_getter=None):
 def _bridge(coro):
     if _loop and not _loop.is_closed():
         fut = asyncio.run_coroutine_threadsafe(coro, _loop)
-        fut.add_done_callback(
-            lambda f: logging.error(f"_bridge error: {f.exception()}") if not f.cancelled() and f.exception() else None
-        )
+        def _bridge_cb(f):
+            if not f.cancelled():
+                exc = f.exception()
+                if exc:
+                    logging.error("_bridge error", exc_info=exc)
+        fut.add_done_callback(_bridge_cb)
 
 async def connect():
     global _interface, _connected, _is_connecting
@@ -53,7 +57,7 @@ async def connect():
         return
     _is_connecting = True
     try:
-        while True:
+        while not _shutdown:
             try:
                 _interface = meshtastic.serial_interface.SerialInterface(cfg.SERIAL_PORT)
                 _connected = True
@@ -67,7 +71,8 @@ async def connect():
         _is_connecting = False
 
 async def disconnect():
-    global _interface, _connected
+    global _interface, _connected, _shutdown
+    _shutdown = True
     if _interface:
         try:
             _interface.close()
@@ -101,7 +106,7 @@ async def send_message(text: str, channel: int = 0, destination: str = "^all"):
 async def set_config(config_dict: dict):
     if not _interface:
         raise RuntimeError("Non connesso")
-    node = _interface.getNode('^local')
+    node = await asyncio.to_thread(_interface.getNode, '^local')
     for section, values in config_dict.items():
         cfg_section = getattr(node.localConfig, section, None)
         if cfg_section is None:
