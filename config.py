@@ -26,6 +26,7 @@ ENC1_SW = int(os.getenv("ENC1_SW", "22"))
 ENC2_A  = int(os.getenv("ENC2_A", "5"))
 ENC2_B  = int(os.getenv("ENC2_B", "6"))
 ENC2_SW = int(os.getenv("ENC2_SW", "13"))
+BUZZER_PIN = int(os.getenv("BUZZER_PIN", "0"))  # 0 = disabled
 
 # Sensori I2C
 I2C_SENSORS = parse_sensor_config(os.getenv("I2C_SENSORS", ""))

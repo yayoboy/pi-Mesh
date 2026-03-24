@@ -142,6 +142,11 @@ async def _handle_message(packet):
         await database.save_message(_conn_getter(), **data)
     if data:
         await _broadcast({"type": "message", "data": data})
+        try:
+            import gpio_handler
+            gpio_handler.beep("single")
+        except Exception:
+            pass
 
 def _on_receive_user(packet, interface):
     _bridge(_handle_user(packet))
@@ -167,6 +172,11 @@ async def _handle_user(packet):
         if _conn_getter:
             await database.save_node(_conn_getter(), node)
         await _broadcast({"type": "node", "data": node})
+        try:
+            import gpio_handler
+            gpio_handler.beep("double")
+        except Exception:
+            pass
     except Exception as e:
         logging.error(f"Parsing user fallito: {e}")
 

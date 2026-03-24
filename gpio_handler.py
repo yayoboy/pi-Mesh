@@ -1,8 +1,10 @@
 import asyncio, logging, time
+import config as cfg
 
 _loop      = None
 _broadcast = None
 _conn      = None
+_buzzer    = None
 
 try:
     from gpiozero import RotaryEncoder, Button
@@ -14,7 +16,7 @@ except Exception:
     _GPIO_AVAILABLE = False
 
 def init(enc1_pins: tuple, enc2_pins: tuple, broadcast_fn, db_conn=None, loop=None):
-    global _loop, _broadcast, _conn
+    global _loop, _broadcast, _conn, _buzzer
     _broadcast = broadcast_fn
     _conn = db_conn
     _loop = loop or asyncio.get_event_loop()
@@ -52,6 +54,13 @@ def init(enc1_pins: tuple, enc2_pins: tuple, broadcast_fn, db_conn=None, loop=No
     btn1.when_held = make_held_handler(1)
     btn2.when_held = make_held_handler(2)
 
+    if cfg.BUZZER_PIN:
+        try:
+            from gpiozero import TonalBuzzer
+            _buzzer = TonalBuzzer(cfg.BUZZER_PIN, pin_factory=_factory)
+        except Exception as e:
+            logging.warning(f"Buzzer non disponibile: {e}")
+
 def _bridge_event(encoder_num: int, action: str):
     if _loop and not _loop.is_closed():
         asyncio.run_coroutine_threadsafe(
@@ -66,6 +75,32 @@ def _bridge_event(encoder_num: int, action: str):
 def _bridge_coroutine(coro):
     if _loop and not _loop.is_closed():
         asyncio.run_coroutine_threadsafe(coro, _loop)
+
+def beep(pattern: str = "single"):
+    """Emit a beep on the optional piezo buzzer.
+    pattern: 'single' (1 short beep), 'double' (2 short beeps)
+    No-op if no buzzer is configured.
+    """
+    if not _buzzer:
+        return
+    import threading, time
+
+    def _play():
+        try:
+            if pattern == "single":
+                _buzzer.play(440)
+                time.sleep(0.1)
+                _buzzer.stop()
+            elif pattern == "double":
+                for _ in range(2):
+                    _buzzer.play(440)
+                    time.sleep(0.08)
+                    _buzzer.stop()
+                    time.sleep(0.08)
+        except Exception as e:
+            logging.debug(f"beep error: {e}")
+
+    threading.Thread(target=_play, daemon=True).start()
 
 async def _graceful_shutdown():
     import database, os
