@@ -29,7 +29,9 @@ ENC2_SW = int(os.getenv("ENC2_SW", "13"))
 BUZZER_PIN = int(os.getenv("BUZZER_PIN", "0"))  # 0 = disabled
 
 # Sensori I2C
-I2C_SENSORS = parse_sensor_config(os.getenv("I2C_SENSORS", ""))
+I2C_SENSORS   = parse_sensor_config(os.getenv("I2C_SENSORS", ""))
+# I2C_AUTOSCAN=1 → scansiona il bus all'avvio; I2C_SENSORS sovrascrive i risultati per indirizzo
+I2C_AUTOSCAN  = os.getenv("I2C_AUTOSCAN", "1") not in ("0", "false", "no")
 
 # Mappa
 MAP_BOUNDS = {

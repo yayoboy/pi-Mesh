@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import config as cfg
-import database, meshtastic_client, gpio_handler, sensor_handler, watchdog
+import database, meshtastic_client, gpio_handler, sensor_handler, sensor_detect, watchdog
 
 gc.set_threshold(100, 5, 5)
 
@@ -38,7 +38,14 @@ async def lifespan(app: FastAPI):
     meshtastic_client.init(loop, broadcast, get_conn)
     asyncio.create_task(meshtastic_client.connect())
 
-    drivers = sensor_handler.init(cfg.I2C_SENSORS)
+    if cfg.I2C_AUTOSCAN:
+        scanned = await asyncio.to_thread(sensor_detect.scan)
+        sensor_list = sensor_detect.merge(scanned, cfg.I2C_SENSORS)
+    else:
+        sensor_list = cfg.I2C_SENSORS
+    app.state.i2c_sensors = sensor_list
+
+    drivers = sensor_handler.init(sensor_list)
     asyncio.create_task(sensor_handler.start_polling(drivers, _conn, broadcast))
 
     gpio_handler.init(
@@ -171,6 +178,20 @@ async def api_telemetry(node_id: str, type_: str, limit: int = 100):
 @app.get("/api/sensor/{sensor_name}")
 async def api_sensor(sensor_name: str, limit: int = 100):
     return await database.get_sensor_readings(_conn, sensor_name, limit)
+
+@app.get("/api/i2c/scan")
+async def api_i2c_scan(live: bool = False):
+    """
+    Return detected I2C sensors.
+    - ``live=false`` (default): return the list resolved at startup.
+    - ``live=true``: re-run the bus scan now (takes ~50 ms on a Pi).
+    """
+    if live:
+        sensors = await asyncio.to_thread(sensor_detect.scan)
+        merged  = sensor_detect.merge(sensors, cfg.I2C_SENSORS)
+        return JSONResponse({"sensors": merged, "source": "live"})
+    sensors = getattr(app.state, "i2c_sensors", [])
+    return JSONResponse({"sensors": sensors, "source": "startup"})
 
 @app.get("/api/status")
 async def api_status():
