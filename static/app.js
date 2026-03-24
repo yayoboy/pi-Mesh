@@ -238,8 +238,8 @@ function initMapIfNeeded() {
     maxBoundsViscosity: 1.0,
   })
 
-  const osmLayer  = L.tileLayer('/tiles/osm/{z}/{x}/{y}.png',  { maxZoom: window.MAP_ZOOM_MAX })
-  const topoLayer = L.tileLayer('/tiles/topo/{z}/{x}/{y}.png', { maxZoom: window.MAP_ZOOM_MAX })
+  const osmLayer  = L.tileLayer('/tiles/osm/{z}/{x}/{y}',  { maxZoom: window.MAP_ZOOM_MAX })
+  const topoLayer = L.tileLayer('/tiles/topo/{z}/{x}/{y}', { maxZoom: window.MAP_ZOOM_MAX })
   osmLayer.addTo(leafletMap)
   L.control.layers({ 'Stradale': osmLayer, 'Topo': topoLayer }).addTo(leafletMap)
 

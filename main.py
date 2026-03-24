@@ -1,4 +1,5 @@
 import asyncio, gc, logging, os, re, signal, subprocess, sys, time
+import aiosqlite as _aiosqlite
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -180,6 +181,33 @@ async def api_status():
         "node_count": len(await database.get_nodes(_conn)),
         "ram_mb":     round(rss_mb, 1),
     }
+
+@app.get("/tiles/{source}/{z}/{x}/{y}")
+async def serve_tile(source: str, z: int, x: int, y: int):
+    from fastapi.responses import Response
+    # Validate source to prevent path traversal
+    if source not in ("osm", "topo"):
+        return JSONResponse({"error": "invalid source"}, status_code=400)
+    mbtiles_path = f"static/tiles/{source}.mbtiles"
+    if os.path.isfile(mbtiles_path):
+        tms_y = (1 << z) - 1 - y  # flip Y: MBTiles uses TMS convention (Y from bottom)
+        try:
+            async with _aiosqlite.connect(mbtiles_path) as db:
+                cur = await db.execute(
+                    "SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?",
+                    (z, x, tms_y)
+                )
+                row = await cur.fetchone()
+                if row:
+                    return Response(content=row[0], media_type="image/png")
+        except Exception as e:
+            logging.warning(f"MBTiles error {mbtiles_path}: {e}")
+    # Fallback: file-based tile
+    tile_path = f"static/tiles/{source}/{z}/{x}/{y}.png"
+    if os.path.isfile(tile_path):
+        with open(tile_path, "rb") as f:
+            return Response(content=f.read(), media_type="image/png")
+    return Response(status_code=204)  # No content — transparent tile
 
 @app.post("/api/keyboard/show")
 async def keyboard_show():
