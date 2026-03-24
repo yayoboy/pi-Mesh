@@ -210,14 +210,131 @@ The tile server tries MBTiles first; falls back to PNG files automatically.
 
 ### I2C Sensors
 
-Set `I2C_SENSORS` in `config.env` to auto-detect and poll sensors. Supported drivers:
+Set `I2C_SENSORS` in `config.env` to auto-detect and poll sensors connected directly to the Pi:
 
-| Sensor | Address | Measures |
-|--------|---------|----------|
-| BME280 | `0x76` or `0x77` | Temperature, humidity, pressure |
-| INA219 | `0x40`–`0x4F` | Voltage, current, power |
+```env
+I2C_SENSORS=bme280:0x76,ina219:0x40
+```
 
-Live readings appear in the **Telemetry** tab and are saved to the database.
+Live readings appear in the **Telemetry** tab and are saved to the database (with pruning — last 200 readings per sensor kept).
+
+#### Currently implemented drivers
+
+| Name | Address | Measures | Python library |
+|------|---------|----------|----------------|
+| `bme280` | `0x76` / `0x77` | Temperature, humidity, pressure | `RPi.bme280` |
+| `ina219` | `0x40`–`0x4F` | Voltage, current, power | `pi-ina219` |
+
+#### Meshtastic firmware sensor support
+
+The Meshtastic radio firmware natively supports many more sensors. The telemetry it sends over the mesh (visible in the Telemetry tab as `deviceMetrics` / `environmentMetrics`) can come from any of these:
+
+| Sensor | Category | Measures |
+|--------|----------|---------|
+| BME280 | Environment | Temp, humidity, pressure |
+| BME680 | Environment | Temp, humidity, pressure, VOC gas |
+| BMP280 | Environment | Temp, pressure (no humidity) |
+| BMP085 / BMP180 | Environment | Temp, pressure (legacy) |
+| SHT31 | Environment | Temp, humidity (high accuracy) |
+| SHTC3 | Environment | Temp, humidity (compact) |
+| MCP9808 | Environment | Temperature (precision ±0.0625°C) |
+| LPS22HB | Environment | Pressure, temp (waterproof) |
+| PMSA003I | Air quality | PM1.0, PM2.5, PM10 particulate matter |
+| SEN5X | Air quality | NOx, VOC, PM, temp, humidity |
+| VEML7700 | Light | Ambient lux |
+| TSL2591 | Light | Ambient lux (high dynamic range) |
+| RCWL-9620 | Distance | Ultrasonic range (cm) |
+| INA219 | Power | Voltage, current, power |
+| INA260 | Power | Voltage, current, power (higher accuracy) |
+| INA3221 | Power | 3-channel voltage/current |
+| MAX17048 | Power | LiPo state of charge (%) |
+
+Pi-Mesh receives and stores all this data from remote nodes automatically — no driver needed. The drivers in `sensor_handler.py` are only for sensors **physically wired to the Pi itself**.
+
+#### Adding a new local sensor driver
+
+The architecture requires exactly two things: a class in `sensor_handler.py` and an entry in `_DRIVER_MAP`. No other files need changing.
+
+**1. Add the class** (after `INA219Driver`, before `_DRIVER_MAP`):
+
+```python
+# sensor_handler.py
+
+class SHT31Driver(BaseSensor):
+    @property
+    def name(self): return "sht31"
+
+    def __init__(self, address: int):
+        super().__init__(address)
+        self._driver = None
+        if _SMBUS_AVAILABLE:
+            try:
+                import adafruit_sht31d
+                import board
+                i2c = board.I2C()
+                self._driver = adafruit_sht31d.SHT31D(i2c, address=self.address)
+            except Exception as e:
+                logging.error(f"SHT31 init error: {e}")
+
+    def read(self) -> dict | None:
+        if not self._driver:
+            return None
+        try:
+            return {
+                "temp":     round(self._driver.temperature, 1),
+                "humidity": round(self._driver.relative_humidity, 1),
+            }
+        except Exception as e:
+            logging.error(f"SHT31 read error: {e}")
+            return None
+```
+
+**2. Register it in `_DRIVER_MAP`**:
+
+```python
+_DRIVER_MAP = {
+    "bme280": BME280Driver,
+    "ina219": INA219Driver,
+    "sht31":  SHT31Driver,   # ← add this line
+}
+```
+
+**3. Add the Python library to `requirements.txt`**:
+
+```
+adafruit-circuitpython-sht31d
+```
+
+**4. Enable it in `config.env`**:
+
+```env
+I2C_SENSORS=sht31:0x44
+```
+
+That's it. The sensor is auto-detected on startup, polled every 30 seconds, and its values are broadcast live to the Telemetry tab via WebSocket.
+
+#### Driver rules
+
+- `name` — must be lowercase, no spaces; used as the key in `config.env` and as the database sensor name
+- `__init__` — initialize the hardware driver once; store in `self._driver`; wrap in `try/except` so a missing sensor never crashes startup
+- `read()` — return a `dict` of `str → number` values, or `None` on error; keep values rounded (1–2 decimal places)
+- `available()` — inherited from `BaseSensor`; does an I2C probe at the given address before adding the driver to the polling loop
+
+#### Sensor library reference
+
+| Sensor | `pip install` package | Notes |
+|--------|----------------------|-------|
+| BME680 | `bme680` | Same wiring as BME280 |
+| BMP280 | `adafruit-circuitpython-bmp280` | No humidity output |
+| SHT31 | `adafruit-circuitpython-sht31d` | More accurate than BME280 |
+| SHTC3 | `adafruit-circuitpython-shtc3` | |
+| MCP9808 | `adafruit-circuitpython-mcp9808` | |
+| PMSA003I | `adafruit-circuitpython-pm25` | Requires UART or I2C |
+| VEML7700 | `adafruit-circuitpython-veml7700` | |
+| TSL2591 | `adafruit-circuitpython-tsl2591` | |
+| INA260 | `adafruit-circuitpython-ina260` | Drop-in replacement for INA219 |
+| INA3221 | `adafruit-circuitpython-ina3221` | 3-channel |
+| MAX17048 | `adafruit-circuitpython-max1704x` | LiPo fuel gauge |
 
 ### Piezo Buzzer
 
