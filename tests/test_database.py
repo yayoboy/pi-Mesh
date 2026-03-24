@@ -61,3 +61,16 @@ async def test_get_messages_pagination(tmp_db):
     page2 = await database.get_messages(conn, 0, limit=5, before_id=oldest_id)
     assert len(page2) == 5
     await conn.close()
+
+@pytest.mark.asyncio
+async def test_prune_sensor_readings():
+    import database
+    conn = await database.init_db(runtime_path=":memory:", persistent_path="/nonexistent")
+    # Insert 20 readings
+    for i in range(20):
+        await database.save_sensor_reading(conn, "bme280", {"temp": i})
+    # Prune keeping only last 5
+    await database.prune_sensor_readings(conn, max_rows=5)
+    rows = await database.get_sensor_readings(conn, "bme280", limit=100)
+    assert len(rows) == 5
+    await conn.close()

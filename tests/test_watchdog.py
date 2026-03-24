@@ -21,6 +21,40 @@ async def test_db_sync_task_calls_sync(monkeypatch):
     assert len(sync_called) >= 1
 
 @pytest.mark.asyncio
+async def test_db_maintenance_task_calls_prune_and_vacuum(monkeypatch):
+    import watchdog, database
+    prune_telemetry_called = []
+    prune_sensor_called = []
+    pragma_calls = []
+
+    async def fake_prune_telemetry(conn):
+        prune_telemetry_called.append(1)
+
+    async def fake_prune_sensor_readings(conn):
+        prune_sensor_called.append(1)
+
+    async def fake_execute(sql, *args, **kwargs):
+        pragma_calls.append(sql)
+
+    monkeypatch.setattr(database, "prune_telemetry", fake_prune_telemetry)
+    monkeypatch.setattr(database, "prune_sensor_readings", fake_prune_sensor_readings)
+    conn = MagicMock()
+    conn.execute = AsyncMock(side_effect=fake_execute)
+
+    task = asyncio.create_task(watchdog.db_maintenance_task(conn, interval=0.01))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    assert len(prune_telemetry_called) >= 1
+    assert len(prune_sensor_called) >= 1
+    assert any("incremental_vacuum" in s for s in pragma_calls)
+    assert any("wal_checkpoint" in s for s in pragma_calls)
+
+@pytest.mark.asyncio
 async def test_memory_watchdog_collects_gc(monkeypatch):
     import watchdog, gc
     gc_collected = []

@@ -19,6 +19,7 @@ async def init_db(runtime_path: str = None, persistent_path: str = None) -> aios
     return conn
 
 async def _create_tables(conn):
+    await conn.execute("PRAGMA auto_vacuum = INCREMENTAL")
     await conn.executescript("""
     CREATE TABLE IF NOT EXISTS messages (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -137,6 +138,18 @@ async def prune_telemetry(conn, max_rows: int = 500):
                 ORDER BY timestamp DESC LIMIT ?
             ) AND node_id=? AND type=?
         """, (node_id, type_, max_rows, node_id, type_))
+    await conn.commit()
+
+async def prune_sensor_readings(conn, max_rows: int = 200):
+    cur = await conn.execute("SELECT DISTINCT sensor_name FROM sensor_readings")
+    names = [row[0] for row in await cur.fetchall()]
+    for name in names:
+        await conn.execute("""
+            DELETE FROM sensor_readings WHERE id NOT IN (
+                SELECT id FROM sensor_readings WHERE sensor_name=?
+                ORDER BY timestamp DESC LIMIT ?
+            ) AND sensor_name=?
+        """, (name, max_rows, name))
     await conn.commit()
 
 async def save_sensor_reading(conn, sensor_name: str, value_dict: dict):

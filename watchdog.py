@@ -38,7 +38,10 @@ async def db_maintenance_task(conn, interval: int = 3600):
     while True:
         await asyncio.sleep(interval)
         await database.prune_telemetry(conn)
+        await database.prune_sensor_readings(conn)
+        await conn.execute("PRAGMA incremental_vacuum")
         await conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        logging.debug("Manutenzione DB completata")
 
 def start_all(conn, broadcast_fn):
     loop = asyncio.get_event_loop()
