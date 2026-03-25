@@ -101,8 +101,7 @@ async def root():
 
 @app.get("/map")
 async def map_page(request: Request):
-    return templates.TemplateResponse("map.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "map.html", {
         "bounds":   cfg.MAP_BOUNDS,
         "zoom_min": cfg.MAP_ZOOM_MIN,
         "zoom_max": cfg.MAP_ZOOM_MAX,
@@ -116,8 +115,7 @@ async def map_page(request: Request):
 @app.get("/settings")
 async def settings_page(request: Request):
     node_info = meshtastic_client.get_local_node()
-    return templates.TemplateResponse("settings.html", {
-        "request":          request,
+    return templates.TemplateResponse(request, "settings.html", {
         "node":             node_info,
         "theme":            cfg.UI_THEME,
         "active":           "settings",
@@ -135,8 +133,8 @@ async def settings_page(request: Request):
 async def home_page(request: Request):
     nodes    = await database.get_nodes(_conn)
     node_info = meshtastic_client.get_local_node()
-    return templates.TemplateResponse("home.html", {
-        "request": request, "nodes": nodes, "node": node_info,
+    return templates.TemplateResponse(request, "home.html", {
+        "nodes": nodes, "node": node_info,
         "theme": cfg.UI_THEME, "density": cfg.UI_STATUS_DENSITY,
         "orientation": cfg.UI_ORIENTATION, "channel_layout": cfg.UI_CHANNEL_LAYOUT,
         "active": "home", "now": int(time.time()),
@@ -146,8 +144,8 @@ async def home_page(request: Request):
 async def channels_page(request: Request):
     msgs  = await database.get_messages(_conn, channel=0, limit=50)
     nodes = await database.get_nodes(_conn)
-    return templates.TemplateResponse("channels.html", {
-        "request": request, "messages": msgs, "nodes": nodes,
+    return templates.TemplateResponse(request, "channels.html", {
+        "messages": msgs, "nodes": nodes,
         "theme": cfg.UI_THEME, "density": cfg.UI_STATUS_DENSITY,
         "orientation": cfg.UI_ORIENTATION, "channel_layout": cfg.UI_CHANNEL_LAYOUT,
         "active": "channels",
@@ -156,8 +154,8 @@ async def channels_page(request: Request):
 @app.get("/hardware")
 async def hardware_page(request: Request):
     sensors = getattr(app.state, "i2c_sensors", [])
-    return templates.TemplateResponse("hardware.html", {
-        "request": request, "i2c_sensors": sensors,
+    return templates.TemplateResponse(request, "hardware.html", {
+        "i2c_sensors": sensors,
         "enc1": (cfg.ENC1_A, cfg.ENC1_B, cfg.ENC1_SW),
         "enc2": (cfg.ENC2_A, cfg.ENC2_B, cfg.ENC2_SW),
         "theme": cfg.UI_THEME, "density": cfg.UI_STATUS_DENSITY,
@@ -168,8 +166,8 @@ async def hardware_page(request: Request):
 @app.get("/remote")
 async def remote_page(request: Request):
     nodes = await database.get_nodes(_conn)
-    return templates.TemplateResponse("remote.html", {
-        "request": request, "nodes": nodes,
+    return templates.TemplateResponse(request, "remote.html", {
+        "nodes": nodes,
         "theme": cfg.UI_THEME, "density": cfg.UI_STATUS_DENSITY,
         "orientation": cfg.UI_ORIENTATION, "channel_layout": cfg.UI_CHANNEL_LAYOUT,
         "active": "remote", "now": int(time.time()),
@@ -402,8 +400,7 @@ async def legacy_telemetry(): return RedirectResponse("/hardware")
 
 @app.get("/setup")
 async def setup_page(request: Request):
-    return templates.TemplateResponse("setup.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "setup.html", {
         "theme": cfg.UI_THEME,
     })
 
@@ -423,11 +420,19 @@ async def setup_connect(payload: dict):
     port = payload.get("port", "").strip()
     if not port:
         return JSONResponse({"ok": False, "error": "porta mancante"}, status_code=400)
+    if not _valid_port(port):
+        return JSONResponse({"ok": False, "error": "porta non valida"}, status_code=400)
     try:
         node = await asyncio.to_thread(_read_node_info, port)
         return {"ok": True, "node": node}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+_PORT_RE = re.compile(r'^(/dev/tty[A-Za-z0-9]+|/dev/serial/by-id/[\w\-:.@]+)$')
+
+def _valid_port(port: str) -> bool:
+    return bool(_PORT_RE.match(port))
 
 
 def _read_node_info(port: str) -> dict:
@@ -446,8 +451,11 @@ def _read_node_info(port: str) -> dict:
 
 @app.post("/api/setup/save")
 async def setup_save(payload: dict):
+    serial_port = str(payload.get("serial_port", cfg.SERIAL_PORT)).strip()
+    if serial_port and not _valid_port(serial_port):
+        return JSONResponse({"ok": False, "error": "porta seriale non valida"}, status_code=400)
     fields = {
-        "SERIAL_PORT": str(payload.get("serial_port", cfg.SERIAL_PORT)).strip(),
+        "SERIAL_PORT": serial_port,
         "MAP_LAT_MIN": str(payload.get("map_lat_min", cfg.MAP_BOUNDS["lat_min"])),
         "MAP_LAT_MAX": str(payload.get("map_lat_max", cfg.MAP_BOUNDS["lat_max"])),
         "MAP_LON_MIN": str(payload.get("map_lon_min", cfg.MAP_BOUNDS["lon_min"])),
