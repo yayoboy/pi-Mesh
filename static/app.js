@@ -1,289 +1,243 @@
-// static/app.js
+'use strict';
 
-// ===== STATO GLOBALE =====
-let ws = null
-let wsReady = false
-const activeTab = { name: document.querySelector('.tab.active')?.dataset.tab || 'messages' }
-const nodeCache = new Map()
-const messageCache = []
-
-// ===== UTILITY =====
-function reexecScripts(container) {
-  container.querySelectorAll('script').forEach(oldScript => {
-    const s = document.createElement('script')
-    s.textContent = oldScript.textContent
-    oldScript.parentNode.replaceChild(s, oldScript)
-  })
-}
-
-// ===== WEBSOCKET =====
-function initWS() {
-  ws = new WebSocket(`ws://${window.location.host}/ws`)
-
-  ws.onopen = () => {
-    wsReady = true
-    document.getElementById('connection-badge').classList.add('connected')
-  }
-
-  ws.onclose = () => {
-    wsReady = false
-    document.getElementById('connection-badge').classList.remove('connected')
-    setTimeout(initWS, 3000)
-  }
-
-  ws.onmessage = (event) => {
-    let msg
-    try {
-      msg = JSON.parse(event.data)
-    } catch (e) {
-      return
-    }
-    const handlers = {
-      init:      handleInit,
-      message:   handleMessage,
-      node:      handleNode,
-      position:  handlePosition,
-      telemetry: handleTelemetry,
-      sensor:    handleSensor,
-      encoder:   handleEncoder,
-      status:    handleStatus,
-    }
-    handlers[msg.type]?.(msg.data)
-  }
-
-}
-
-// ===== HANDLER MESSAGGI WS =====
-function handleInit(data) {
-  updateConnectionStatus(data.connected)
-  data.nodes.forEach(n => nodeCache.set(n.id, n))
-  if (activeTab.name === 'messages') renderMessages(data.messages)
-  if (data.theme) applyTheme(data.theme)
-}
-
-function handleMessage(data) {
-  messageCache.unshift(data)
-  if (messageCache.length > 200) messageCache.pop()
-  if (activeTab.name === 'messages') appendMessage(data)
-}
-
-function handleNode(data) {
-  nodeCache.set(data.id, data)
-  if (activeTab.name === 'nodes') updateNodeRow(data)
-  if (activeTab.name === 'map' && mapReady) updateMapMarker(data)
-}
-
-function handlePosition(data) {
-  const node = nodeCache.get(data.node_id)
-  if (node) {
-    node.latitude  = data.latitude
-    node.longitude = data.longitude
-    if (activeTab.name === 'map' && mapReady) updateMapMarker(node)
-  }
-}
-
-function handleTelemetry(data) {
-  if (activeTab.name === 'telemetry') updateTelemetryChart(data)
-}
-
-function handleSensor(data) {
-  if (activeTab.name === 'telemetry') updateSensorDisplay(data)
-}
-
-function handleStatus(data) {
-  if (data.connected !== undefined) updateConnectionStatus(data.connected)
-  if (data.ram_mb) {
-    const el = document.getElementById('ram-badge')
-    if (el) el.textContent = data.ram_mb + 'MB'
-  }
-}
-
-function updateConnectionStatus(connected) {
-  const badge = document.getElementById('connection-badge')
-  if (!badge) return
-  badge.classList.toggle('connected', connected)
-}
-
-// ===== ENCODER =====
-function handleEncoder(data) {
-  const { encoder, action } = data
-  if (encoder === 1) {
-    const tabs = ['messages', 'nodes', 'map', 'telemetry', 'settings']
-    const current = tabs.indexOf(activeTab.name)
-    if (action === 'cw' && current < tabs.length - 1) navigateTo(tabs[current + 1])
-    else if (action === 'ccw' && current > 0) navigateTo(tabs[current - 1])
-    else if (action === 'long_press') navigateTo('messages')
-    return
-  }
-  if (encoder === 2) {
-    const handlers = {
-      messages:  enc2Messages,
-      nodes:     enc2Nodes,
-      map:       enc2Map,
-      telemetry: enc2Telemetry,
-      settings:  enc2Settings,
-    }
-    handlers[activeTab.name]?.(action)
-  }
-}
-
-function enc2Messages(action) {
-  const list = document.getElementById('msg-list')
-  if (list) list.scrollTop += (action === 'cw' ? 48 : -48)
-}
-function enc2Nodes(action) {
-  const list = document.getElementById('node-list')
-  if (list) list.scrollTop += (action === 'cw' ? 48 : -48)
-}
-function enc2Map(action) {
-  if (!mapReady) return
-  if (action === 'cw') leafletMap.zoomIn()
-  if (action === 'ccw') leafletMap.zoomOut()
-}
-function enc2Telemetry(action) {
-  const el = document.getElementById('content')
-  if (el) el.scrollTop += (action === 'cw' ? 48 : -48)
-}
-function enc2Settings(action) {
-  const el = document.getElementById('content')
-  if (el) el.scrollTop += (action === 'cw' ? 48 : -48)
-}
-
-// ===== NAVIGAZIONE SENZA RELOAD =====
-async function navigateTo(tabName) {
-  if (tabName === activeTab.name) return
-  activeTab.name = tabName
-
+// === WEBSOCKET ===
+const ws = new WebSocket(`ws://${location.host}/ws`);
+ws.addEventListener('message', ({ data }) => {
   try {
-    const response  = await fetch('/' + tabName)
-    const html      = await response.text()
-    const parser    = new DOMParser()
-    const doc       = parser.parseFromString(html, 'text/html')
-    const newContent = doc.getElementById('content')
-    if (newContent) {
-      document.getElementById('content').innerHTML = newContent.innerHTML
-      reexecScripts(document.getElementById('content'))
+    const msg = JSON.parse(data);
+    switch (msg.type) {
+      case 'status':    handleStatus(msg);   break;
+      case 'node':      handleNode(msg);     break;
+      case 'message':   handleMessage(msg);  break;
+      case 'telemetry': handleTelemetry(msg);break;
+      case 'sensor':    handleSensor(msg);   break;
+      case 'encoder':   handleEncoder(msg);  break;
+      case 'init':      handleStatus(msg);   break;
     }
-  } catch (e) {
-    console.error('navigateTo error:', e)
+  } catch (_) {}
+});
+
+// === STATUS BAR ===
+function setStatusItem(id, stateClass, valText) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = 'status-item ' + stateClass;
+  const val = el.querySelector('.val');
+  if (val && valText !== undefined) val.textContent = valText;
+}
+
+function handleStatus(msg) {
+  if (msg.mesh_connected !== undefined)
+    setStatusItem('st-mesh', msg.mesh_connected ? 'ok' : 'danger',
+      msg.node_count ? msg.node_count + 'n' : '');
+  if (msg.serial_connected !== undefined)
+    setStatusItem('st-usb', msg.serial_connected ? 'ok' : 'danger');
+  if (msg.gps_fix !== undefined)
+    setStatusItem('st-gps',
+      msg.gps_fix === 3 ? 'ok' : msg.gps_fix === 2 ? 'warn' : 'danger',
+      msg.gps_sats ? msg.gps_sats + 's' : '');
+  if (msg.battery_pct !== undefined)
+    setStatusItem('st-bat',
+      msg.battery_pct > 50 ? 'ok' : msg.battery_pct > 20 ? 'warn' : 'danger',
+      msg.battery_pct + '%');
+  if (msg.tx_active || msg.rx_active) {
+    setStatusItem('st-txrx', msg.tx_active ? 'warn' : 'ok');
+    setTimeout(() => setStatusItem('st-txrx', 'muted'), 1000);
   }
-
-  document.querySelectorAll('.tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.tab === tabName)
-  })
-
-  if (tabName === 'map')       initMapIfNeeded()
-  if (tabName === 'telemetry') initChartsIfNeeded()
-  attachKeyboardListeners()
+  if (document.getElementById('sys-cpu')) updateHomeStatus(msg);
 }
 
-// ===== TASTIERA =====
-function attachKeyboardListeners() {
-  document.querySelectorAll('input[type=text], input[type=number], textarea').forEach(el => {
-    el.addEventListener('focus', () => fetch('/api/keyboard/show', { method: 'POST' }))
-    el.addEventListener('blur', () => {
-      setTimeout(() => fetch('/api/keyboard/hide', { method: 'POST' }), 200)
-    })
-  })
+// === HOME ===
+function updateHomeStatus(msg) {
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v ?? '—'; };
+  set('sys-cpu',    msg.cpu_pct  != null ? msg.cpu_pct  + '%'  : null);
+  set('sys-ram',    msg.ram_used != null ? msg.ram_used + 'MB' : null);
+  set('sys-temp',   msg.temp_c   != null ? msg.temp_c   + '°C' : null);
+  set('sys-disk',   msg.disk_used);
+  set('sys-uptime', msg.uptime);
+  const tempEl = document.getElementById('sys-temp');
+  if (tempEl && msg.temp_c != null)
+    tempEl.className = 'stat-val' + (msg.temp_c > 70 ? ' danger' : msg.temp_c > 60 ? ' warn' : '');
+  const cpuEl = document.getElementById('sys-cpu');
+  if (cpuEl && msg.cpu_pct != null)
+    cpuEl.className = 'stat-val' + (msg.cpu_pct > 80 ? ' warn' : '');
 }
 
-// ===== MESSAGGI =====
-function renderMessages(messages) {
-  const list = document.getElementById('msg-list')
-  if (!list) return
-  list.innerHTML = ''
-  ;[...messages].reverse().forEach(m => appendMessage(m))
+function handleNode(msg) {
+  const list = document.getElementById('nodes-list');
+  if (!list) return;
+  let row = list.querySelector('[data-node="' + CSS.escape(msg.id) + '"]');
+  if (!row) {
+    row = document.createElement('div');
+    row.className = 'node-row';
+    row.dataset.node = msg.id;
+    list.prepend(row);
+  }
+  row.textContent = '';
+  const dot  = document.createElement('span');
+  const name = document.createElement('span');
+  const meta = document.createElement('span');
+  const age = msg.last_heard ? Math.floor((Date.now()/1000 - msg.last_heard) / 60) : null;
+  dot.className  = 'node-dot' + (age == null ? '' : age < 15 ? ' ok' : age < 120 ? ' warn' : '');
+  name.className = 'node-name';
+  meta.className = 'node-meta';
+  name.textContent = msg.short_name || msg.id;
+  meta.textContent = (msg.snr != null ? msg.snr + 'dB' : '—') + (age != null ? '  ' + age + 'min' : '');
+  row.append(dot, name, meta);
 }
 
-function appendMessage(m) {
-  const list = document.getElementById('msg-list')
-  if (!list) return
-  const div = document.createElement('div')
-  div.className = 'msg-row' + (m.is_outgoing ? ' outgoing' : '')
-  div.dataset.msgId = m.id
-  const name = nodeCache.get(m.node_id)?.short_name || m.node_id
-  const ts   = new Date(m.timestamp * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
-  div.innerHTML = `
-    <div class="msg-bubble">${escHtml(m.text)}</div>
-    <div class="msg-meta">${m.is_outgoing ? '' : escHtml(name) + ' · '}${ts}${m.rx_snr != null ? ' · ' + m.rx_snr + 'dB' : ''}</div>
-  `
-  list.appendChild(div)
-  list.scrollTop = list.scrollHeight
+// === CHAT ===
+let currentChannel = 0;
+let currentDest    = '^all';
+
+function handleMessage(msg) {
+  const list = document.getElementById('chat-messages');
+  if (!list || msg.channel !== currentChannel) return;
+  list.appendChild(buildBubble(msg));
+  list.scrollTop = list.scrollHeight;
 }
 
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+function buildBubble(msg) {
+  const isOut = msg.sender === 'local';
+  const wrap  = document.createElement('div');
+  wrap.className = 'bubble ' + (isOut ? 'out' : 'in');
+  if (!isOut) {
+    const sender = document.createElement('div');
+    sender.className = 'bubble-meta';
+    sender.textContent = msg.sender || '';
+    wrap.appendChild(sender);
+  }
+  const text = document.createElement('div');
+  text.textContent = msg.text || '';
+  const meta = document.createElement('div');
+  meta.className = 'bubble-meta';
+  meta.textContent = (msg.snr != null ? msg.snr + 'dB · ' : '') + fmtTime(msg.ts);
+  wrap.append(text, meta);
+  return wrap;
 }
 
-// ===== TEMA =====
-function applyTheme(theme) {
-  document.body.className = 'theme-' + theme
-  document.documentElement.className = 'theme-' + theme
-}
+document.addEventListener('submit', async e => {
+  if (e.target.id !== 'msg-form') return;
+  e.preventDefault();
+  const input = document.getElementById('chat-input');
+  const text  = input ? input.value.trim() : '';
+  if (!text) return;
+  const chEl = document.getElementById('ch-select');
+  const ch   = parseInt(chEl ? chEl.value : '0');
+  const res  = await fetch('/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, channel: ch, destination: currentDest }),
+  });
+  if (res.ok && input) input.value = '';
+});
 
-// ===== MAPPA =====
-let leafletMap = null
-let mapReady = false
-const markerCache = new Map()
+function handleTelemetry(msg) { /* TODO: hardware tab live update */ }
+function handleSensor(msg)    { /* TODO: I2C live update */ }
 
-function initMapIfNeeded() {
-  if (mapReady || typeof L === 'undefined') return
-  const bounds = window.MAP_BOUNDS
-  if (!bounds) return
-  const center = [(bounds.lat_min + bounds.lat_max) / 2, (bounds.lon_min + bounds.lon_max) / 2]
+// === ENCODER ===
+const TABS = ['/home', '/channels', '/map', '/hardware', '/settings', '/remote'];
 
-  leafletMap = L.map('map-container', {
-    center, zoom: 10, zoomControl: false,
-    maxBounds: [[bounds.lat_min, bounds.lon_min], [bounds.lat_max, bounds.lon_max]],
-    maxBoundsViscosity: 1.0,
-  })
-
-  const osmLayer  = L.tileLayer('/tiles/osm/{z}/{x}/{y}',  { maxZoom: window.MAP_ZOOM_MAX })
-  const topoLayer = L.tileLayer('/tiles/topo/{z}/{x}/{y}', { maxZoom: window.MAP_ZOOM_MAX })
-  osmLayer.addTo(leafletMap)
-  L.control.layers({ 'Stradale': osmLayer, 'Topo': topoLayer }).addTo(leafletMap)
-
-  nodeCache.forEach(node => updateMapMarker(node))
-  mapReady = true
-}
-
-function updateMapMarker(node) {
-  if (!node.latitude || !node.longitude || !mapReady) return
-  const color = node.is_local ? '#4a9eff' : '#4caf50'
-  const existing = markerCache.get(node.id)
-  if (existing) {
-    existing.setLatLng([node.latitude, node.longitude])
-  } else {
-    const marker = L.circleMarker([node.latitude, node.longitude], {
-      radius: 8, color, fillColor: color, fillOpacity: 0.8
-    })
-    marker.bindPopup(
-      `<b>${escHtml(String(node.short_name || node.id))}</b><br>` +
-      `${escHtml(String(node.long_name || ''))}<br>` +
-      `SNR: ${escHtml(String(node.snr ?? '—'))} dB<br>` +
-      `Batt: ${escHtml(String(node.battery_level ?? '—'))}%`
-    )
-    marker.addTo(leafletMap)
-    markerCache.set(node.id, marker)
+function handleEncoder(msg) {
+  if (msg.encoder === 1 && (msg.action === 'cw' || msg.action === 'ccw')) {
+    const cur  = TABS.indexOf(location.pathname);
+    const next = (cur + (msg.action === 'cw' ? 1 : -1) + TABS.length) % TABS.length;
+    location.href = TABS[next];
+  }
+  if (msg.encoder === 2) {
+    if (location.pathname === '/map' && window._map) {
+      msg.action === 'cw' ? window._map.zoomIn() : window._map.zoomOut();
+    } else {
+      const content = document.getElementById('content');
+      if (content) content.scrollTop += msg.action === 'cw' ? 80 : -80;
+    }
+    if (msg.action === 'long_press') document.getElementById('btn-back')?.click();
   }
 }
 
-// ===== GRAFICI (stub, completato in Task telemetry) =====
-function initChartsIfNeeded() { /* implementato in telemetry.html inline */ }
-function updateTelemetryChart(data) { window.dispatchEvent(new CustomEvent('telemetry-update', { detail: data })) }
-function updateSensorDisplay(data) { window.dispatchEvent(new CustomEvent('sensor-update', { detail: data })) }
-function updateNodeRow(data) { window.dispatchEvent(new CustomEvent('node-update', { detail: data })) }
+// === SETTINGS UI ===
+async function saveUISetting(key, val) {
+  await fetch('/settings/ui', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [key]: val }),
+  });
+  const body = document.body;
+  if (key === 'UI_STATUS_DENSITY') body.dataset.density = val;
+  if (key === 'UI_THEME') body.className = body.className.replace(/theme-\w+/, 'theme-' + val);
+  if (key === 'UI_ORIENTATION') {
+    body.classList.toggle('orient-landscape', val === 'landscape');
+    body.dataset.orientation = val;
+  }
+  if (key === 'UI_CHANNEL_LAYOUT') body.dataset.channelLayout = val;
+}
 
-// ===== INIT =====
-document.addEventListener('DOMContentLoaded', () => {
-  initWS()
-  setInterval(() => { if (wsReady && ws.readyState === WebSocket.OPEN) ws.send('ping') }, 20000)
-  attachKeyboardListeners()
-  // link tab bar a navigateTo
-  document.getElementById('tabbar')?.addEventListener('click', e => {
-    const tab = e.target.closest('.tab[data-tab]')
-    if (!tab) return
-    e.preventDefault()
-    navigateTo(tab.dataset.tab)
-  })
-})
+// === CHANNEL NAV ===
+function showChat(channelId, channelName, dest) {
+  currentChannel = channelId;
+  currentDest    = dest || '^all';
+  const layout = document.body.dataset.channelLayout;
+  if (layout === 'list') {
+    const cl = document.getElementById('channel-list');
+    const cv = document.getElementById('chat-view');
+    if (cl) cl.style.display = 'none';
+    if (cv) cv.style.display = 'flex';
+    const nameEl = document.getElementById('chat-channel-name');
+    if (nameEl) nameEl.textContent = channelName;
+  }
+  loadMessages(channelId);
+}
+
+function hideChat() {
+  const cl = document.getElementById('channel-list');
+  const cv = document.getElementById('chat-view');
+  if (cl) cl.style.display = '';
+  if (cv) cv.style.display = 'none';
+}
+
+async function loadMessages(channel) {
+  const res  = await fetch('/api/messages?channel=' + channel + '&limit=50');
+  const msgs = await res.json();
+  const list = document.getElementById('chat-messages');
+  if (!list) return;
+  list.textContent = '';
+  msgs.forEach(m => list.appendChild(buildBubble(m)));
+  list.scrollTop = list.scrollHeight;
+}
+
+// === REMOTE NAV ===
+function openRemoteNode(id, name) {
+  const rl = document.getElementById('remote-list');
+  const rd = document.getElementById('remote-detail');
+  if (rl) rl.style.display = 'none';
+  if (rd) rd.style.display = '';
+  const nameEl = document.getElementById('remote-node-name');
+  if (nameEl) nameEl.textContent = name;
+  window._remoteNodeId = id;
+}
+
+function closeRemoteNode() {
+  const rl = document.getElementById('remote-list');
+  const rd = document.getElementById('remote-detail');
+  if (rl) rl.style.display = '';
+  if (rd) rd.style.display = 'none';
+  window._remoteNodeId = null;
+}
+
+async function remoteCmd(cmd) {
+  const id = window._remoteNodeId;
+  if (!id) return;
+  const res  = await fetch('/api/remote/' + encodeURIComponent(id) + '/command', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cmd }),
+  });
+  const data = await res.json();
+  alert(data.ok ? cmd + ' inviato' : 'Errore: ' + (data.error || ''));
+}
+
+// === UTILITY ===
+function fmtTime(ts) {
+  if (!ts) return '';
+  return new Date(ts * 1000).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+}
