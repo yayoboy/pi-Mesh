@@ -1,21 +1,49 @@
 # pi-Mesh
 
-A touch-friendly web dashboard for [Meshtastic](https://meshtastic.org/) LoRa mesh radio networks, designed to run on a **Raspberry Pi 3 A+** with a **Waveshare 3.5" SPI display** (480×320 px). Control your mesh network from a pocket-sized device — no internet required.
+A touch-friendly web dashboard for [Meshtastic](https://meshtastic.org/) LoRa mesh radio networks, designed to run on a **Raspberry Pi 3 A+** with a **Waveshare 3.5" SPI display** (320×480 px portrait). Control your mesh network from a pocket-sized device — fully offline, no internet required.
 
-![Dashboard preview: 5 tabs — Messages, Nodes, Map, Telemetry, Settings]
+---
+
+## Table of Contents
+
+- [What It Does](#what-it-does)
+- [Hardware Requirements](#hardware-requirements)
+- [Quick Start](#quick-start)
+- [Project Structure](#project-structure)
+- [UI Overview](#ui-overview)
+  - [Status Bar](#status-bar)
+  - [Tabs](#tabs)
+  - [Encoder Navigation](#encoder-navigation)
+  - [Themes](#themes)
+  - [Screen Orientation](#screen-orientation)
+- [Configuration Reference](#configuration-reference)
+- [API Endpoints](#api-endpoints)
+  - [WebSocket Events](#websocket-events)
+- [Offline Maps](#offline-maps)
+- [Optional Features](#optional-features)
+  - [I2C Sensors](#i2c-sensors)
+  - [Piezo Buzzer](#piezo-buzzer)
+  - [Bot Framework](#bot-framework)
+  - [System Optimizations](#system-optimizations)
+- [Creating Custom Themes](#creating-custom-themes)
+- [GPIO Pinout](#gpio-pinout)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
 ---
 
 ## What It Does
 
-pi-Mesh connects to a Heltec LoRa radio via USB serial and exposes a real-time web UI accessible from the local touchscreen or any device on the same Wi-Fi (or its own auto-created hotspot). It lets you:
+pi-Mesh connects to a Heltec LoRa radio via USB serial and exposes a real-time web UI accessible from the local touchscreen or any device on the same Wi-Fi network. It lets you:
 
-- **Send and receive text messages** across the mesh network
-- **Monitor all nodes** seen by the radio with signal quality and battery level
-- **View nodes on an offline map** (no internet required — tiles served from local cache)
-- **Read sensor telemetry** — device metrics from remote nodes plus local I2C sensors
-- **Configure the radio** — LoRa presets, node roles, remote node admin
-- **Navigate hands-free** — two rotary encoders scroll tabs and content without touching the screen
+- **Send and receive messages** — channel-based chat with infinite scroll and per-channel selection
+- **Monitor the mesh** — all visible nodes with signal quality, battery level, and time-since-heard
+- **View nodes on an offline map** — OpenStreetMap, satellite, and topo layers served from local cache
+- **Monitor hardware** — live GPIO state grid, I2C sensor values, encoder status
+- **Administer remote nodes** — reboot, mute, ping, and reconfigure any node over the admin channel
+- **Navigate hands-free** — two rotary encoders switch tabs and scroll content without touching the screen
+- **Persist across reboots** — database runs in RAM (`/tmp/`), synced to SD every 5 minutes
 
 ---
 
@@ -24,7 +52,7 @@ pi-Mesh connects to a Heltec LoRa radio via USB serial and exposes a real-time w
 | Component | Details |
 |-----------|---------|
 | Raspberry Pi 3 A+ | 512 MB RAM, ARM Cortex-A53 |
-| Waveshare 3.5" SPI Display | 480×320, XPT2046 resistive touch, ILI9486 driver |
+| Waveshare 3.5" SPI Display | 320×480 portrait, XPT2046 resistive touch, ILI9486 driver |
 | Heltec LoRa 32 V3 (or compatible) | Connected via USB, exposed as `/dev/ttyMESHTASTIC` |
 | 2× Rotary encoders (optional) | GPIO-connected, for screen-free navigation |
 | BME280 / INA219 (optional) | I2C sensors for local environment / power monitoring |
@@ -37,7 +65,7 @@ pi-Mesh connects to a Heltec LoRa radio via USB serial and exposes a real-time w
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/<your-username>/pi-Mesh.git
+git clone https://github.com/yayoboy/pi-Mesh.git
 cd pi-Mesh
 python3 -m venv venv
 source venv/bin/activate
@@ -47,10 +75,10 @@ pip install -r requirements.txt
 ### 2. Configure
 
 ```bash
-cp config.env /boot/firmware/config.env   # or keep it in the project root
+cp config.env.example config.env   # or edit config.env directly
 ```
 
-Edit the key settings:
+Key settings:
 
 ```env
 # Serial port where the Heltec radio appears
@@ -59,7 +87,7 @@ SERIAL_PORT=/dev/ttyMESHTASTIC
 # Where to persist the database on the SD card
 DB_PERSISTENT=/home/pi/meshtastic-pi/data/mesh.db
 
-# Map bounding box (default: Central Italy)
+# Map bounding box (default: Central Italy — change to your area)
 MAP_LAT_MIN=41.0
 MAP_LAT_MAX=43.0
 MAP_LON_MIN=11.5
@@ -72,9 +100,9 @@ MAP_LON_MAX=14.5
 uvicorn main:app --host 0.0.0.0 --port 8080
 ```
 
-Open `http://<raspberry-pi-ip>:8080` in a browser.
+Open `http://<raspberry-pi-ip>:8080` in any browser.
 
-### 4. Install as a system service (auto-start on boot)
+### 4. Auto-start on boot
 
 ```bash
 sudo cp meshtastic-pi.service /etc/systemd/system/
@@ -92,34 +120,36 @@ pi-Mesh/
 ├── database.py              # SQLite via aiosqlite — messages, nodes, telemetry
 ├── watchdog.py              # Background tasks: DB sync, reconnect, maintenance
 ├── gpio_handler.py          # Rotary encoders, button gestures, piezo buzzer
-├── sensor_handler.py        # I2C sensor drivers (BME280, INA219)
+├── sensor_handler.py        # I2C sensor drivers (BME280, INA219, …)
+├── sensor_detect.py         # Auto-scan I2C bus at startup
 ├── config.py                # Configuration — reads from environment / config.env
 ├── config.env               # Default values for all config variables
 │
-├── bots/                    # Bot framework
+├── bots/
 │   └── echo_bot.py          # Example: auto-echo received messages
 │
 ├── templates/               # Jinja2 HTML templates (server-side rendered)
-│   ├── base.html            # Shell: status bar, tab bar, PWA meta tags
-│   ├── messages.html        # Chat view with infinite scroll
-│   ├── nodes.html           # Node list with signal badges
-│   ├── map.html             # Leaflet.js offline map
-│   ├── telemetry.html       # Chart.js graphs + I2C sensor display
-│   └── settings.html        # Radio config, GPIO config, theme selector
+│   ├── base.html            # Shell: status bar, 6-tab nav, SVG icon sprite
+│   ├── icons.svg            # Inline MDI SVG sprite (offline-safe, no CDN)
+│   ├── home.html            # Local node card, Pi system stats, recent nodes
+│   ├── channels.html        # Chat — 3 layout modes (list / tabs / unified)
+│   ├── map.html             # Leaflet offline map — OSM / SAT / TOPO layers
+│   ├── hardware.html        # GPIO grid, I2C sensor list, encoder status
+│   ├── settings.html        # UI prefs, radio config, GPIO config, map cache
+│   └── remote.html          # Remote node admin — commands and config
 │
 ├── static/
-│   ├── style.css            # CSS variables for 3 themes, 480×320 layout
-│   ├── app.js               # WebSocket client, SPA navigation, all UI logic
-│   ├── chart.min.js         # Chart.js (vendored, no CDN dependency)
+│   ├── style.css            # Tiny-CSS — design tokens, 3 themes, grid layout
+│   ├── app.js               # WebSocket client, encoder nav, all UI logic
 │   ├── manifest.json        # PWA app manifest
 │   ├── sw.js                # Service worker — caches CSS/JS for offline use
 │   └── tiles/               # Offline map tiles (OSM PNG or .mbtiles SQLite)
 │
 ├── scripts/
 │   ├── setup_zram.sh        # Configures ZRAM compressed swap (~700 MB effective)
-│   └── auto_ap.sh           # Falls back to local hotspot "pi-mesh-portal" if no Wi-Fi
+│   └── auto_ap.sh           # Falls back to hotspot "pi-mesh-portal" if no Wi-Fi
 │
-├── tests/                   # pytest test suite (35 tests, hardware-free mocks)
+├── tests/                   # pytest suite — 103 tests, all hardware-free mocks
 ├── meshtastic-pi.service    # systemd unit file
 └── requirements.txt         # Python dependencies
 ```
@@ -128,81 +158,162 @@ pi-Mesh/
 
 ## UI Overview
 
-The interface is a **Single-Page App** with 5 tabs. Navigation never reloads the page — tab content is fetched and injected via the WebSocket-aware SPA router.
+The interface targets a **320×480 px portrait touchscreen** (landscape 480×320 also supported). Each tab is a full server-side render — JavaScript is kept minimal and the page stays fast on the Pi's limited CPU.
 
-| Tab | What it shows |
-|-----|--------------|
-| **Messages** | Chat log with infinite scroll, channel selector (0–2), send form |
-| **Nodes** | All nodes seen by the radio — short name, last heard, SNR, battery %, coordinates |
-| **Map** | Leaflet offline map with circle markers per node (blue = local, green = remote) |
-| **Telemetry** | SNR and battery % charts for any selected node + live I2C sensor readings |
-| **Settings** | LoRa presets, node role, remote node admin, GPIO pin config, theme, bot toggle |
+### Status Bar
 
-### Encoder navigation
+A persistent bar across the top shows 5 live indicators, each color-coded green / yellow / red:
+
+| # | Indicator | Green | Yellow | Red |
+|---|-----------|-------|--------|-----|
+| 1 | **Meshtastic** | Connected | Connecting | Disconnected |
+| 2 | **USB Serial** | Port open | — | Error / absent |
+| 3 | **GPS** | 3D fix | 2D fix | No fix |
+| 4 | **Battery** | > 50 % | 20 – 50 % | < 20 % |
+| 5 | **TX / RX** | Idle | — | Active |
+
+Three **density modes**, selectable in Settings:
+
+| Mode | Height | Content |
+|------|--------|---------|
+| `compact` | 20 px | Colored dots only |
+| `icons` | 24 px | MDI icons, no text (default) |
+| `full` | 32 px | Icons + live values (node count, satellite count, battery %) |
+
+### Tabs
+
+Six fixed tabs at the bottom (portrait) or left side (landscape):
+
+| Tab | Route | Description |
+|-----|-------|-------------|
+| **Home** | `/home` | Local node info, Pi system stats (CPU, RAM, temp), recent nodes |
+| **Chat** | `/channels` | Channel and DM messages — 3 selectable layout modes |
+| **Mappa** | `/map` | Offline map with node markers, OSM / SAT / TOPO layer switcher |
+| **HW** | `/hardware` | GPIO state grid, I2C sensor list with live rescan, encoder status |
+| **Set** | `/settings` | All configuration — UI prefs, radio, hardware, map cache |
+| **RMT** | `/remote` | Remote node administration — commands, config, telemetry |
+
+### Encoder Navigation
 
 | Encoder | Action | Effect |
 |---------|--------|--------|
-| Encoder 1 | Rotate CW/CCW | Switch to next/previous tab |
-| Encoder 1 | Long press | Return to Messages tab |
-| Encoder 2 | Rotate CW/CCW | Scroll content / zoom map |
-| Both | Long press (3 s) | Graceful shutdown (syncs DB, then `shutdown -h now`) |
+| Encoder 1 | CW | Next tab |
+| Encoder 1 | CCW | Previous tab |
+| Encoder 1 | Long press | Return to Home |
+| Encoder 2 | CW | Scroll down / zoom in (map) |
+| Encoder 2 | CCW | Scroll up / zoom out (map) |
+| Encoder 2 | Long press | Back (from chat detail or remote node detail) |
 
 ### Themes
 
-Three themes switchable from Settings or via `UI_THEME` in config:
+Three themes switchable live from **Settings → Display**:
 
-- **dark** (default) — dark grey, blue accent
-- **light** — light grey, navy accent
-- **hc** — high-contrast black/white/yellow for visibility in bright sunlight
+| Theme | Description |
+|-------|-------------|
+| `dark` | Dark grey background, blue accent (default) |
+| `light` | Light grey background, blue accent |
+| `hc` | High-contrast black/white/cyan — bright sunlight or accessibility |
+
+See [Creating Custom Themes](#creating-custom-themes) to add your own.
+
+### Screen Orientation
+
+**Settings → Display → Orientamento** switches between portrait (320×480, default) and landscape (480×320). In landscape mode the tab bar moves to the left side. The preference persists via `config.env`.
 
 ---
 
 ## Configuration Reference
 
-All variables can be set in `config.env` (or as environment variables via the systemd `EnvironmentFile`).
+All variables can be set in `config.env` or as environment variables (e.g. via the systemd `EnvironmentFile` directive).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SERIAL_PORT` | `/dev/ttyMESHTASTIC` | USB serial device for the radio |
 | `DB_PERSISTENT` | `/home/pi/meshtastic-pi/data/mesh.db` | SD-card path for database persistence |
-| `DB_SYNC_INTERVAL` | `300` | Seconds between RAM→SD database syncs |
-| `ENC1_A/B/SW` | `23/24/22` | GPIO BCM pins for encoder 1 (tab navigation) |
-| `ENC2_A/B/SW` | `5/6/13` | GPIO pins for encoder 2 (scroll/zoom) |
-| `BUZZER_PIN` | `0` (disabled) | GPIO pin for piezo buzzer; `0` = off. GPIO 12 (pin 32) recommended — PWM-capable and free |
+| `DB_SYNC_INTERVAL` | `300` | Seconds between RAM → SD database syncs |
+| `ENC1_A/B/SW` | `23/24/22` | GPIO BCM pins for Encoder 1 (tab navigation) |
+| `ENC2_A/B/SW` | `5/6/13` | GPIO BCM pins for Encoder 2 (scroll / zoom) |
+| `BUZZER_PIN` | `0` (disabled) | GPIO BCM pin for piezo buzzer (`0` = off). GPIO 12 recommended |
 | `I2C_SENSORS` | `` (empty) | Comma-separated sensor list, e.g. `bme280:0x76,ina219:0x40` |
-| `MAP_LAT_MIN/MAX` | `41.0/43.0` | Map bounding box latitude |
-| `MAP_LON_MIN/MAX` | `11.5/14.5` | Map bounding box longitude |
-| `MAP_ZOOM_MIN/MAX` | `8/12` | Leaflet zoom level limits |
-| `DISPLAY_ROTATION` | `0` | Display rotation (0, 90, 180, 270) |
-| `UI_THEME` | `dark` | UI theme: `dark`, `light`, or `hc` |
+| `I2C_AUTOSCAN` | `1` | Scan I2C bus at startup and merge with `I2C_SENSORS` |
+| `MAP_LAT_MIN/MAX` | `41.0 / 43.0` | Map bounding box latitude |
+| `MAP_LON_MIN/MAX` | `11.5 / 14.5` | Map bounding box longitude |
+| `MAP_ZOOM_MIN/MAX` | `8 / 12` | Leaflet zoom level limits |
+| `DISPLAY_ROTATION` | `0` | Physical display rotation: `0` / `1` / `2` / `3` = 0° / 90° / 180° / 270° |
+| `UI_THEME` | `dark` | UI color theme: `dark`, `light`, `hc` |
+| `UI_STATUS_DENSITY` | `icons` | Status bar density: `compact`, `icons`, `full` |
+| `UI_CHANNEL_LAYOUT` | `list` | Channel tab layout: `list`, `tabs`, `unified` |
+| `UI_ORIENTATION` | `portrait` | Screen orientation: `portrait`, `landscape` |
+
+---
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/nodes` | All known nodes |
+| `GET` | `/api/messages?channel=0&limit=50` | Messages with optional `before_id` cursor |
+| `GET` | `/api/telemetry/{node_id}/{type}` | Telemetry history (`deviceMetrics`, `environmentMetrics`) |
+| `GET` | `/api/sensor/{sensor_name}` | Local I2C sensor readings history |
+| `GET` | `/api/status` | Connection status + RAM usage |
+| `GET` | `/api/i2c/scan?live=false` | Detected I2C sensors (startup list or live rescan) |
+| `GET` | `/api/tile/cache/info` | Tile cache size in bytes and MB |
+| `POST` | `/api/tile/cache/clear` | Delete all cached tiles and MBTiles files |
+| `POST` | `/send` | Send a text message `{"text": "…", "channel": 0}` |
+| `POST` | `/settings` | Apply radio config via Meshtastic API |
+| `POST` | `/settings/ui` | Persist a UI preference key/value to `config.env` |
+| `POST` | `/api/remote-config` | Configure a remote node `{"remote_node_id": "!abc", "device": {…}}` |
+| `POST` | `/api/remote/{node_id}/command` | Send a command to a remote node (`reboot`, `mute`, `ping`, …) |
+| `POST` | `/api/hardware-config` | Update encoder pins, I2C sensors, display rotation |
+| `POST` | `/api/set-theme` | Change UI theme `{"theme": "dark"}` |
+| `GET` | `/tiles/{source}/{z}/{x}/{y}` | Serve an offline map tile (`osm`, `topo`, `sat`) |
+| `WS` | `/ws` | WebSocket — real-time events |
+
+### WebSocket Events
+
+All messages follow the envelope `{ "type": "…", "data": {…} }`.
+
+```json
+{ "type": "init",     "data": { "connected": true, "nodes": [], "messages": [], "theme": "dark" } }
+{ "type": "status",   "data": { "mesh_connected": true, "node_count": 4, "battery_pct": 87 } }
+{ "type": "node",     "data": { "id": "!abc123", "short_name": "NODE", "snr": 7.5, "last_heard": 1700000000 } }
+{ "type": "message",  "data": { "node_id": "!abc123", "channel": 0, "text": "Hello", "timestamp": 1700000000 } }
+{ "type": "position", "data": { "node_id": "!abc123", "latitude": 41.9, "longitude": 12.5 } }
+{ "type": "telemetry","data": { "node_id": "!abc123", "type": "deviceMetrics", "values": {} } }
+{ "type": "sensor",   "data": { "sensor": "bme280", "values": { "temp": 22.1, "humidity": 45.0 } } }
+{ "type": "encoder",  "data": { "encoder": 1, "action": "cw" } }
+```
 
 ---
 
 ## Offline Maps
 
-Tiles are served locally — no internet connection needed during use.
+Tiles are served entirely from the Pi — no internet connection needed during use.
 
-### Option A: MBTiles (recommended)
+### Option A — MBTiles (recommended)
 
 Place a single SQLite file in `static/tiles/`:
 
 ```
 static/tiles/osm.mbtiles    ← OpenStreetMap tiles
 static/tiles/topo.mbtiles   ← Topographic tiles (optional)
+static/tiles/sat.mbtiles    ← Satellite imagery (optional)
 ```
 
-MBTiles files can be downloaded with tools like [TileMill](https://tilemill-project.github.io/tilemill/), [mbutil](https://github.com/mapbox/mbutil), or [MapTiler](https://www.maptiler.com/).
+MBTiles files can be created with [TileMill](https://tilemill-project.github.io/tilemill/), [mbutil](https://github.com/mapbox/mbutil), or [MapTiler](https://www.maptiler.com/).
 
-### Option B: PNG tile cache
-
-Organize tiles as individual files:
+### Option B — PNG tile cache
 
 ```
 static/tiles/osm/{z}/{x}/{y}.png
 static/tiles/topo/{z}/{x}/{y}.png
 ```
 
-The tile server tries MBTiles first; falls back to PNG files automatically.
+The server tries MBTiles first; falls back to PNG files automatically.
+
+### Managing cache
+
+**Settings → Mappa** shows the current cache size. **Elimina cache** calls `POST /api/tile/cache/clear` to free the space.
 
 ---
 
@@ -210,73 +321,43 @@ The tile server tries MBTiles first; falls back to PNG files automatically.
 
 ### I2C Sensors
 
-Set `I2C_SENSORS` in `config.env` to auto-detect and poll sensors connected directly to the Pi:
+Set `I2C_SENSORS` in `config.env` to poll sensors wired to the Pi:
 
 ```env
 I2C_SENSORS=bme280:0x76,ina219:0x40
 ```
 
-Live readings appear in the **Telemetry** tab and are saved to the database (with pruning — last 200 readings per sensor kept).
+With `I2C_AUTOSCAN=1` (default) the bus is scanned at startup and discovered devices are merged automatically. Live readings appear in **HW → Sensori I2C**.
 
-#### Currently implemented drivers
+#### Supported drivers
 
-| Name | Address | Measures | Python library |
-|------|---------|----------|----------------|
-| `bme280` | `0x76` / `0x77` | Temp, humidity, pressure | `RPi.bme280` |
-| `bme680` | `0x76` / `0x77` | Temp, humidity, pressure, VOC | `bme680` |
-| `bmp280` | `0x76` / `0x77` | Temp, pressure | `adafruit-circuitpython-bmp280` |
-| `bmp085` / `bmp180` | `0x77` | Temp, pressure (legacy) | `adafruit-circuitpython-bmp085` |
-| `sht31` | `0x44` / `0x45` | Temp, humidity | `adafruit-circuitpython-sht31d` |
-| `shtc3` | `0x70` | Temp, humidity | `adafruit-circuitpython-shtc3` |
-| `mcp9808` | `0x18`–`0x1F` | Temperature (±0.0625 °C) | `adafruit-circuitpython-mcp9808` |
-| `lps22hb` | `0x5C` / `0x5D` | Pressure, temp | `adafruit-circuitpython-lps2x` |
-| `pmsa003i` | `0x12` | PM1.0, PM2.5, PM10 | `adafruit-circuitpython-pm25` |
-| `sen5x` | `0x69` | PM, NOx, VOC, temp, humidity | `sensirion-i2c-sen5x` |
-| `veml7700` | `0x10` | Ambient lux | `adafruit-circuitpython-veml7700` |
-| `tsl2591` | `0x29` | Lux, IR, visible | `adafruit-circuitpython-tsl2591` |
-| `rcwl9620` | `0x13` | Distance (cm) | `adafruit-circuitpython-rcwl9620` |
-| `ina219` | `0x40`–`0x4F` | Voltage, current, power | `pi-ina219` |
-| `ina260` | `0x40`–`0x4F` | Voltage, current, power | `adafruit-circuitpython-ina260` |
-| `ina3221` | `0x40`–`0x43` | 3-channel voltage/current | `adafruit-circuitpython-ina3221` |
-| `max17048` | `0x36` | LiPo voltage, state of charge % | `adafruit-circuitpython-max1704x` |
+| Name | I2C address | Measures |
+|------|-------------|----------|
+| `bme280` | `0x76` / `0x77` | Temperature, humidity, pressure |
+| `bme680` | `0x76` / `0x77` | Temperature, humidity, pressure, VOC |
+| `bmp280` | `0x76` / `0x77` | Temperature, pressure |
+| `bmp085` / `bmp180` | `0x77` | Temperature, pressure (legacy) |
+| `sht31` | `0x44` / `0x45` | Temperature, humidity |
+| `shtc3` | `0x70` | Temperature, humidity |
+| `mcp9808` | `0x18`–`0x1F` | Temperature (±0.0625 °C) |
+| `lps22hb` | `0x5C` / `0x5D` | Pressure, temperature |
+| `pmsa003i` | `0x12` | PM1.0, PM2.5, PM10 |
+| `sen5x` | `0x69` | PM, NOx, VOC, temperature, humidity |
+| `veml7700` | `0x10` | Ambient lux |
+| `tsl2591` | `0x29` | Lux (high dynamic range) |
+| `rcwl9620` | `0x13` | Distance (cm) |
+| `ina219` | `0x40`–`0x4F` | Voltage, current, power |
+| `ina260` | `0x40`–`0x4F` | Voltage, current, power |
+| `ina3221` | `0x40`–`0x43` | 3-channel voltage / current |
+| `max17048` | `0x36` | LiPo state of charge % |
 
-> **Adafruit drivers** (all except `bme280`, `bme680`, `ina219`) require `adafruit-blinka` to be installed on the Pi. See `requirements.txt` for install commands.
+> Most drivers require `adafruit-blinka`. See `requirements.txt`.
 
-#### Meshtastic firmware sensor support
+#### Adding a new driver
 
-The Meshtastic radio firmware natively supports many more sensors. The telemetry it sends over the mesh (visible in the Telemetry tab as `deviceMetrics` / `environmentMetrics`) can come from any of these:
-
-| Sensor | Category | Measures |
-|--------|----------|---------|
-| BME280 | Environment | Temp, humidity, pressure |
-| BME680 | Environment | Temp, humidity, pressure, VOC gas |
-| BMP280 | Environment | Temp, pressure (no humidity) |
-| BMP085 / BMP180 | Environment | Temp, pressure (legacy) |
-| SHT31 | Environment | Temp, humidity (high accuracy) |
-| SHTC3 | Environment | Temp, humidity (compact) |
-| MCP9808 | Environment | Temperature (precision ±0.0625°C) |
-| LPS22HB | Environment | Pressure, temp (waterproof) |
-| PMSA003I | Air quality | PM1.0, PM2.5, PM10 particulate matter |
-| SEN5X | Air quality | NOx, VOC, PM, temp, humidity |
-| VEML7700 | Light | Ambient lux |
-| TSL2591 | Light | Ambient lux (high dynamic range) |
-| RCWL-9620 | Distance | Ultrasonic range (cm) |
-| INA219 | Power | Voltage, current, power |
-| INA260 | Power | Voltage, current, power (higher accuracy) |
-| INA3221 | Power | 3-channel voltage/current |
-| MAX17048 | Power | LiPo state of charge (%) |
-
-Pi-Mesh receives and stores all this data from remote nodes automatically — no driver needed. The drivers in `sensor_handler.py` are only for sensors **physically wired to the Pi itself**.
-
-#### Adding a new local sensor driver
-
-The architecture requires exactly two things: a class in `sensor_handler.py` and an entry in `_DRIVER_MAP`. No other files need changing.
-
-**1. Add the class** (after `INA219Driver`, before `_DRIVER_MAP`):
+The architecture requires exactly two changes: a class in `sensor_handler.py` and an entry in `_DRIVER_MAP`:
 
 ```python
-# sensor_handler.py
-
 class SHT31Driver(BaseSensor):
     @property
     def name(self): return "sht31"
@@ -286,264 +367,110 @@ class SHT31Driver(BaseSensor):
         self._driver = None
         if _SMBUS_AVAILABLE:
             try:
-                import adafruit_sht31d
-                import board
-                i2c = board.I2C()
-                self._driver = adafruit_sht31d.SHT31D(i2c, address=self.address)
+                import adafruit_sht31d, board
+                self._driver = adafruit_sht31d.SHT31D(board.I2C(), address=self.address)
             except Exception as e:
-                logging.error(f"SHT31 init error: {e}")
+                logging.error(f"SHT31 init: {e}")
 
     def read(self) -> dict | None:
         if not self._driver:
             return None
         try:
-            return {
-                "temp":     round(self._driver.temperature, 1),
-                "humidity": round(self._driver.relative_humidity, 1),
-            }
+            return {"temp": round(self._driver.temperature, 1),
+                    "humidity": round(self._driver.relative_humidity, 1)}
         except Exception as e:
-            logging.error(f"SHT31 read error: {e}")
+            logging.error(f"SHT31 read: {e}")
             return None
 ```
 
-**2. Register it in `_DRIVER_MAP`**:
+Then register it:
 
 ```python
 _DRIVER_MAP = {
-    "bme280": BME280Driver,
-    "ina219": INA219Driver,
-    "sht31":  SHT31Driver,   # ← add this line
+    ...
+    "sht31": SHT31Driver,
 }
 ```
 
-**3. Add the Python library to `requirements.txt`**:
-
-```
-adafruit-circuitpython-sht31d
-```
-
-**4. Enable it in `config.env`**:
-
-```env
-I2C_SENSORS=sht31:0x44
-```
-
-That's it. The sensor is auto-detected on startup, polled every 30 seconds, and its values are broadcast live to the Telemetry tab via WebSocket.
-
-#### Driver rules
-
-- `name` — must be lowercase, no spaces; used as the key in `config.env` and as the database sensor name
-- `__init__` — initialize the hardware driver once; store in `self._driver`; wrap in `try/except` so a missing sensor never crashes startup
-- `read()` — return a `dict` of `str → number` values, or `None` on error; keep values rounded (1–2 decimal places)
-- `available()` — inherited from `BaseSensor`; does an I2C probe at the given address before adding the driver to the polling loop
-
-#### Sensor library reference
-
-| Sensor | `pip install` package | Notes |
-|--------|----------------------|-------|
-| BME680 | `bme680` | Same wiring as BME280 |
-| BMP280 | `adafruit-circuitpython-bmp280` | No humidity output |
-| SHT31 | `adafruit-circuitpython-sht31d` | More accurate than BME280 |
-| SHTC3 | `adafruit-circuitpython-shtc3` | |
-| MCP9808 | `adafruit-circuitpython-mcp9808` | |
-| PMSA003I | `adafruit-circuitpython-pm25` | Requires UART or I2C |
-| VEML7700 | `adafruit-circuitpython-veml7700` | |
-| TSL2591 | `adafruit-circuitpython-tsl2591` | |
-| INA260 | `adafruit-circuitpython-ina260` | Drop-in replacement for INA219 |
-| INA3221 | `adafruit-circuitpython-ina3221` | 3-channel |
-| MAX17048 | `adafruit-circuitpython-max1704x` | LiPo fuel gauge |
-
 ### Piezo Buzzer
 
-Set `BUZZER_PIN` to a GPIO BCM pin number. The buzzer emits:
+Set `BUZZER_PIN` to a GPIO BCM pin. The buzzer emits:
 
 - **1 short beep** — new text message received
 - **2 short beeps** — new node joined the mesh
 
+GPIO 12 (pin 32) is recommended — PWM-capable and free from the SPI display.
+
 ### Bot Framework
 
-Enable the echo bot from the **Settings** tab or write your own:
+Enable the built-in echo bot from **Settings → Bot**, or write your own:
 
 ```python
 # bots/my_bot.py
 def start(interface):
     from pubsub import pub
     def on_message(packet, interface):
-        if packet["decoded"]["text"].startswith("!"):
-            interface.sendText("Received your command!", destinationId=packet["fromId"])
+        if packet["decoded"]["text"].startswith("!ping"):
+            interface.sendText("pong", destinationId=packet["fromId"])
     pub.subscribe(on_message, "meshtastic.receive.text")
 ```
 
-### Optimizations for Raspberry Pi 3 A+
+### System Optimizations
 
-The `scripts/` directory contains deployment helpers:
+The `scripts/` directory contains helpers for the Pi 3 A+:
 
 ```bash
-# ZRAM: adds ~300 MB of compressed swap without touching the SD card
+# ZRAM: ~300 MB of compressed swap without wearing the SD card
 sudo bash scripts/setup_zram.sh
 
-# Auto-AP: creates "pi-mesh-portal" hotspot if no Wi-Fi is found after 60s
+# Auto-AP: creates "pi-mesh-portal" hotspot if no Wi-Fi is found after 60 s
 # (requires hostapd + dnsmasq)
 sudo bash scripts/auto_ap.sh
 ```
 
 ---
 
-## Development
-
-### Run tests
-
-```bash
-pip install -r requirements-dev.txt
-pytest tests/ -v
-```
-
-All 35 tests run without real hardware (GPIO, serial, and I2C are fully mocked).
-
-### Project conventions
-
-- **Database**: runs from `/tmp/` (RAM), synced to SD every 5 minutes — never write to SD directly
-- **Blocking I/O**: all serial/I2C calls are wrapped in `asyncio.to_thread()` to avoid stalling the event loop
-- **Templates**: Jinja2 autoescape is active — `{{ variable }}` is XSS-safe
-- **Frontend**: `escHtml()` is used for all dynamic `innerHTML` insertions in `app.js`
-
----
-
-## API Endpoints
-
-The FastAPI backend exposes these JSON endpoints (used internally by the UI and available for scripting):
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/nodes` | All known nodes |
-| `GET` | `/api/messages?channel=0&limit=50` | Messages with optional pagination (`before_id`) |
-| `GET` | `/api/telemetry/{node_id}/{type}` | Telemetry history (`deviceMetrics`, `environmentMetrics`) |
-| `GET` | `/api/sensor/{sensor_name}` | Local I2C sensor history |
-| `GET` | `/api/status` | Connection status + RAM usage |
-| `POST` | `/send` | Send a text message `{"text": "...", "channel": 0}` |
-| `POST` | `/settings` | Apply radio config changes |
-| `POST` | `/api/remote-config` | Configure a remote node `{"remote_node_id": "!abc", "device": {...}}` |
-| `POST` | `/api/set-theme` | Change UI theme `{"theme": "dark"}` |
-| `GET` | `/tiles/{source}/{z}/{x}/{y}` | Serve offline map tile (MBTiles or PNG) |
-| `WS` | `/ws` | WebSocket — real-time events (messages, nodes, telemetry, sensor, encoder, status) |
-
-### WebSocket message types
-
-```json
-{ "type": "init",      "data": { "connected": true, "nodes": [...], "messages": [...], "theme": "dark" } }
-{ "type": "message",   "data": { "node_id": "!abc123", "text": "Hello", "timestamp": 1700000000 } }
-{ "type": "node",      "data": { "id": "!abc123", "short_name": "NODE", "snr": 7.5, "battery_level": 85 } }
-{ "type": "position",  "data": { "node_id": "!abc123", "latitude": 41.9, "longitude": 12.5 } }
-{ "type": "telemetry", "data": { "node_id": "!abc123", "type": "deviceMetrics", "values": {...} } }
-{ "type": "sensor",    "data": { "sensor": "bme280", "values": { "temp": 22.1, "humidity": 45.0 } } }
-{ "type": "encoder",   "data": { "encoder": 1, "action": "cw" } }
-{ "type": "status",    "data": { "connected": true, "ram_mb": 87.4 } }
-```
-
----
-
 ## Creating Custom Themes
 
-The theme system is based on **CSS custom properties**. Each theme is a single CSS class that defines 9 variables; the rest of the stylesheet uses only those variables, so a new theme requires no other CSS changes.
+Add a CSS class that overrides 10 custom properties, then register the name in `main.py`.
 
-### Step 1 — Define the CSS variables in `static/style.css`
-
-Add a new block following the existing pattern. All 9 variables are required:
+### 1 — CSS variables (`static/style.css`)
 
 ```css
-/* static/style.css */
 .theme-forest {
-  --bg:       #1b2a1b;   /* main background */
-  --bg2:      #243324;   /* cards, inputs, status bar, tab bar */
-  --border:   #3a5c3a;   /* dividers and borders */
-  --text:     #d4edda;   /* primary text */
-  --muted:    #7aab7a;   /* secondary / dimmed text, icons */
-  --accent:   #56c56a;   /* active tab, buttons, outgoing message bubbles */
-  --ok:       #4caf50;   /* connected badge, online node dot */
-  --warn:     #ffc107;   /* recent node dot */
-  --danger:   #f44336;   /* disconnected badge, send error */
+  --bg:      #1b2a1b;   /* main background */
+  --bg2:     #243324;   /* cards, inputs, status bar, tab bar */
+  --bg3:     #2e3d2e;   /* input fields, GPIO pin cells */
+  --border:  #3a5c3a;   /* dividers and borders */
+  --text:    #d4edda;   /* primary text */
+  --text2:   #7aab7a;   /* secondary / dimmed text and icons */
+  --accent:  #56c56a;   /* active tab, buttons, outgoing bubbles */
+  --ok:      #4caf50;   /* connected, online node */
+  --warn:    #ffc107;   /* recent node, yellow status */
+  --danger:  #f44336;   /* disconnected, error */
 }
 ```
 
-| Variable | Used for |
-|----------|---------|
-| `--bg` | Page background, content area |
-| `--bg2` | Status bar, tab bar, cards, inputs, message bubbles (incoming) |
-| `--border` | All `border` and `border-top/bottom` rules |
-| `--text` | All body text, input values |
-| `--muted` | Timestamps, labels, dimmed metadata, tab icons (inactive) |
-| `--accent` | Active tab color, `<button>` background, outgoing message bubbles, focus outline, map markers (local node) |
-| `--ok` | WebSocket connected dot, online node badge |
-| `--warn` | Recent-but-not-online node badge |
-| `--danger` | WebSocket disconnected dot, input error flash |
-
-### Step 2 — Allow the theme name in `main.py`
-
-The `/api/set-theme` endpoint validates the theme name against a hardcoded set. Add your new name:
+### 2 — Allow the name in `main.py`
 
 ```python
-# main.py  ~line 203
-@app.post("/api/set-theme")
-async def set_theme(payload: dict):
-    theme = payload.get("theme", "dark")
-    if theme not in ("dark", "light", "hc", "forest"):   # ← add here
-        return JSONResponse({"ok": False}, status_code=400)
-    ...
+# In the /api/set-theme endpoint
+if theme not in ("dark", "light", "hc", "forest"):   # ← add here
 ```
 
-### Step 3 — Set it as default (optional)
+### 3 — Set as default (optional)
 
 ```env
-# config.env
 UI_THEME=forest
 ```
 
-Or switch at runtime via the API:
+### Tips for the 320×480 display
 
-```bash
-curl -X POST http://<pi-ip>:8080/api/set-theme \
-     -H "Content-Type: application/json" \
-     -d '{"theme": "forest"}'
-```
+- Keep `--bg` and `--bg2` close in lightness — harsh contrast strains the LCD panel
+- `--ok`, `--warn`, `--danger` appear as 8 px dots against `--bg2`; verify readability at small size
+- For outdoor use, prefer high `--text` / `--bg` contrast (≥ 4.5:1) and fully saturated `--accent`
 
-### Step 4 — Add a button in Settings (optional)
-
-If you want to switch to the new theme from the touchscreen, add a button in `templates/settings.html` inside the "Tema UI" section:
-
-```html
-<!-- templates/settings.html  ~line 54 -->
-<div style="display:flex; gap:8px;">
-  <button onclick="setTheme('dark')"   style="flex:1; min-height:36px; font-size:12px;">🌙 Dark</button>
-  <button onclick="setTheme('light')"  style="flex:1; min-height:36px; font-size:12px;">☀️ Light</button>
-  <button onclick="setTheme('hc')"     style="flex:1; min-height:36px; font-size:12px;">⬛ HC</button>
-  <button onclick="setTheme('forest')" style="flex:1; min-height:36px; font-size:12px;">🌲 Forest</button>
-</div>
-```
-
-### Theme design tips
-
-The display is 480×320 px and is typically viewed in outdoor or low-light conditions:
-
-- Keep `--bg` and `--bg2` close in lightness to avoid harsh contrast on the panel
-- Use `--accent` for interactive elements only — it should be clearly distinct from `--text`
-- Test `--ok`, `--warn`, `--danger` against `--bg2` (they appear as 8 px dots on top of it)
-- For outdoor use, prefer saturated colors and high `--text`/`--bg` contrast (≥ 4.5:1)
-
-### Complete example — "Red Night" theme for cockpit/vehicle use
-
-```css
-.theme-rednight {
-  --bg:       #1a0000;
-  --bg2:      #2a0000;
-  --border:   #5c0000;
-  --text:     #ffcccc;
-  --muted:    #cc6666;
-  --accent:   #ff4444;
-  --ok:       #cc0000;
-  --warn:     #ff6600;
-  --danger:   #ff0000;
-}
-```
+---
 
 ## GPIO Pinout
 
@@ -561,12 +488,12 @@ The Waveshare 3.5" SPI display occupies the following BCM pins — **do not use 
 | 25 | LCD DC | 22 |
 | 27 | LCD RST | 13 |
 
-**Free BCM pins** available for encoders, buzzer, and other peripherals:
+**Free BCM pins** available for encoders, buzzer, and sensors:
 
 ```
-4 (pin 7)   5 (pin 29)  6 (pin 31)  12 (pin 32) ← PWM
-13 (pin 33) ← PWM       16 (pin 36) 19 (pin 35) 20 (pin 38)
-21 (pin 40) 22 (pin 15) 23 (pin 16) 24 (pin 18) 26 (pin 37)
+4  (pin 7)   5  (pin 29)  6  (pin 31)  12 (pin 32) ← PWM
+13 (pin 33) ← PWM         16 (pin 36)  19 (pin 35)  20 (pin 38)
+21 (pin 40)  22 (pin 15)  23 (pin 16)  24 (pin 18)  26 (pin 37)
 ```
 
 I2C (GPIO 2/3, pins 3/5) is reserved for sensors. UART (GPIO 14/15, pins 8/10) is reserved for the serial console.
@@ -580,6 +507,29 @@ Buzzer (optional)    → GPIO12  (PWM hardware)
 I2C sensors          → SDA=GPIO2  SCL=GPIO3
 ```
 
+---
+
+## Development
+
+### Run tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -v
+```
+
+103 tests run without real hardware — GPIO, serial, and I2C are fully mocked.
+
+### Project conventions
+
+- **Database** — runs from `/tmp/` (RAM), synced to SD every 5 minutes; never write directly to the SD-backed path
+- **Blocking I/O** — all serial / I2C calls are wrapped in `asyncio.to_thread()` to keep the event loop free
+- **DOM security** — `app.js` uses `textContent` and `createElement` exclusively; no `innerHTML` with user-controlled data
+- **Templates** — Jinja2 autoescape is active; `{{ variable }}` is XSS-safe by default
+- **CSS** — design tokens only; all spacing on a 4 px grid; no framework dependency
+
+---
+
 ## Troubleshooting
 
 **Radio not detected**
@@ -592,11 +542,9 @@ sudo usermod -aG dialout pi    # give the pi user serial access
 
 **Display not working**
 
-The Waveshare 3.5" SPI display requires the `LCD-show` driver. Follow [Waveshare's official guide](https://www.waveshare.com/wiki/3.5inch_RPi_LCD_(A)) to install it, then set `DISPLAY_ROTATION` in config.env.
+The Waveshare 3.5" SPI display requires the `LCD-show` driver. Follow the [official Waveshare guide](https://www.waveshare.com/wiki/3.5inch_RPi_LCD_(A)), then set `DISPLAY_ROTATION` in `config.env`.
 
 **Map shows blank tiles**
-
-Verify your tile files are in place:
 
 ```bash
 ls static/tiles/osm.mbtiles        # MBTiles
@@ -605,7 +553,7 @@ ls static/tiles/osm/10/            # or PNG files at zoom level 10
 
 **Out of memory / process killed**
 
-Run `scripts/setup_zram.sh` to add compressed swap. Also ensure `MemoryMax=200M` in the systemd unit is appropriate for your workload.
+Run `scripts/setup_zram.sh` to add compressed swap. Verify `MemoryMax=200M` in the systemd unit is appropriate for your workload.
 
 **No GPIO / encoder input**
 
@@ -613,6 +561,15 @@ The `pigpiod` daemon must be running:
 
 ```bash
 sudo systemctl enable --now pigpiod
+```
+
+**UI settings not persisting after reboot**
+
+Settings are written to `config.env` in the project root. The systemd unit must reference it:
+
+```ini
+[Service]
+EnvironmentFile=/home/pi/pi-Mesh/config.env
 ```
 
 ---
