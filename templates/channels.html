@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if channel_layout == 'tabs' %}
+
+<div style="display:flex;padding:8px;gap:0">
+  <button class="pill-btn active" onclick="switchChTab(this,'tab-broadcast')">Canali</button>
+  <button class="pill-btn" onclick="switchChTab(this,'tab-private')">Privati</button>
+</div>
+<div id="tab-broadcast">
+  {% for ch in range(8) %}
+  <div class="node-row" onclick="showChat({{ ch }},'CH {{ ch }}','^all')" style="cursor:pointer">
+    <span class="node-name">CH {{ ch }}</span>
+  </div>
+  {% endfor %}
+</div>
+<div id="tab-private" style="display:none">
+  {% for n in nodes %}
+  <div class="node-row" onclick="showChat(0,'{{ n.short_name|e }}','{{ n.id|e }}')" style="cursor:pointer">
+    <span class="node-dot ok"></span>
+    <span class="node-name">{{ n.short_name or n.id }}</span>
+  </div>
+  {% endfor %}
+</div>
+<script>
+function switchChTab(btn, id) {
+  document.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  ['tab-broadcast','tab-private'].forEach(t => {
+    document.getElementById(t).style.display = t === id ? '' : 'none';
+  });
+}
+</script>
+
+{% elif channel_layout == 'unified' %}
+
+<div class="section-header">Tutti i messaggi</div>
+{% for ch in range(8) %}
+<div class="node-row" onclick="showChat({{ ch }},'CH {{ ch }}','^all')" style="cursor:pointer">
+  <span style="font-size:14px;flex-shrink:0">📢</span>
+  <span class="node-name">CH {{ ch }}</span>
+</div>
+{% endfor %}
+{% for n in nodes %}
+<div class="node-row" onclick="showChat(0,'{{ n.short_name|e }}','{{ n.id|e }}')" style="cursor:pointer">
+  <span style="font-size:14px;flex-shrink:0">👤</span>
+  <span class="node-name">{{ n.short_name or n.id }}</span>
+</div>
+{% endfor %}
+
+{% else %}
+
+<div id="channel-list">
+  <div class="section-header">Canali broadcast</div>
+  {% for ch in range(8) %}
+  <div class="node-row" onclick="showChat({{ ch }},'CH {{ ch }}','^all')" style="cursor:pointer">
+    <svg style="width:16px;height:16px;color:var(--text2);flex-shrink:0"><use href="#i-forum"/></svg>
+    <span class="node-name">CH {{ ch }}</span>
+  </div>
+  {% endfor %}
+  <div class="section-header">Conversazioni private</div>
+  {% for n in nodes %}
+  <div class="node-row" onclick="showChat(0,'{{ n.short_name|e }}','{{ n.id|e }}')" style="cursor:pointer">
+    <span class="node-dot ok"></span>
+    <span class="node-name">{{ n.short_name or n.id }}</span>
+    <span class="node-meta">—</span>
+  </div>
+  {% endfor %}
+</div>
+
+<div id="chat-view" style="display:none;flex-direction:column;height:100%">
+  <div id="chat-header">
+    <button id="btn-back" onclick="hideChat()" aria-label="Torna alla lista">
+      <svg><use href="#i-back"/></svg>
+    </button>
+    <span id="chat-channel-name">—</span>
+  </div>
+  <div id="chat-messages"></div>
+  <form id="msg-form" autocomplete="off">
+    <select id="ch-select">
+      {% for ch in range(8) %}<option value="{{ ch }}">CH{{ ch }}</option>{% endfor %}
+    </select>
+    <input id="chat-input" type="text" placeholder="Messaggio..." maxlength="228" required>
+    <button type="submit" aria-label="Invia"><svg><use href="#i-send"/></svg></button>
+  </form>
+</div>
+
+{% endif %}
+
+{% endblock %}
