@@ -207,6 +207,10 @@
 <div class="section-header">Sistema</div>
 <div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
   <div id="sys-info" style="font-size:11px;color:var(--text2);padding:8px;"></div>
+  <div class="setting-row">
+    <span>Wizard configurazione</span>
+    <button class="btn" id="btn-reset-setup">Riesegui wizard</button>
+  </div>
 </div>
 
 <script>
@@ -285,5 +289,12 @@ async function saveBotConfig() {
   const payload = { echo: document.getElementById('bot-echo').checked }
   await fetch('/api/bot-config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
 }
+
+document.getElementById('btn-reset-setup')
+  .addEventListener('click', () => {
+    if (!confirm('Rieseguire il wizard di configurazione iniziale?')) return
+    fetch('/api/setup/reset', { method: 'POST' })
+      .then(() => { location.href = '/setup' })
+  })
 </script>
 {% endblock %}
