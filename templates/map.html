@@ -1,13 +1,59 @@
 {% extends "base.html" %}
 {% block content %}
-<div id="map-container" style="width:100%; height:100%;"></div>
 <link rel="stylesheet" href="/static/leaflet.css">
 <script src="/static/leaflet.min.js"></script>
+
+<div style="position:relative;height:100%">
+  <div id="map"></div>
+
+  <!-- Layer switcher overlay (top-right) -->
+  <div class="map-overlay map-overlay-tr" style="position:absolute;top:8px;right:8px;z-index:1000">
+    <div class="pill-group">
+      <button class="pill-btn active" id="btn-osm"  onclick="setLayer('osm',this)">OSM</button>
+      <button class="pill-btn"        id="btn-sat"  onclick="setLayer('sat',this)">SAT</button>
+      <button class="pill-btn"        id="btn-topo" onclick="setLayer('topo',this)">TOPO</button>
+    </div>
+  </div>
+
+  <!-- Center button overlay (bottom-left) -->
+  <div style="position:absolute;bottom:8px;left:8px;z-index:1000">
+    <button class="btn btn-secondary" style="width:auto;padding:6px 10px" onclick="centerMap()" aria-label="Centra mappa">
+      <svg style="width:16px;height:16px"><use href="#i-location"/></svg>
+    </button>
+  </div>
+</div>
+
 <script>
 window.MAP_BOUNDS   = {{ bounds | tojson }};
 window.MAP_ZOOM_MAX = {{ zoom_max }};
 window.MAP_ZOOM_MIN = {{ zoom_min }};
-// initMapIfNeeded è chiamata da app.js quando il tab diventa attivo
-document.addEventListener('DOMContentLoaded', initMapIfNeeded)
+
+const _layers = {
+  osm:  L.tileLayer('/tiles/osm/{z}/{x}/{y}',  { maxZoom: {{ zoom_max }}, attribution: '© OSM' }),
+  sat:  L.tileLayer('/tiles/sat/{z}/{x}/{y}',  { maxZoom: {{ zoom_max }}, attribution: '© ESRI' }),
+  topo: L.tileLayer('/tiles/topo/{z}/{x}/{y}', { maxZoom: {{ zoom_max }}, attribution: '© OTM' }),
+};
+window._map = L.map('map', { zoomControl: false });
+window._layers = _layers;
+_layers.osm.addTo(window._map);
+window._map.setView([{{ (bounds.lat_min + bounds.lat_max) / 2 }}, {{ (bounds.lon_min + bounds.lon_max) / 2 }}], 9);
+
+function setLayer(name, btn) {
+  Object.values(_layers).forEach(l => window._map.removeLayer(l));
+  _layers[name].addTo(window._map);
+  document.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+function centerMap() {
+  if (window._myPos) window._map.setView(window._myPos, 13);
+}
+
+// initMapIfNeeded is called by app.js when the tab becomes active
+function initMapIfNeeded() {
+  if (window._map) window._map.invalidateSize();
+}
+
+document.addEventListener('DOMContentLoaded', initMapIfNeeded);
 </script>
 {% endblock %}
