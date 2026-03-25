@@ -6,13 +6,13 @@ ws.addEventListener('message', ({ data }) => {
   try {
     const msg = JSON.parse(data);
     switch (msg.type) {
-      case 'status':    handleStatus(msg);   break;
-      case 'node':      handleNode(msg);     break;
-      case 'message':   handleMessage(msg);  break;
-      case 'telemetry': handleTelemetry(msg);break;
-      case 'sensor':    handleSensor(msg);   break;
-      case 'encoder':   handleEncoder(msg);  break;
-      case 'init':      handleStatus(msg);   break;
+      case 'status':    handleStatus(msg.data);   break;
+      case 'node':      handleNode(msg.data);     break;
+      case 'message':   handleMessage(msg.data);  break;
+      case 'telemetry': handleTelemetry(msg.data);break;
+      case 'sensor':    handleSensor(msg.data);   break;
+      case 'encoder':   handleEncoder(msg.data);  break;
+      case 'init':      handleInit(msg.data);     break;
     }
   } catch (_) {}
 });
@@ -24,6 +24,11 @@ function setStatusItem(id, stateClass, valText) {
   el.className = 'status-item ' + stateClass;
   const val = el.querySelector('.val');
   if (val && valText !== undefined) val.textContent = valText;
+}
+
+function handleInit(data) {
+  if (data.connected !== undefined)
+    setStatusItem('st-mesh', data.connected ? 'ok' : 'danger', '');
 }
 
 function handleStatus(msg) {
@@ -139,6 +144,10 @@ function handleSensor(msg)    { /* TODO: I2C live update */ }
 const TABS = ['/home', '/channels', '/map', '/hardware', '/settings', '/remote'];
 
 function handleEncoder(msg) {
+  if (msg.encoder === 1 && msg.action === 'long_press') {
+    location.href = '/home';
+    return;
+  }
   if (msg.encoder === 1 && (msg.action === 'cw' || msg.action === 'ccw')) {
     const cur  = TABS.indexOf(location.pathname);
     const next = (cur + (msg.action === 'cw' ? 1 : -1) + TABS.length) % TABS.length;

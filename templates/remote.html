@@ -6,7 +6,7 @@
   {% for n in nodes %}
   <div class="node-row" style="cursor:pointer"
        onclick="openRemoteNode('{{ n.id | e }}','{{ (n.short_name or n.id) | e }}')">
-    <span class="node-dot {% if n.get('online') %}ok{% endif %}"></span>
+    <span class="node-dot {% if n.last_heard and (now - n.last_heard) < 900 %}ok{% elif n.last_heard and (now - n.last_heard) < 7200 %}warn{% endif %}"></span>
     <span class="node-name">{{ n.short_name or n.id }}</span>
     <span class="node-meta">{{ n.snr if n.snr is not none else '—' }}dB</span>
   </div>

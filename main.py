@@ -130,7 +130,7 @@ async def home_page(request: Request):
         "request": request, "nodes": nodes, "node": node_info,
         "theme": cfg.UI_THEME, "density": cfg.UI_STATUS_DENSITY,
         "orientation": cfg.UI_ORIENTATION, "channel_layout": cfg.UI_CHANNEL_LAYOUT,
-        "active": "home",
+        "active": "home", "now": int(time.time()),
     })
 
 @app.get("/channels")
@@ -163,7 +163,7 @@ async def remote_page(request: Request):
         "request": request, "nodes": nodes,
         "theme": cfg.UI_THEME, "density": cfg.UI_STATUS_DENSITY,
         "orientation": cfg.UI_ORIENTATION, "channel_layout": cfg.UI_CHANNEL_LAYOUT,
-        "active": "remote",
+        "active": "remote", "now": int(time.time()),
     })
 
 # --- Route API JSON ---
@@ -339,26 +339,18 @@ async def bot_config(payload: dict):
             return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
     return {"ok": True}
 
+_ALLOWED_UI_SETTINGS = {"UI_STATUS_DENSITY", "UI_CHANNEL_LAYOUT", "UI_ORIENTATION", "UI_THEME"}
+
 @app.post("/settings/ui")
 async def apply_ui_settings(payload: dict):
-    import pathlib
-    allowed = {"UI_STATUS_DENSITY", "UI_CHANNEL_LAYOUT", "UI_ORIENTATION", "UI_THEME"}
-    env_path = pathlib.Path(".env")
-    lines = env_path.read_text().splitlines() if env_path.exists() else []
     updated = {}
     for key, val in payload.items():
-        if key not in allowed:
+        if key not in _ALLOWED_UI_SETTINGS:
             continue
         val = str(val).strip()
-        found = False
-        for i, line in enumerate(lines):
-            if line.startswith(f"{key}="):
-                lines[i] = f"{key}={val}"
-                found = True
-        if not found:
-            lines.append(f"{key}={val}")
+        _update_config_env(key, val)
+        setattr(cfg, key, val)
         updated[key] = val
-    env_path.write_text("\n".join(lines) + "\n")
     return {"ok": True, "updated": updated}
 
 @app.get("/api/tile/cache/info")
@@ -367,6 +359,17 @@ async def tile_cache_info():
     tiles_dir = pathlib.Path("static/tiles")
     total = sum(f.stat().st_size for f in tiles_dir.rglob("*") if f.is_file())
     return {"size_bytes": total, "size_mb": round(total / 1024 / 1024, 1)}
+
+@app.post("/api/tile/cache/clear")
+async def tile_cache_clear():
+    import pathlib, shutil
+    tiles_dir = pathlib.Path("static/tiles")
+    for item in tiles_dir.iterdir():
+        if item.is_dir():
+            shutil.rmtree(item)
+        elif item.suffix == ".mbtiles":
+            item.unlink()
+    return {"ok": True}
 
 @app.post("/api/remote/{node_id}/command")
 async def remote_command(node_id: str, payload: dict):

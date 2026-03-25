@@ -156,7 +156,7 @@
   {% endfor %}
   <div class="setting-row">
     <span class="setting-label">Config (es: bme280:0x76)</span>
-    <input type="text" id="i2c-sensors" value="{{ i2c_sensors | map(attribute='name') | zip(i2c_sensors | map(attribute='address') | map('hex')) | map('join', ':') | join(',') if i2c_sensors else '' }}">
+    <input type="text" id="i2c-sensors" value="{% for s in i2c_sensors %}{{ s.name }}:0x{{ '%02X' % s.address }}{% if not loop.last %},{% endif %}{% endfor %}">
   </div>
 </div>
 

@@ -73,9 +73,11 @@ body[data-density="icons"] .status-item .val { display: none; }
 #tabbar {
   display: flex; background: var(--bg2); border-top: 1px solid var(--border);
 }
+body.orient-landscape #status-bar { grid-column: 2; grid-row: 1; }
+body.orient-landscape #content    { grid-column: 2; grid-row: 2; }
 body.orient-landscape #tabbar {
   flex-direction: column; border-top: none; border-right: 1px solid var(--border);
-  grid-row: 1 / 3;
+  grid-column: 1; grid-row: 1 / 3;
 }
 .tab-btn {
   flex: 1; display: flex; flex-direction: column; align-items: center;
@@ -147,11 +149,11 @@ body.orient-landscape #tabbar {
 .bubble-meta { font-size: 10px; color: var(--text2); margin-top: 2px; }
 .bubble.out .bubble-meta { color: rgba(255,255,255,.7); }
 
-#chat-form {
+#msg-form {
   display: flex; gap: 4px; padding: 8px;
   border-top: 1px solid var(--border); background: var(--bg2);
 }
-#chat-form select {
+#msg-form select {
   background: var(--bg3); color: var(--text); border: 1px solid var(--border);
   border-radius: 4px; padding: 4px; font-size: 12px;
 }
@@ -159,11 +161,11 @@ body.orient-landscape #tabbar {
   flex: 1; background: var(--bg3); color: var(--text); border: 1px solid var(--border);
   border-radius: 8px; padding: 6px 10px; font-size: 13px; font-family: inherit;
 }
-#chat-form button {
+#msg-form button {
   background: var(--accent); color: #fff; border: none; border-radius: 8px;
   padding: 6px 10px; cursor: pointer; display: flex; align-items: center;
 }
-#chat-form button svg { width: 18px; height: 18px; }
+#msg-form button svg { width: 18px; height: 18px; }
 
 /* === SECTION HEADER === */
 .section-header {
