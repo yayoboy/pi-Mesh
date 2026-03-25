@@ -4,8 +4,19 @@ A touch-friendly web dashboard for [Meshtastic](https://meshtastic.org/) LoRa me
 
 ---
 
+## Download
+
+| | |
+|---|---|
+| **Immagine pronta (consigliato)** | Scarica l'ultima `.img.xz` dalla [pagina Release](https://github.com/yayoboy/pi-Mesh/releases/latest), flasha con [Raspberry Pi Imager](https://www.raspberrypi.com/software/), accendi il Pi e apri `http://pi-mesh.local:8080` |
+| **Installa su Pi esistente** | `curl -fsSL https://raw.githubusercontent.com/yayoboy/pi-Mesh/master/install.sh \| bash` |
+| **Aggiorna installazione esistente** | `bash install.sh --update` |
+
+---
+
 ## Table of Contents
 
+- [Download](#download)
 - [What It Does](#what-it-does)
 - [Hardware Requirements](#hardware-requirements)
 - [Quick Start](#quick-start)
