@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div id="remote-list">
+  <div class="section-header">Nodi raggiungibili</div>
+  {% for n in nodes %}
+  <div class="node-row" style="cursor:pointer"
+       onclick="openRemoteNode('{{ n.id | e }}','{{ (n.short_name or n.id) | e }}')">
+    <span class="node-dot {% if n.get('online') %}ok{% endif %}"></span>
+    <span class="node-name">{{ n.short_name or n.id }}</span>
+    <span class="node-meta">{{ n.snr if n.snr is not none else '—' }}dB</span>
+  </div>
+  {% else %}
+  <div style="color:var(--text2);font-size:13px;padding:16px;text-align:center">
+    Nessun nodo raggiungibile
+  </div>
+  {% endfor %}
+</div>
+
+<div id="remote-detail" style="display:none">
+
+  <div id="chat-header">
+    <button id="btn-back" onclick="closeRemoteNode()" aria-label="Torna alla lista">
+      <svg><use href="#i-back"/></svg>
+    </button>
+    <span id="remote-node-name">—</span>
+  </div>
+
+  <div class="section-header">Stato</div>
+  <div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
+    <div class="stat-row"><span class="stat-label">SNR</span><span class="stat-val" id="r-snr">—</span></div>
+    <div class="stat-row"><span class="stat-label">Batteria</span><span class="stat-val" id="r-bat">—</span></div>
+    <div class="stat-row"><span class="stat-label">Hop</span><span class="stat-val" id="r-hop">—</span></div>
+    <div class="stat-row"><span class="stat-label">Ultimo contatto</span><span class="stat-val" id="r-last">—</span></div>
+  </div>
+
+  <div class="section-header">Comandi rapidi</div>
+  <div style="display:flex;gap:8px;padding:8px">
+    <button class="btn btn-secondary" style="font-size:12px" onclick="remoteCmd('ping')">Ping</button>
+    <button class="btn btn-secondary" style="font-size:12px" onclick="remoteCmd('mute')">Mute</button>
+    <button class="btn btn-danger"    style="font-size:12px"
+            onclick="if(confirm('Riavviare il nodo remoto?'))remoteCmd('reboot')">Reboot</button>
+  </div>
+
+  <div class="section-header">Configurazione</div>
+  <div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
+    <div class="setting-row">
+      <span class="setting-label">Nome nodo</span>
+      <input type="text" id="r-name-input" maxlength="12">
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">TX Power</span>
+      <select id="r-tx-select">
+        <option>MIN</option><option>LOW</option>
+        <option selected>MED</option>
+        <option>HIGH</option><option>MAX</option>
+      </select>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">GPS</span>
+      <select id="r-gps-select">
+        <option value="1">ON</option>
+        <option value="0">OFF</option>
+      </select>
+    </div>
+    <div style="padding:8px">
+      <button class="btn btn-primary"
+              onclick="if(confirm('Inviare la configurazione al nodo remoto?'))remoteCmd('set_config')">
+        Applica modifiche
+      </button>
+    </div>
+  </div>
+
+  <div class="section-header">Telemetria remota</div>
+  <div class="card" style="margin-top:0;border-radius:0;border-left:none;border-right:none">
+    <div class="stat-row"><span class="stat-label">Temperatura</span><span class="stat-val" id="r-temp">—</span></div>
+    <div class="stat-row"><span class="stat-label">Uptime</span><span class="stat-val" id="r-uptime">—</span></div>
+    <div style="padding:8px">
+      <button class="btn btn-secondary" onclick="remoteCmd('request_telemetry')">
+        Richiedi aggiornamento
+      </button>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
