@@ -1,4 +1,4 @@
-import asyncio, gc, logging, os, re, signal, subprocess, sys, time
+import asyncio, gc, glob as _glob, logging, os, re, signal, subprocess, sys, time
 import aiosqlite as _aiosqlite
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -75,6 +75,15 @@ async def _shutdown():
     logging.info("Shutdown completato")
 
 app = FastAPI(lifespan=lifespan)
+
+@app.middleware("http")
+async def setup_redirect(request: Request, call_next):
+    if not cfg.SETUP_DONE:
+        path = request.url.path
+        skip = path.startswith(("/setup", "/api/", "/static/", "/ws", "/tiles/"))
+        if not skip:
+            return RedirectResponse("/setup")
+    return await call_next(request)
 
 # Static files — crea le directory se non esistono
 for d in ["static", "static/tiles", "templates"]:
@@ -390,6 +399,77 @@ async def legacy_nodes(): return RedirectResponse("/home")
 
 @app.get("/telemetry")
 async def legacy_telemetry(): return RedirectResponse("/hardware")
+
+@app.get("/setup")
+async def setup_page(request: Request):
+    return templates.TemplateResponse("setup.html", {
+        "request": request,
+        "theme": cfg.UI_THEME,
+    })
+
+
+@app.get("/api/setup/serial-ports")
+async def setup_serial_ports():
+    patterns = ["/dev/ttyUSB*", "/dev/ttyACM*",
+                "/dev/ttyMESHTASTIC", "/dev/serial/by-id/*"]
+    ports = []
+    for p in patterns:
+        ports.extend(_glob.glob(p))
+    return {"ports": sorted(set(ports))}
+
+
+@app.post("/api/setup/connect")
+async def setup_connect(payload: dict):
+    port = payload.get("port", "").strip()
+    if not port:
+        return JSONResponse({"ok": False, "error": "porta mancante"}, status_code=400)
+    try:
+        node = await asyncio.to_thread(_read_node_info, port)
+        return {"ok": True, "node": node}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+def _read_node_info(port: str) -> dict:
+    import meshtastic.serial_interface
+    iface = meshtastic.serial_interface.SerialInterface(devPath=port, noProto=False)
+    info  = iface.getMyNodeInfo()
+    iface.close()
+    user = info.get("user", {})
+    return {
+        "long_name":  user.get("longName", ""),
+        "short_name": user.get("shortName", ""),
+        "hw_model":   user.get("hwModel", ""),
+        "id":         user.get("id", ""),
+    }
+
+
+@app.post("/api/setup/save")
+async def setup_save(payload: dict):
+    fields = {
+        "SERIAL_PORT": str(payload.get("serial_port", cfg.SERIAL_PORT)).strip(),
+        "MAP_LAT_MIN": str(payload.get("map_lat_min", cfg.MAP_BOUNDS["lat_min"])),
+        "MAP_LAT_MAX": str(payload.get("map_lat_max", cfg.MAP_BOUNDS["lat_max"])),
+        "MAP_LON_MIN": str(payload.get("map_lon_min", cfg.MAP_BOUNDS["lon_min"])),
+        "MAP_LON_MAX": str(payload.get("map_lon_max", cfg.MAP_BOUNDS["lon_max"])),
+    }
+    if payload.get("node_long_name"):
+        fields["NODE_LONG_NAME"]  = str(payload["node_long_name"]).strip()
+    if payload.get("node_short_name"):
+        fields["NODE_SHORT_NAME"] = str(payload["node_short_name"]).strip()
+    fields["SETUP_DONE"] = "1"
+    for k, v in fields.items():
+        _update_config_env(k, v)
+    cfg.SETUP_DONE = True
+    return {"ok": True}
+
+
+@app.post("/api/setup/reset")
+async def setup_reset():
+    _update_config_env("SETUP_DONE", "0")
+    cfg.SETUP_DONE = False
+    return {"ok": True}
+
 
 def _update_config_env(key: str, value: str):
     env_path = "config.env"

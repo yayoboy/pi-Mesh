@@ -27,9 +27,10 @@ def mock_hardware():
 async def test_root_redirects_to_home(mock_hardware):
     from httpx import AsyncClient, ASGITransport
     # Deve importare DOPO i mock
-    import importlib, sys
+    import importlib, sys, config
     if 'main' in sys.modules:
         del sys.modules['main']
+    config.SETUP_DONE = True
     from main import app
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.get("/", follow_redirects=False)
@@ -39,9 +40,10 @@ async def test_root_redirects_to_home(mock_hardware):
 @pytest.mark.asyncio
 async def test_api_status_returns_json(mock_hardware):
     from httpx import AsyncClient, ASGITransport
-    import importlib, sys
+    import importlib, sys, config
     if 'main' in sys.modules:
         del sys.modules['main']
+    config.SETUP_DONE = True
     from main import app
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.get("/api/status")
@@ -53,9 +55,10 @@ async def test_api_status_returns_json(mock_hardware):
 @pytest.mark.asyncio
 async def test_send_empty_text_returns_400(mock_hardware):
     from httpx import AsyncClient, ASGITransport
-    import sys
+    import sys, config
     if 'main' in sys.modules:
         del sys.modules['main']
+    config.SETUP_DONE = True
     from main import app
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.post("/send", json={"text": "", "channel": 0})
