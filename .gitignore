@@ -9,3 +9,4 @@ data/*.db-shm
 /tmp/
 static/tiles/osm/
 static/tiles/topo/
+.worktrees/
