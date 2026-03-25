@@ -4,22 +4,56 @@ A touch-friendly web dashboard for [Meshtastic](https://meshtastic.org/) LoRa me
 
 ---
 
-## Download
+## Installation
 
-| | |
-|---|---|
-| **Immagine pronta (consigliato)** | Scarica l'ultima `.img.xz` dalla [pagina Release](https://github.com/yayoboy/pi-Mesh/releases/latest), flasha con [Raspberry Pi Imager](https://www.raspberrypi.com/software/), accendi il Pi e apri `http://pi-mesh.local:8080` |
-| **Installa su Pi esistente** | `curl -fsSL https://raw.githubusercontent.com/yayoboy/pi-Mesh/master/install.sh \| bash` |
-| **Aggiorna installazione esistente** | `bash install.sh --update` |
+### Option A — Pre-built image (recommended)
+
+The easiest way to get started. No manual setup required.
+
+1. Download the latest `pi-mesh-vX.Y.Z.img.xz` from the [Releases page](https://github.com/yayoboy/pi-Mesh/releases/latest)
+2. Flash it to a microSD card using [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (choose "Use custom image")
+3. Insert the SD card and power on the Pi
+4. Open **`http://pi-mesh.local:8080`** from any device on the same network
+5. Complete the first-boot wizard (serial port → map area → node name)
+
+> **Default SSH password:** `meshtastic` — change it after first login with `passwd`.
+
+---
+
+### Option B — Install on an existing Raspberry Pi OS
+
+Run this single command on the Pi (requires internet access):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yayoboy/pi-Mesh/master/install.sh | bash
+```
+
+The installer will:
+- Install system dependencies (`git`, `python3-venv`, `pigpiod`, `avahi-daemon`)
+- Clone the repo to `/home/pi/pi-mesh`
+- Create a Python virtual environment and install dependencies
+- Install and enable the `meshtastic-pi` systemd service
+- Configure ZRAM swap (optional, can be skipped with `--no-zram`)
+
+After the installer finishes, open **`http://pi-mesh.local:8080`** and complete the wizard.
+
+**Additional flags:**
+
+| Flag | Effect |
+|------|--------|
+| `--non-interactive` | Skip all prompts, use defaults |
+| `--update` | Pull latest code and restart — skip full reinstall |
+| `--no-zram` | Skip ZRAM swap setup |
+| `--with-ap` | Enable the Wi-Fi fallback hotspot `pi-mesh-portal` |
 
 ---
 
 ## Table of Contents
 
-- [Download](#download)
+- [Installation](#installation)
 - [What It Does](#what-it-does)
 - [Hardware Requirements](#hardware-requirements)
-- [Quick Start](#quick-start)
+- [Quick Start (development)](#quick-start-development--mac)
 - [Project Structure](#project-structure)
 - [UI Overview](#ui-overview)
   - [Status Bar](#status-bar)
@@ -71,9 +105,9 @@ pi-Mesh connects to a Heltec LoRa radio via USB serial and exposes a real-time w
 
 ---
 
-## Quick Start
+## Quick Start (development / Mac)
 
-### 1. Clone and install
+To run pi-Mesh locally for development without a Raspberry Pi:
 
 ```bash
 git clone https://github.com/yayoboy/pi-Mesh.git
@@ -81,44 +115,13 @@ cd pi-Mesh
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-```
-
-### 2. Configure
-
-```bash
-cp config.env.example config.env   # or edit config.env directly
-```
-
-Key settings:
-
-```env
-# Serial port where the Heltec radio appears
-SERIAL_PORT=/dev/ttyMESHTASTIC
-
-# Where to persist the database on the SD card
-DB_PERSISTENT=/home/pi/meshtastic-pi/data/mesh.db
-
-# Map bounding box (default: Central Italy — change to your area)
-MAP_LAT_MIN=41.0
-MAP_LAT_MAX=43.0
-MAP_LON_MIN=11.5
-MAP_LON_MAX=14.5
-```
-
-### 3. Run
-
-```bash
+cp config.env config.env.local   # optional: customise locally
 uvicorn main:app --host 0.0.0.0 --port 8080
 ```
 
-Open `http://<raspberry-pi-ip>:8080` in any browser.
+Open `http://localhost:8080`. GPIO, I2C, and serial hardware are automatically mocked when not running on a Pi.
 
-### 4. Auto-start on boot
-
-```bash
-sudo cp meshtastic-pi.service /etc/systemd/system/
-sudo systemctl enable --now meshtastic-pi
-```
+> For deployment on a real Raspberry Pi, use the [installer](#installation) above — it handles everything automatically.
 
 ---
 
