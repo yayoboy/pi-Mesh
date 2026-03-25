@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="card-title">GPIO</div>
+  <div class="gpio-grid" id="gpio-grid">
+    {% for pin in [2,3,4,17,27,22,10,9,11,5,6,13,19,26,12,16,20,21] %}
+    <div class="gpio-pin low" data-pin="{{ pin }}" title="GPIO {{ pin }}">{{ pin }}</div>
+    {% endfor %}
+  </div>
+  <div style="padding:4px 8px;font-size:10px;color:var(--text2);display:flex;gap:12px">
+    <span><span style="color:var(--ok)">▪</span> HIGH</span>
+    <span><span style="color:var(--text2)">▪</span> LOW</span>
+    <span><span style="color:var(--accent)">▪</span> PWM</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Sensori I2C</span>
+    <button class="btn btn-secondary" style="width:auto;padding:4px 8px;font-size:12px"
+            onclick="scanI2C()" aria-label="Ri-scansiona bus I2C">
+      <svg style="width:14px;height:14px"><use href="#i-refresh"/></svg>
+    </button>
+  </div>
+  <div id="i2c-list">
+    {% for s in i2c_sensors %}
+    <div class="stat-row">
+      <span class="stat-label" style="font-family:monospace">0x{{ '%02X' % s.address }}</span>
+      <span class="stat-val">{{ s.name }}</span>
+    </div>
+    {% else %}
+    <div style="color:var(--text2);font-size:13px;padding:8px">Nessun sensore rilevato</div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Encoder</div>
+  <div class="stat-row">
+    <span class="stat-label">ENC1 &nbsp;<small style="font-family:monospace">A={{ enc1[0] }} B={{ enc1[1] }} SW={{ enc1[2] }}</small></span>
+    <span class="stat-val" id="enc1-pos">—</span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">ENC2 &nbsp;<small style="font-family:monospace">A={{ enc2[0] }} B={{ enc2[1] }} SW={{ enc2[2] }}</small></span>
+    <span class="stat-val" id="enc2-pos">—</span>
+  </div>
+</div>
+
+<script>
+async function scanI2C() {
+  const res  = await fetch('/api/i2c/scan?live=true');
+  const data = await res.json();
+  const list = document.getElementById('i2c-list');
+  if (!list) return;
+  list.textContent = '';
+  if (!data.sensors || data.sensors.length === 0) {
+    const msg = document.createElement('div');
+    msg.style.cssText = 'color:var(--text2);font-size:13px;padding:8px';
+    msg.textContent = 'Nessun sensore rilevato';
+    list.appendChild(msg);
+    return;
+  }
+  data.sensors.forEach(s => {
+    const row  = document.createElement('div'); row.className = 'stat-row';
+    const addr = document.createElement('span'); addr.className = 'stat-label'; addr.style.fontFamily = 'monospace';
+    const name = document.createElement('span'); name.className = 'stat-val';
+    addr.textContent = '0x' + s.address.toString(16).toUpperCase().padStart(2,'0');
+    name.textContent = s.name || '?';
+    row.append(addr, name);
+    list.appendChild(row);
+  });
+}
+</script>
+
+{% endblock %}
