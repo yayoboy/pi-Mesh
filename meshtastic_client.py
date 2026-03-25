@@ -214,6 +214,10 @@ async def _handle_telemetry(packet):
     except Exception as e:
         logging.error(f"Parsing telemetry fallito: {e}")
 
+async def send_admin(node_id: str, cmd: str, params: dict):
+    """Invia comando admin via Meshtastic admin channel. TODO: implementazione reale."""
+    raise NotImplementedError(f"send_admin({cmd}) non ancora implementato")
+
 def _parse_message(packet) -> dict | None:
     try:
         decoded = packet.get("decoded", {})

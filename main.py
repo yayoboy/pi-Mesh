@@ -88,23 +88,7 @@ templates = Jinja2Templates(directory="templates")
 
 @app.get("/")
 async def root():
-    return RedirectResponse("/messages")
-
-@app.get("/messages")
-async def messages_page(request: Request):
-    msgs = await database.get_messages(_conn, channel=0, limit=50)
-    return templates.TemplateResponse("messages.html", {
-        "request": request, "messages": msgs,
-        "theme": cfg.UI_THEME, "active": "messages"
-    })
-
-@app.get("/nodes")
-async def nodes_page(request: Request):
-    nodes = await database.get_nodes(_conn)
-    return templates.TemplateResponse("nodes.html", {
-        "request": request, "nodes": nodes,
-        "theme": cfg.UI_THEME, "active": "nodes"
-    })
+    return RedirectResponse("/home")
 
 @app.get("/map")
 async def map_page(request: Request):
@@ -114,15 +98,10 @@ async def map_page(request: Request):
         "zoom_min": cfg.MAP_ZOOM_MIN,
         "zoom_max": cfg.MAP_ZOOM_MAX,
         "theme":    cfg.UI_THEME,
-        "active":   "map"
-    })
-
-@app.get("/telemetry")
-async def telemetry_page(request: Request):
-    nodes = await database.get_nodes(_conn)
-    return templates.TemplateResponse("telemetry.html", {
-        "request": request, "nodes": nodes,
-        "theme": cfg.UI_THEME, "active": "telemetry"
+        "active":   "map",
+        "density": cfg.UI_STATUS_DENSITY,
+        "orientation": cfg.UI_ORIENTATION,
+        "channel_layout": cfg.UI_CHANNEL_LAYOUT,
     })
 
 @app.get("/settings")
@@ -137,6 +116,54 @@ async def settings_page(request: Request):
         "enc2":             (cfg.ENC2_A, cfg.ENC2_B, cfg.ENC2_SW),
         "i2c_sensors":      cfg.I2C_SENSORS,
         "display_rotation": cfg.DISPLAY_ROTATION,
+        "density": cfg.UI_STATUS_DENSITY,
+        "orientation": cfg.UI_ORIENTATION,
+        "channel_layout": cfg.UI_CHANNEL_LAYOUT,
+    })
+
+
+@app.get("/home")
+async def home_page(request: Request):
+    nodes    = await database.get_nodes(_conn)
+    node_info = meshtastic_client.get_local_node()
+    return templates.TemplateResponse("home.html", {
+        "request": request, "nodes": nodes, "node": node_info,
+        "theme": cfg.UI_THEME, "density": cfg.UI_STATUS_DENSITY,
+        "orientation": cfg.UI_ORIENTATION, "channel_layout": cfg.UI_CHANNEL_LAYOUT,
+        "active": "home",
+    })
+
+@app.get("/channels")
+async def channels_page(request: Request):
+    msgs  = await database.get_messages(_conn, channel=0, limit=50)
+    nodes = await database.get_nodes(_conn)
+    return templates.TemplateResponse("channels.html", {
+        "request": request, "messages": msgs, "nodes": nodes,
+        "theme": cfg.UI_THEME, "density": cfg.UI_STATUS_DENSITY,
+        "orientation": cfg.UI_ORIENTATION, "channel_layout": cfg.UI_CHANNEL_LAYOUT,
+        "active": "channels",
+    })
+
+@app.get("/hardware")
+async def hardware_page(request: Request):
+    sensors = getattr(app.state, "i2c_sensors", [])
+    return templates.TemplateResponse("hardware.html", {
+        "request": request, "i2c_sensors": sensors,
+        "enc1": (cfg.ENC1_A, cfg.ENC1_B, cfg.ENC1_SW),
+        "enc2": (cfg.ENC2_A, cfg.ENC2_B, cfg.ENC2_SW),
+        "theme": cfg.UI_THEME, "density": cfg.UI_STATUS_DENSITY,
+        "orientation": cfg.UI_ORIENTATION, "channel_layout": cfg.UI_CHANNEL_LAYOUT,
+        "active": "hardware",
+    })
+
+@app.get("/remote")
+async def remote_page(request: Request):
+    nodes = await database.get_nodes(_conn)
+    return templates.TemplateResponse("remote.html", {
+        "request": request, "nodes": nodes,
+        "theme": cfg.UI_THEME, "density": cfg.UI_STATUS_DENSITY,
+        "orientation": cfg.UI_ORIENTATION, "channel_layout": cfg.UI_CHANNEL_LAYOUT,
+        "active": "remote",
     })
 
 # --- Route API JSON ---
@@ -207,7 +234,7 @@ async def api_status():
 async def serve_tile(source: str, z: int, x: int, y: int):
     from fastapi.responses import Response
     # Validate source to prevent path traversal
-    if source not in ("osm", "topo"):
+    if source not in ("osm", "topo", "sat"):
         return JSONResponse({"error": "invalid source"}, status_code=400)
     mbtiles_path = f"static/tiles/{source}.mbtiles"
     if os.path.isfile(mbtiles_path):
@@ -311,6 +338,55 @@ async def bot_config(payload: dict):
         except Exception as e:
             return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
     return {"ok": True}
+
+@app.post("/settings/ui")
+async def apply_ui_settings(payload: dict):
+    import pathlib
+    allowed = {"UI_STATUS_DENSITY", "UI_CHANNEL_LAYOUT", "UI_ORIENTATION", "UI_THEME"}
+    env_path = pathlib.Path(".env")
+    lines = env_path.read_text().splitlines() if env_path.exists() else []
+    updated = {}
+    for key, val in payload.items():
+        if key not in allowed:
+            continue
+        val = str(val).strip()
+        found = False
+        for i, line in enumerate(lines):
+            if line.startswith(f"{key}="):
+                lines[i] = f"{key}={val}"
+                found = True
+        if not found:
+            lines.append(f"{key}={val}")
+        updated[key] = val
+    env_path.write_text("\n".join(lines) + "\n")
+    return {"ok": True, "updated": updated}
+
+@app.get("/api/tile/cache/info")
+async def tile_cache_info():
+    import pathlib
+    tiles_dir = pathlib.Path("static/tiles")
+    total = sum(f.stat().st_size for f in tiles_dir.rglob("*") if f.is_file())
+    return {"size_bytes": total, "size_mb": round(total / 1024 / 1024, 1)}
+
+@app.post("/api/remote/{node_id}/command")
+async def remote_command(node_id: str, payload: dict):
+    cmd = payload.get("cmd")
+    if cmd not in ("reboot", "mute", "ping", "set_config", "request_telemetry"):
+        return JSONResponse({"ok": False, "error": "cmd non valido"}, status_code=400)
+    try:
+        await meshtastic_client.send_admin(node_id, cmd, payload.get("params", {}))
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+@app.get("/messages")
+async def legacy_messages(): return RedirectResponse("/channels")
+
+@app.get("/nodes")
+async def legacy_nodes(): return RedirectResponse("/home")
+
+@app.get("/telemetry")
+async def legacy_telemetry(): return RedirectResponse("/hardware")
 
 def _update_config_env(key: str, value: str):
     env_path = "config.env"
