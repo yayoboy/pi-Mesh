@@ -10,3 +10,8 @@ data/*.db-shm
 static/tiles/osm/
 static/tiles/topo/
 .worktrees/
+static/themes.json
+static/fonts/*.ttf
+static/fonts/*.woff2
+static/fonts/*.woff
+static/fonts/*.otf
