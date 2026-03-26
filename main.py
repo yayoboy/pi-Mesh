@@ -1,4 +1,4 @@
-import asyncio, gc, glob as _glob, logging, os, re, signal, subprocess, sys, time
+import asyncio, gc, glob as _glob, json as _json, logging, os, re, signal, subprocess, sys, time
 import aiosqlite as _aiosqlite
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -435,6 +435,38 @@ def _valid_port(port: str) -> bool:
     return bool(_PORT_RE.match(port))
 
 
+THEMES_PATH = "static/themes.json"
+FONTS_PATH  = "static/fonts"
+
+_BUILTIN_THEMES = [
+    {"id": "dark",  "name": "Scuro",         "builtin": True},
+    {"id": "light", "name": "Chiaro",         "builtin": True},
+    {"id": "hc",    "name": "Alto contrasto", "builtin": True},
+]
+
+_COLOR_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
+_ID_RE    = re.compile(r'^[a-z0-9-]{1,32}$')
+_SYSTEM_FONTS = ["system-ui", "monospace", "Georgia", '"Courier New"']
+
+
+def _load_themes() -> list:
+    try:
+        with open(THEMES_PATH) as f:
+            return _json.load(f)
+    except FileNotFoundError:
+        return []
+    except Exception as e:
+        logging.error(f"_load_themes: {e}")
+        return []
+
+
+def _save_themes(themes: list) -> None:
+    import os
+    os.makedirs(os.path.dirname(THEMES_PATH) or ".", exist_ok=True)
+    with open(THEMES_PATH, "w") as f:
+        _json.dump(themes, f, indent=2)
+
+
 def _read_node_info(port: str) -> dict:
     import meshtastic.serial_interface
     iface = meshtastic.serial_interface.SerialInterface(devPath=port, noProto=False)
@@ -477,6 +509,12 @@ async def setup_reset():
     _update_config_env("SETUP_DONE", "0")
     cfg.SETUP_DONE = False
     return {"ok": True}
+
+
+@app.get("/api/themes")
+async def list_themes():
+    custom = _load_themes()
+    return {"themes": _BUILTIN_THEMES + [dict(t, builtin=False) for t in custom]}
 
 
 def _update_config_env(key: str, value: str):
