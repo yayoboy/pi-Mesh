@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <div class="card-title">Nodo locale</div>
+  <div class="stat-row">
+    <svg><use href="#i-router"/></svg>
+    <span class="stat-label">Nome</span>
+    <span class="stat-val">{{ node.short_name if node else '—' }}</span>
+  </div>
+  <div class="stat-row">
+    <svg><use href="#i-router"/></svg>
+    <span class="stat-label">ID</span>
+    <span class="stat-val">{{ node.id if node else '—' }}</span>
+  </div>
+  <div class="stat-row">
+    <svg><use href="#i-battery"/></svg>
+    <span class="stat-label">Batteria</span>
+    <span class="stat-val" id="node-bat">—</span>
+  </div>
+  <div class="stat-row">
+    <svg><use href="#i-forum"/></svg>
+    <span class="stat-label">Canale</span>
+    <span class="stat-val">CH {{ node.channel if node else '—' }}</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">Raspberry Pi</div>
+  <div class="stat-row">
+    <svg><use href="#i-memory"/></svg>
+    <span class="stat-label">CPU</span>
+    <span class="stat-val" id="sys-cpu">—</span>
+  </div>
+  <div class="stat-row">
+    <svg><use href="#i-storage"/></svg>
+    <span class="stat-label">RAM</span>
+    <span class="stat-val" id="sys-ram">—</span>
+  </div>
+  <div class="stat-row">
+    <svg><use href="#i-temp"/></svg>
+    <span class="stat-label">Temp</span>
+    <span class="stat-val" id="sys-temp">—</span>
+  </div>
+  <div class="stat-row">
+    <svg><use href="#i-storage"/></svg>
+    <span class="stat-label">Disco</span>
+    <span class="stat-val" id="sys-disk">—</span>
+  </div>
+  <div class="stat-row">
+    <svg><use href="#i-clock"/></svg>
+    <span class="stat-label">Uptime</span>
+    <span class="stat-val" id="sys-uptime">—</span>
+  </div>
+</div>
+
+<div class="section-header">Nodi recenti</div>
+<div id="nodes-list">
+  {% for n in nodes[:4] %}
+  <div class="node-row" data-node="{{ n.id | e }}">
+    <span class="node-dot {% if n.last_heard and (now - n.last_heard) < 900 %}ok{% elif n.last_heard and (now - n.last_heard) < 7200 %}warn{% endif %}"></span>
+    <span class="node-name">{{ n.short_name or n.id }}</span>
+    <span class="node-meta">{{ n.snr if n.snr is not none else '—' }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}

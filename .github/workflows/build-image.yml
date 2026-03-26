@@ -1,0 +1,79 @@
+# .github/workflows/build-image.yml
+name: Build Release Image
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            qemu-user-static binfmt-support \
+            kpartx parted wget xz-utils \
+            systemd-container
+
+      - name: Download Raspberry Pi OS Lite (arm64)
+        run: |
+          wget -q --show-progress \
+            "https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-latest/raspios_lite_arm64_latest.img.xz" \
+            -O raspios.img.xz
+          xz -d raspios.img.xz
+          mv raspios*.img base.img
+
+      - name: Build pi-Mesh image
+        env:
+          TAG: ${{ steps.version.outputs.VERSION }}
+        run: |
+          sudo bash scripts/build-image.sh base.img "pi-mesh-${TAG}.img" "$TAG"
+
+      - name: Compress and checksum
+        run: |
+          TAG=${{ steps.version.outputs.VERSION }}
+          xz -9 --threads=0 "pi-mesh-${TAG}.img"
+          sha256sum "pi-mesh-${TAG}.img.xz" > sha256sum.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "pi-Mesh ${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## pi-Mesh ${{ steps.version.outputs.VERSION }}
+
+            ### Installazione rapida (immagine pronta)
+            1. Scarica `pi-mesh-${{ steps.version.outputs.VERSION }}.img.xz`
+            2. Flasha su SD con [Raspberry Pi Imager](https://www.raspberrypi.com/software/)
+            3. Inserisci la SD, accendi il Pi
+            4. Apri `http://pi-mesh.local:8080` da qualsiasi dispositivo sulla stessa rete
+            5. Completa il wizard di configurazione
+
+            **Password SSH di default:** `meshtastic` — cambiarla dopo il primo accesso.
+
+            ### Installa su Pi esistente
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/yayoboy/pi-Mesh/${{ steps.version.outputs.VERSION }}/install.sh | bash
+            ```
+
+            ### Verifica checksum
+            ```bash
+            sha256sum -c sha256sum.txt
+            ```
+          files: |
+            pi-mesh-${{ steps.version.outputs.VERSION }}.img.xz
+            sha256sum.txt

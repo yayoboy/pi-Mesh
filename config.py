@@ -48,6 +48,12 @@ DISPLAY_ROTATION = int(os.getenv("DISPLAY_ROTATION", "0"))
 
 # UI
 UI_THEME = os.getenv("UI_THEME", "dark")
+UI_STATUS_DENSITY    = os.getenv("UI_STATUS_DENSITY", "icons")   # compact | icons | full
+UI_CHANNEL_LAYOUT    = os.getenv("UI_CHANNEL_LAYOUT", "list")    # list | tabs | unified
+UI_ORIENTATION       = os.getenv("UI_ORIENTATION", "portrait")   # portrait | landscape
+
+# Setup wizard
+SETUP_DONE = os.getenv("SETUP_DONE", "0") in ("1", "true", "yes")
 
 # Limiti memoria
 MAX_MESSAGES_PER_CHANNEL = 200

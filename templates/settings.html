@@ -1,143 +1,306 @@
 {% extends "base.html" %}
 {% block content %}
-<div style="overflow-y:auto; height:100%; padding-bottom:8px;">
 
-  <!-- NODO -->
-  <div class="settings-section">
-    <div class="settings-label">Nodo locale</div>
-    <div class="settings-row"><label>Nome lungo</label><input type="text" id="long-name" value="{{ node.long_name if node else '' }}" maxlength="36"></div>
-    <div class="settings-row"><label>Nome breve</label><input type="text" id="short-name" value="{{ node.short_name if node else '' }}" maxlength="4"></div>
-    <div class="settings-row">
-      <label>Ruolo</label>
-      <select id="node-role">
-        <option value="CLIENT">Client</option>
-        <option value="CLIENT_MUTE">Client (muto)</option>
-        <option value="ROUTER">Router</option>
-        <option value="ROUTER_CLIENT">Router+Client</option>
-        <option value="REPEATER">Repeater</option>
-        <option value="TRACKER">Tracker</option>
-      </select>
-    </div>
-    <button onclick="saveNodeConfig()" style="margin-top:4px; min-height:36px;">Salva nodo</button>
-    <div id="node-status" style="font-size:11px; color:var(--muted); margin-top:4px;"></div>
+<div class="section-header">Display</div>
+<div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
+  <div class="setting-row">
+    <span class="setting-label">Tema</span>
+    <select onchange="saveUISetting('UI_THEME',this.value)">
+      <option value="dark"  {% if theme=='dark'  %}selected{% endif %}>Scuro</option>
+      <option value="light" {% if theme=='light' %}selected{% endif %}>Chiaro</option>
+      <option value="hc"    {% if theme=='hc'    %}selected{% endif %}>Alto contrasto</option>
+    </select>
   </div>
-
-  <!-- LORA -->
-  <div class="settings-section" style="border-top:1px solid var(--border);">
-    <div class="settings-label">LoRa</div>
-    <div class="settings-row">
-      <label>Regione</label>
-      <select id="lora-region">
-        <option value="EU_868">EU 868MHz</option>
-        <option value="US_915">US 915MHz</option>
-        <option value="EU_433">EU 433MHz</option>
-      </select>
-    </div>
-    <div class="settings-row">
-      <label>Preset</label>
-      <select id="lora-preset">
-        <option value="LONG_FAST">Long Fast</option>
-        <option value="LONG_SLOW">Long Slow</option>
-        <option value="MEDIUM_FAST">Medium Fast</option>
-        <option value="SHORT_FAST">Short Fast</option>
-      </select>
-    </div>
-    <button onclick="saveLoraConfig()" style="margin-top:4px; min-height:36px;">Salva LoRa</button>
+  <div class="setting-row">
+    <span class="setting-label">Orientamento</span>
+    <select onchange="saveUISetting('UI_ORIENTATION',this.value)">
+      <option value="portrait"  {% if orientation=='portrait'  %}selected{% endif %}>Portrait</option>
+      <option value="landscape" {% if orientation=='landscape' %}selected{% endif %}>Landscape</option>
+    </select>
   </div>
-
-  <!-- TEMA -->
-  <div class="settings-section" style="border-top:1px solid var(--border);">
-    <div class="settings-label">Tema UI</div>
-    <div style="display:flex; gap:8px;">
-      <button onclick="setTheme('dark')"  style="flex:1; min-height:36px; font-size:12px;">🌙 Dark</button>
-      <button onclick="setTheme('light')" style="flex:1; min-height:36px; font-size:12px;">☀️ Light</button>
-      <button onclick="setTheme('hc')"    style="flex:1; min-height:36px; font-size:12px;">⬛ HC</button>
-    </div>
+  <div class="setting-row">
+    <span class="setting-label">Barra stato</span>
+    <select onchange="saveUISetting('UI_STATUS_DENSITY',this.value)">
+      <option value="compact" {% if density=='compact' %}selected{% endif %}>Compatta</option>
+      <option value="icons"   {% if density=='icons'   %}selected{% endif %}>Icone</option>
+      <option value="full"    {% if density=='full'    %}selected{% endif %}>Completa</option>
+    </select>
   </div>
+</div>
 
-  <!-- ADMIN REMOTO -->
-  <div class="settings-section" style="border-top:1px solid var(--border);">
-    <div class="settings-label">Admin nodo remoto</div>
-    <div class="settings-row">
-      <label>Nodo target</label>
-      <select id="remote-node-select">
-        <option value="">— seleziona —</option>
-        <!-- popolato via JS -->
-      </select>
+<div class="section-header">Temi custom</div>
+<div id="custom-themes-list" style="padding:4px 0"></div>
+<div style="padding:8px">
+  <button class="btn btn-secondary" style="width:100%;font-size:12px" onclick="openThemeEditor(null)">+ Nuovo tema</button>
+</div>
+
+<div id="theme-editor" style="display:none;border-top:1px solid var(--border)">
+  <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+
+    <div class="setting-row">
+      <span class="setting-label">Nome</span>
+      <input type="text" id="te-name" maxlength="40" placeholder="Es. Foresta">
     </div>
-    <div class="settings-row"><label>Nuovo nome</label><input type="text" id="remote-long-name" maxlength="36"></div>
-    <div class="settings-row">
-      <label>Ruolo</label>
-      <select id="remote-role">
-        <option value="CLIENT">Client</option>
-        <option value="ROUTER">Router</option>
-        <option value="REPEATER">Repeater</option>
-      </select>
+
+    <div class="setting-row">
+      <span class="setting-label">Font</span>
+      <select id="te-font"></select>
     </div>
-    <button onclick="sendRemoteConfig()" style="margin-top:4px; min-height:36px;">Invia configurazione</button>
-    <div id="remote-status" style="font-size:11px; color:var(--muted); margin-top:4px;"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <label style="font-size:11px;color:var(--text2)">Sfondo principale
+        <input type="color" id="te--bg" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Sfondo card
+        <input type="color" id="te--bg2" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Sfondo input
+        <input type="color" id="te--bg3" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Bordi
+        <input type="color" id="te--border" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Testo primario
+        <input type="color" id="te--text" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Testo secondario
+        <input type="color" id="te--text2" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Accent / bottoni
+        <input type="color" id="te--accent" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">OK / online
+        <input type="color" id="te--ok" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Avviso
+        <input type="color" id="te--warn" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Errore
+        <input type="color" id="te--danger" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+    </div>
+
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary"   style="flex:1;font-size:12px" onclick="saveTheme()">Salva</button>
+      <button class="btn btn-secondary" style="flex:1;font-size:12px" onclick="cancelTheme()">Annulla</button>
+    </div>
+    <div id="te-status" style="font-size:11px;color:var(--text2)"></div>
   </div>
+</div>
 
-  <!-- HARDWARE: GPIO / I2C -->
-  <div class="settings-section" style="border-top:1px solid var(--border);">
-    <div class="settings-label">Hardware GPIO</div>
-    <div class="settings-row"><label>ENC1 A/B/SW</label>
-      <input type="text" id="enc1-pins" value="{{ enc1[0] }},{{ enc1[1] }},{{ enc1[2] }}" style="width:80px; flex:unset;">
-    </div>
-    <div class="settings-row"><label>ENC2 A/B/SW</label>
-      <input type="text" id="enc2-pins" value="{{ enc2[0] }},{{ enc2[1] }},{{ enc2[2] }}" style="width:80px; flex:unset;">
-    </div>
-    <div class="settings-label" style="margin-top:8px;">Sensori I2C</div>
-    <div class="settings-row"><label>Config (es: bme280:0x76)</label>
-      <input type="text" id="i2c-sensors" value="{{ i2c_sensors | map(attribute='name') | zip(i2c_sensors | map(attribute='address') | map('hex')) | map('join', ':') | join(',') if i2c_sensors else '' }}">
-    </div>
-    <div class="settings-label" style="margin-top:8px;">Display</div>
-    <div class="settings-row">
-      <label>Rotazione</label>
-      <select id="display-rotation">
-        <option value="0"  {% if display_rotation==0  %}selected{% endif %}>Landscape (0°)</option>
-        <option value="1"  {% if display_rotation==1  %}selected{% endif %}>Portrait (90°)</option>
-        <option value="2"  {% if display_rotation==2  %}selected{% endif %}>Landscape inv (180°)</option>
-        <option value="3"  {% if display_rotation==3  %}selected{% endif %}>Portrait inv (270°)</option>
-      </select>
-    </div>
-    <button onclick="saveHardwareConfig()" style="margin-top:4px; min-height:36px;">Salva hardware</button>
-    <div id="hw-status" style="font-size:11px; color:var(--muted); margin-top:4px;">Richiede riavvio display per rotazione</div>
+<div class="section-header">Interfaccia</div>
+<div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
+  <div class="setting-row">
+    <span class="setting-label">Layout canali</span>
+    <select onchange="saveUISetting('UI_CHANNEL_LAYOUT',this.value)">
+      <option value="list"    {% if channel_layout=='list'    %}selected{% endif %}>Lista</option>
+      <option value="tabs"    {% if channel_layout=='tabs'    %}selected{% endif %}>Tab</option>
+      <option value="unified" {% if channel_layout=='unified' %}selected{% endif %}>Unificato</option>
+    </select>
   </div>
+</div>
 
-  <!-- BOT -->
-  <div class="settings-section" style="border-top:1px solid var(--border);">
-    <div class="settings-label">Bot</div>
-    <div class="settings-row"><label>Echo bot</label>
-      <input type="checkbox" id="bot-echo" style="width:auto; min-height:auto; height:24px; width:24px;">
-    </div>
-    <button onclick="saveBotConfig()" style="margin-top:4px; min-height:36px;">Salva bot</button>
+<div class="section-header">Connessione</div>
+<div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
+  <div class="setting-row">
+    <span class="setting-label">Porta USB</span>
+    <select id="serial-port-select">
+      <option>{{ node.serial_port if node and node.serial_port else '/dev/ttyUSB0' }}</option>
+    </select>
   </div>
+</div>
 
-  <!-- INFO SISTEMA -->
-  <div class="settings-section" style="border-top:1px solid var(--border);">
-    <div class="settings-label">Sistema</div>
-    <div id="sys-info" style="font-size:11px; color:var(--muted);"></div>
+<div class="section-header">Meshtastic</div>
+<div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
+  <div class="setting-row">
+    <span class="setting-label">Nome nodo</span>
+    <input type="text" id="node-name-input" maxlength="12"
+           value="{{ node.long_name if node and node.long_name else '' }}">
   </div>
+  <div class="setting-row">
+    <span class="setting-label">Nome lungo</span>
+    <input type="text" id="long-name" value="{{ node.long_name if node else '' }}" maxlength="36">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">Nome breve</span>
+    <input type="text" id="short-name" value="{{ node.short_name if node else '' }}" maxlength="4">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">Ruolo</span>
+    <select id="node-role">
+      <option value="CLIENT">Client</option>
+      <option value="CLIENT_MUTE">Client (muto)</option>
+      <option value="ROUTER">Router</option>
+      <option value="ROUTER_CLIENT">Router+Client</option>
+      <option value="REPEATER">Repeater</option>
+      <option value="TRACKER">Tracker</option>
+    </select>
+  </div>
+  <div style="padding:8px;display:flex;flex-direction:column;gap:8px">
+    <button class="btn btn-primary" onclick="saveNodeConfig()">Salva nodo</button>
+    <div id="node-status" style="font-size:11px;color:var(--text2);margin-top:2px;"></div>
+  </div>
+</div>
 
+<div class="section-header">LoRa</div>
+<div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
+  <div class="setting-row">
+    <span class="setting-label">Regione</span>
+    <select id="lora-region">
+      <option value="EU_868">EU 868MHz</option>
+      <option value="US_915">US 915MHz</option>
+      <option value="EU_433">EU 433MHz</option>
+    </select>
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">Preset</span>
+    <select id="lora-preset">
+      <option value="LONG_FAST">Long Fast</option>
+      <option value="LONG_SLOW">Long Slow</option>
+      <option value="MEDIUM_FAST">Medium Fast</option>
+      <option value="SHORT_FAST">Short Fast</option>
+    </select>
+  </div>
+  <div style="padding:8px">
+    <button class="btn btn-primary" onclick="saveLoraConfig()">Salva LoRa</button>
+  </div>
+</div>
+
+<div class="section-header">Admin nodo remoto</div>
+<div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
+  <div class="setting-row">
+    <span class="setting-label">Nodo target</span>
+    <select id="remote-node-select">
+      <option value="">— seleziona —</option>
+    </select>
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">Nuovo nome</span>
+    <input type="text" id="remote-long-name" maxlength="36">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">Ruolo</span>
+    <select id="remote-role">
+      <option value="CLIENT">Client</option>
+      <option value="ROUTER">Router</option>
+      <option value="REPEATER">Repeater</option>
+    </select>
+  </div>
+  <div style="padding:8px;display:flex;flex-direction:column;gap:8px">
+    <button class="btn btn-primary" onclick="sendRemoteConfig()">Invia configurazione</button>
+    <div id="remote-status" style="font-size:11px;color:var(--text2);margin-top:2px;"></div>
+  </div>
+</div>
+
+<div class="section-header">Mappa</div>
+<div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
+  <div class="setting-row">
+    <span class="setting-label">Cache tile</span>
+    <span id="tile-cache-size" style="color:var(--text2);font-size:13px">—</span>
+  </div>
+  <div style="padding:8px;display:flex;flex-direction:column;gap:8px">
+    <button class="btn btn-secondary" onclick="alert('Download tile: usa script offline')">Scarica area corrente</button>
+    <button class="btn btn-danger" onclick="if(confirm('Eliminare la cache tile?')) clearTilesCache()">Elimina cache</button>
+  </div>
+</div>
+
+<div class="section-header">Sensori I2C</div>
+<div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
+  {% for s in i2c_sensors %}
+  <div class="stat-row">
+    <span class="stat-label" style="font-family:monospace">0x{{ '%02X' % s.address }}</span>
+    <span class="stat-val">{{ s.name }}</span>
+  </div>
+  {% else %}
+  <div style="color:var(--text2);font-size:13px;padding:8px">Nessun sensore configurato</div>
+  {% endfor %}
+  <div class="setting-row">
+    <span class="setting-label">Config (es: bme280:0x76)</span>
+    <input type="text" id="i2c-sensors" value="{% for s in i2c_sensors %}{{ s.name }}:0x{{ '%02X' % s.address }}{% if not loop.last %},{% endif %}{% endfor %}">
+  </div>
+</div>
+
+<div class="section-header">Display fisico</div>
+<div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
+  <div class="setting-row">
+    <span class="setting-label">Rotazione</span>
+    <span class="stat-val">{{ display_rotation }}°</span>
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">Rotazione (modifica)</span>
+    <select id="display-rotation">
+      <option value="0"  {% if display_rotation==0  %}selected{% endif %}>Landscape (0°)</option>
+      <option value="1"  {% if display_rotation==1  %}selected{% endif %}>Portrait (90°)</option>
+      <option value="2"  {% if display_rotation==2  %}selected{% endif %}>Landscape inv (180°)</option>
+      <option value="3"  {% if display_rotation==3  %}selected{% endif %}>Portrait inv (270°)</option>
+    </select>
+  </div>
+</div>
+
+<div class="section-header">Hardware GPIO</div>
+<div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
+  <div class="setting-row">
+    <span class="setting-label">ENC1 A/B/SW</span>
+    <input type="text" id="enc1-pins" value="{{ enc1[0] }},{{ enc1[1] }},{{ enc1[2] }}" style="width:80px;flex:unset;">
+  </div>
+  <div class="setting-row">
+    <span class="setting-label">ENC2 A/B/SW</span>
+    <input type="text" id="enc2-pins" value="{{ enc2[0] }},{{ enc2[1] }},{{ enc2[2] }}" style="width:80px;flex:unset;">
+  </div>
+  <div style="padding:8px;display:flex;flex-direction:column;gap:8px">
+    <button class="btn btn-primary" onclick="saveHardwareConfig()">Salva hardware</button>
+    <div id="hw-status" style="font-size:11px;color:var(--text2);margin-top:2px;">Richiede riavvio display per rotazione</div>
+  </div>
+</div>
+
+<div class="section-header">Bot</div>
+<div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
+  <div class="setting-row">
+    <span class="setting-label">Echo bot</span>
+    <input type="checkbox" id="bot-echo" style="width:auto;min-height:auto;height:24px;width:24px;">
+  </div>
+  <div style="padding:8px">
+    <button class="btn btn-primary" onclick="saveBotConfig()">Salva bot</button>
+  </div>
+</div>
+
+<div class="section-header">Sistema</div>
+<div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
+  <div id="sys-info" style="font-size:11px;color:var(--text2);padding:8px;"></div>
+  <div class="setting-row">
+    <span>Wizard configurazione</span>
+    <button class="btn" id="btn-reset-setup">Riesegui wizard</button>
+  </div>
 </div>
 
 <script>
+// Tile cache info
+fetch('/api/tile/cache/info').then(r => r.json()).then(d => {
+  const el = document.getElementById('tile-cache-size');
+  if (el) el.textContent = d.size_mb + ' MB';
+}).catch(() => {});
+
+async function clearTilesCache() {
+  const res = await fetch('/api/tile/cache/clear', { method: 'POST' });
+  const el = document.getElementById('tile-cache-size');
+  if (el) el.textContent = '0 MB';
+}
+
 // Popola nodi remoti
 fetch('/api/nodes').then(r=>r.json()).then(nodes => {
   const sel = document.getElementById('remote-node-select')
   nodes.filter(n=>!n.is_local).forEach(n => {
     const opt = document.createElement('option')
     opt.value = n.id
-    opt.textContent = (n.short_name || n.id) + ' — ' + (n.long_name || '')
+    opt.textContent = (n.short_name || n.id) + ' - ' + (n.long_name || '')
     sel.appendChild(opt)
   })
 })
 
 // Info sistema
 fetch('/api/status').then(r=>r.json()).then(s => {
-  document.getElementById('sys-info').innerHTML =
-    `Connesso: ${s.connected ? '✓' : '✗'} | Nodi: ${s.node_count} | RAM: ${s.ram_mb}MB`
+  const el = document.getElementById('sys-info')
+  if (el) el.textContent = 'Connesso: ' + (s.connected ? 'SI' : 'NO') + ' | Nodi: ' + s.node_count + ' | RAM: ' + s.ram_mb + 'MB'
 })
 
 async function saveNodeConfig() {
@@ -151,18 +314,12 @@ async function saveNodeConfig() {
     }
   }
   const r = await fetch('/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
-  document.getElementById('node-status').textContent = r.ok ? '✓ Salvato' : '✗ Errore'
+  document.getElementById('node-status').textContent = r.ok ? 'Salvato' : 'Errore'
 }
 
 async function saveLoraConfig() {
   const payload = { lora: { region: document.getElementById('lora-region').value, modemPreset: document.getElementById('lora-preset').value } }
   const r = await fetch('/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
-}
-
-async function setTheme(theme) {
-  await fetch('/api/set-theme', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({theme})})
-  document.body.className = 'theme-' + theme
-  document.documentElement.className = 'theme-' + theme
 }
 
 async function sendRemoteConfig() {
@@ -174,7 +331,7 @@ async function sendRemoteConfig() {
     device: { role: document.getElementById('remote-role').value }
   }
   const r = await fetch('/api/remote-config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
-  document.getElementById('remote-status').textContent = r.ok ? '✓ Inviato' : '✗ Errore'
+  document.getElementById('remote-status').textContent = r.ok ? 'Inviato' : 'Errore'
 }
 
 async function saveHardwareConfig() {
@@ -185,12 +342,162 @@ async function saveHardwareConfig() {
     display_rotation: document.getElementById('display-rotation').value,
   }
   const r = await fetch('/api/hardware-config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
-  document.getElementById('hw-status').textContent = r.ok ? '✓ Salvato (riavvia display per rotazione)' : '✗ Errore'
+  document.getElementById('hw-status').textContent = r.ok ? 'Salvato (riavvia display per rotazione)' : 'Errore'
 }
 
 async function saveBotConfig() {
   const payload = { echo: document.getElementById('bot-echo').checked }
   await fetch('/api/bot-config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
 }
+
+document.getElementById('btn-reset-setup')
+  .addEventListener('click', () => {
+    if (!confirm('Rieseguire il wizard di configurazione iniziale?')) return
+    fetch('/api/setup/reset', { method: 'POST' })
+      .then(() => { location.href = '/setup' })
+  })
+
+// ---- Theme editor ----
+const TE_VARS = ['--bg','--bg2','--bg3','--border','--text','--text2','--accent','--ok','--warn','--danger']
+let _teEditId  = null
+let _teOrigVars = {}
+
+function _slugify(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,32) || 'tema'
+}
+
+function _getCSSVar(v) {
+  return getComputedStyle(document.documentElement).getPropertyValue(v).trim()
+}
+
+function openThemeEditor(theme) {
+  _teEditId = theme ? theme.id : null
+  _teOrigVars = {}
+  for (const v of TE_VARS) _teOrigVars[v] = _getCSSVar(v) || '#000000'
+
+  document.getElementById('te-name').value = theme ? theme.name : ''
+
+  fetch('/api/themes/fonts').then(r=>r.json()).then(data => {
+    const sel = document.getElementById('te-font')
+    sel.textContent = ''
+    const allFonts = [...data.system_fonts, ...data.custom_fonts.map(f=>f.name)]
+    allFonts.forEach(f => {
+      const opt = document.createElement('option')
+      opt.value = f
+      opt.textContent = f
+      if (theme && theme.font === f) opt.selected = true
+      sel.appendChild(opt)
+    })
+    if (!theme) sel.value = 'system-ui'
+  })
+
+  const vars = theme ? theme.vars : _teOrigVars
+  for (const v of TE_VARS) {
+    const el = document.getElementById('te' + v)
+    if (el) el.value = vars[v] || '#000000'
+  }
+  for (const v of TE_VARS) {
+    const el = document.getElementById('te' + v)
+    if (el) el.oninput = () => document.documentElement.style.setProperty(v, el.value)
+  }
+  document.getElementById('te-font').onchange = e =>
+    document.documentElement.style.setProperty('font-family', e.target.value)
+
+  document.getElementById('theme-editor').style.display = 'block'
+  document.getElementById('theme-editor').scrollIntoView({behavior:'smooth'})
+}
+
+function cancelTheme() {
+  for (const v of TE_VARS) document.documentElement.style.removeProperty(v)
+  document.documentElement.style.removeProperty('font-family')
+  document.getElementById('theme-editor').style.display = 'none'
+}
+
+function saveTheme() {
+  const name = document.getElementById('te-name').value.trim()
+  if (!name) { document.getElementById('te-status').textContent = 'Inserisci un nome'; return }
+  const id   = _teEditId || _slugify(name)
+  const font = document.getElementById('te-font').value
+  const vars = {}
+  for (const v of TE_VARS) vars[v] = document.getElementById('te' + v).value
+  const btn = document.querySelector('#theme-editor .btn-primary')
+  btn.disabled = true
+  document.getElementById('te-status').textContent = 'Salvataggio\u2026'
+  fetch('/api/themes', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({id, name, font, vars})
+  })
+  .then(r=>r.json())
+  .then(data => {
+    btn.disabled = false
+    if (data.ok) {
+      document.getElementById('te-status').textContent = '\u2713 Salvato'
+      document.getElementById('theme-editor').style.display = 'none'
+      loadCustomThemes()
+    } else {
+      document.getElementById('te-status').textContent = 'Errore: ' + (data.error||'sconosciuto')
+    }
+  })
+}
+
+function loadCustomThemes() {
+  fetch('/api/themes').then(r=>r.json()).then(data => {
+    const list = document.getElementById('custom-themes-list')
+    list.textContent = ''
+    const custom = data.themes.filter(t => !t.builtin)
+    if (custom.length === 0) {
+      const p = document.createElement('p')
+      p.style.cssText = 'font-size:12px;color:var(--text2);padding:8px'
+      p.textContent = 'Nessun tema personalizzato.'
+      list.appendChild(p)
+      return
+    }
+    custom.forEach(t => {
+      const row = document.createElement('div')
+      row.className = 'setting-row'
+      const label = document.createElement('span')
+      label.textContent = t.name
+      label.style.fontSize = '13px'
+      const actions = document.createElement('div')
+      actions.style.cssText = 'display:flex;gap:4px'
+
+      const btnActivate = document.createElement('button')
+      btnActivate.className = 'btn btn-secondary'
+      btnActivate.style.fontSize = '11px'
+      btnActivate.textContent = 'Attiva'
+      btnActivate.onclick = () => {
+        fetch('/api/set-theme', {method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({theme: t.id})})
+          .then(r=>r.json()).then(d=>{ if(d.ok) location.reload() })
+      }
+
+      const btnEdit = document.createElement('button')
+      btnEdit.className = 'btn btn-secondary'
+      btnEdit.style.fontSize = '11px'
+      btnEdit.textContent = 'Modifica'
+      btnEdit.onclick = () => openThemeEditor(t)
+
+      const btnDel = document.createElement('button')
+      btnDel.className = 'btn btn-danger'
+      btnDel.style.fontSize = '11px'
+      btnDel.textContent = 'Elimina'
+      btnDel.onclick = () => {
+        if (!confirm('Eliminare il tema "' + t.name + '"?')) return
+        fetch('/api/themes/' + encodeURIComponent(t.id), {method:'DELETE'})
+          .then(r=>r.json()).then(() => loadCustomThemes())
+      }
+
+      actions.appendChild(btnActivate)
+      actions.appendChild(btnEdit)
+      actions.appendChild(btnDel)
+      row.appendChild(label)
+      row.appendChild(actions)
+      list.appendChild(row)
+    })
+  })
+}
+
+loadCustomThemes()
 </script>
 {% endblock %}

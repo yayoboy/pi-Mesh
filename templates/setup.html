@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=320, initial-scale=1, maximum-scale=1">
+  <title>pi-Mesh · Setup</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9/dist/leaflet.css">
+  <style>
+    .setup-wrap { max-inline-size: 360px; margin-inline: auto; padding: 24px 16px; }
+    .step { display: none; }
+    .step.active { display: block; }
+    .step-title { font-size: 1.1rem; font-weight: 600; margin-block-end: 16px; color: var(--text); }
+    .step-num { font-size: 0.75rem; color: var(--text2); margin-block-end: 4px; }
+    #map-pick { block-size: 220px; border-radius: 8px; margin-block: 12px; }
+    .coord-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-block: 8px; }
+    .coord-row label { font-size: 0.75rem; color: var(--text2); }
+    .coord-row input { inline-size: 100%; }
+    .port-select { inline-size: 100%; margin-block: 8px; }
+    .node-fields { display: grid; gap: 8px; margin-block: 8px; }
+    .progress { display: flex; gap: 6px; justify-content: center; margin-block-end: 24px; }
+    .progress span { inline-size: 24px; block-size: 4px; border-radius: 2px; background: var(--border); }
+    .progress span.done { background: var(--accent); }
+  </style>
+</head>
+<body class="theme-{{ theme }}">
+<div class="setup-wrap">
+  <h1 style="font-size:1.3rem;margin-block-end:8px;">pi-Mesh Setup</h1>
+
+  <div class="progress">
+    <span id="p1" class="done"></span>
+    <span id="p2"></span>
+    <span id="p3"></span>
+  </div>
+
+  <!-- STEP 1: Serial port -->
+  <div class="step active" id="step1">
+    <p class="step-num">Passo 1 di 3</p>
+    <p class="step-title">Seleziona la porta radio</p>
+    <select id="port-select" class="port-select"></select>
+    <button class="btn" id="btn-connect" onclick="connectPort()" disabled>Connetti</button>
+    <p id="connect-msg" style="font-size:0.8rem;color:var(--text2);margin-block-start:8px;"></p>
+    <button class="btn" style="margin-block-start:16px;" id="btn-step1-next"
+            onclick="goStep(2)" disabled>Avanti &rarr;</button>
+  </div>
+
+  <!-- STEP 2: Map area -->
+  <div class="step" id="step2">
+    <p class="step-num">Passo 2 di 3</p>
+    <p class="step-title">Area mappa</p>
+    <p style="font-size:0.8rem;color:var(--text2);">Trascina il rettangolo sull'area di interesse.</p>
+    <div id="map-pick"></div>
+    <div class="coord-row">
+      <div><label>Lat min</label><input type="number" id="lat-min" step="0.1" value="41.0"></div>
+      <div><label>Lat max</label><input type="number" id="lat-max" step="0.1" value="43.0"></div>
+      <div><label>Lon min</label><input type="number" id="lon-min" step="0.1" value="11.5"></div>
+      <div><label>Lon max</label><input type="number" id="lon-max" step="0.1" value="14.5"></div>
+    </div>
+    <button class="btn" onclick="goStep(3)">Avanti &rarr;</button>
+  </div>
+
+  <!-- STEP 3: Node name -->
+  <div class="step" id="step3">
+    <p class="step-num">Passo 3 di 3</p>
+    <p class="step-title">Nome nodo</p>
+    <p style="font-size:0.8rem;color:var(--text2);">Pre-compilato dalla radio. Modifica se necessario.</p>
+    <div class="node-fields">
+      <div>
+        <label style="font-size:0.8rem;color:var(--text2);">Nome lungo</label>
+        <input type="text" id="node-long" placeholder="es. MioNodo LoRa" maxlength="40">
+      </div>
+      <div>
+        <label style="font-size:0.8rem;color:var(--text2);">Nome breve (4 char)</label>
+        <input type="text" id="node-short" placeholder="NODO" maxlength="4">
+      </div>
+    </div>
+    <button class="btn" id="btn-save" onclick="saveSetup()">Completa setup &#10003;</button>
+    <p id="save-msg" style="font-size:0.8rem;color:var(--text2);margin-block-start:8px;"></p>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9/dist/leaflet.js"></script>
+<script>
+'use strict'
+let _port = ''
+let _map  = null
+let _rect = null
+
+// Carica porte seriali usando createElement (niente innerHTML con dati API)
+fetch('/api/setup/serial-ports')
+  .then(r => r.json())
+  .then(({ ports }) => {
+    const sel = document.getElementById('port-select')
+    sel.textContent = ''                        // svuota
+    if (ports.length === 0) {
+      const opt = document.createElement('option')
+      opt.value = ''
+      opt.textContent = 'Nessuna porta trovata'
+      sel.appendChild(opt)
+    } else {
+      ports.forEach(p => {
+        const opt = document.createElement('option')
+        opt.value = p
+        opt.textContent = p                     // textContent — safe
+        sel.appendChild(opt)
+      })
+      document.getElementById('btn-connect').disabled = false
+    }
+  })
+
+function connectPort() {
+  const port = document.getElementById('port-select').value
+  const msg  = document.getElementById('connect-msg')
+  const btn  = document.getElementById('btn-connect')
+  btn.disabled = true
+  msg.style.color = 'var(--text2)'
+  msg.textContent = 'Connessione in corso\u2026'
+
+  fetch('/api/setup/connect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ port })
+  })
+  .then(r => r.json())
+  .then(data => {
+    btn.disabled = false
+    _port = port
+    document.getElementById('btn-step1-next').disabled = false
+    if (data.ok) {
+      msg.style.color = 'var(--ok)'
+      msg.textContent = '\u2713 Connesso: ' + (data.node.long_name || data.node.id || port)
+      document.getElementById('node-long').value  = data.node.long_name  || ''
+      document.getElementById('node-short').value = data.node.short_name || ''
+    } else {
+      msg.style.color = 'var(--warn)'
+      msg.textContent = 'Connessione fallita \u2014 puoi procedere comunque.'
+    }
+  })
+  .catch(() => {
+    btn.disabled = false
+    _port = port
+    document.getElementById('btn-step1-next').disabled = false
+    msg.style.color = 'var(--warn)'
+    msg.textContent = 'Errore rete \u2014 puoi procedere comunque.'
+  })
+}
+
+function goStep(n) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'))
+  document.getElementById('step' + n).classList.add('active')
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById('p' + i).classList.toggle('done', i <= n)
+  }
+  if (n === 2 && !_map) initMap()
+}
+
+function initMap() {
+  _map = L.map('map-pick', { zoomControl: false }).setView([42, 13], 5)
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '\u00a9 OpenStreetMap'
+  }).addTo(_map)
+
+  const sw = [
+    parseFloat(document.getElementById('lat-min').value),
+    parseFloat(document.getElementById('lon-min').value)
+  ]
+  const ne = [
+    parseFloat(document.getElementById('lat-max').value),
+    parseFloat(document.getElementById('lon-max').value)
+  ]
+  _rect = L.rectangle([sw, ne], { color: '#4a9eff', weight: 2 }).addTo(_map)
+  _map.fitBounds(_rect.getBounds())
+  _rect.on('edit', syncCoords)
+  if (_rect.editing) _rect.editing.enable()
+}
+
+function syncCoords() {
+  const b = _rect.getBounds()
+  document.getElementById('lat-min').value = b.getSouth().toFixed(2)
+  document.getElementById('lat-max').value = b.getNorth().toFixed(2)
+  document.getElementById('lon-min').value = b.getWest().toFixed(2)
+  document.getElementById('lon-max').value = b.getEast().toFixed(2)
+}
+
+function saveSetup() {
+  const btn = document.getElementById('btn-save')
+  const msg = document.getElementById('save-msg')
+  btn.disabled = true
+  msg.style.color = 'var(--text2)'
+  msg.textContent = 'Salvataggio\u2026'
+
+  fetch('/api/setup/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      serial_port:    _port || document.getElementById('port-select').value,
+      map_lat_min:    parseFloat(document.getElementById('lat-min').value),
+      map_lat_max:    parseFloat(document.getElementById('lat-max').value),
+      map_lon_min:    parseFloat(document.getElementById('lon-min').value),
+      map_lon_max:    parseFloat(document.getElementById('lon-max').value),
+      node_long_name:  document.getElementById('node-long').value.trim(),
+      node_short_name: document.getElementById('node-short').value.trim(),
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      msg.style.color = 'var(--ok)'
+      msg.textContent = '\u2713 Setup completato! Reindirizzamento\u2026'
+      setTimeout(() => { location.href = '/home' }, 1500)
+    } else {
+      btn.disabled = false
+      msg.style.color = 'var(--danger)'
+      msg.textContent = 'Errore: ' + (data.error || 'sconosciuto')
+    }
+  })
+}
+</script>
+</body>
+</html>
