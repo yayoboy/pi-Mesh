@@ -156,3 +156,26 @@ async def test_get_fonts_returns_list(mock_hw, tmp_path, monkeypatch):
     assert "custom_fonts" in data
     names = [f["name"] for f in data["custom_fonts"]]
     assert "MyFont" in names
+
+
+@pytest.mark.asyncio
+async def test_base_html_injects_custom_theme_style(mock_hw, tmp_path, monkeypatch):
+    from httpx import AsyncClient, ASGITransport
+    themes_file = tmp_path / "themes.json"
+    themes_file.write_text(_json.dumps([{
+        "id": "my-theme", "name": "My Theme", "font": "system-ui",
+        "vars": {"--bg": "#aabbcc", "--bg2": "#222222", "--bg3": "#333333",
+                 "--border": "#444444", "--text": "#ffffff", "--text2": "#aaaaaa",
+                 "--accent": "#ff0000", "--ok": "#00ff00", "--warn": "#ffff00",
+                 "--danger": "#ff0000"}
+    }]))
+    app = _get_app()
+    monkeypatch.setattr("main.THEMES_PATH", str(themes_file))
+    monkeypatch.setattr("main.FONTS_PATH", str(tmp_path / "fonts"))
+    import config
+    config.UI_THEME = "my-theme"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        resp = await ac.get("/home")
+    assert resp.status_code == 200
+    assert b"#aabbcc" in resp.content
+    config.UI_THEME = "dark"  # reset

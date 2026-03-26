@@ -101,77 +101,61 @@ async def root():
 
 @app.get("/map")
 async def map_page(request: Request):
-    return templates.TemplateResponse(request, "map.html", {
+    return templates.TemplateResponse(request, "map.html", _base_ctx({
         "bounds":   cfg.MAP_BOUNDS,
         "zoom_min": cfg.MAP_ZOOM_MIN,
         "zoom_max": cfg.MAP_ZOOM_MAX,
-        "theme":    cfg.UI_THEME,
         "active":   "map",
-        "density": cfg.UI_STATUS_DENSITY,
-        "orientation": cfg.UI_ORIENTATION,
-        "channel_layout": cfg.UI_CHANNEL_LAYOUT,
-    })
+    }))
 
 @app.get("/settings")
 async def settings_page(request: Request):
     node_info = meshtastic_client.get_local_node()
-    return templates.TemplateResponse(request, "settings.html", {
+    return templates.TemplateResponse(request, "settings.html", _base_ctx({
         "node":             node_info,
-        "theme":            cfg.UI_THEME,
         "active":           "settings",
         "enc1":             (cfg.ENC1_A, cfg.ENC1_B, cfg.ENC1_SW),
         "enc2":             (cfg.ENC2_A, cfg.ENC2_B, cfg.ENC2_SW),
         "i2c_sensors":      cfg.I2C_SENSORS,
         "display_rotation": cfg.DISPLAY_ROTATION,
-        "density": cfg.UI_STATUS_DENSITY,
-        "orientation": cfg.UI_ORIENTATION,
-        "channel_layout": cfg.UI_CHANNEL_LAYOUT,
-    })
+    }))
 
 
 @app.get("/home")
 async def home_page(request: Request):
     nodes    = await database.get_nodes(_conn)
     node_info = meshtastic_client.get_local_node()
-    return templates.TemplateResponse(request, "home.html", {
+    return templates.TemplateResponse(request, "home.html", _base_ctx({
         "nodes": nodes, "node": node_info,
-        "theme": cfg.UI_THEME, "density": cfg.UI_STATUS_DENSITY,
-        "orientation": cfg.UI_ORIENTATION, "channel_layout": cfg.UI_CHANNEL_LAYOUT,
         "active": "home", "now": int(time.time()),
-    })
+    }))
 
 @app.get("/channels")
 async def channels_page(request: Request):
     msgs  = await database.get_messages(_conn, channel=0, limit=50)
     nodes = await database.get_nodes(_conn)
-    return templates.TemplateResponse(request, "channels.html", {
+    return templates.TemplateResponse(request, "channels.html", _base_ctx({
         "messages": msgs, "nodes": nodes,
-        "theme": cfg.UI_THEME, "density": cfg.UI_STATUS_DENSITY,
-        "orientation": cfg.UI_ORIENTATION, "channel_layout": cfg.UI_CHANNEL_LAYOUT,
         "active": "channels",
-    })
+    }))
 
 @app.get("/hardware")
 async def hardware_page(request: Request):
     sensors = getattr(app.state, "i2c_sensors", [])
-    return templates.TemplateResponse(request, "hardware.html", {
+    return templates.TemplateResponse(request, "hardware.html", _base_ctx({
         "i2c_sensors": sensors,
         "enc1": (cfg.ENC1_A, cfg.ENC1_B, cfg.ENC1_SW),
         "enc2": (cfg.ENC2_A, cfg.ENC2_B, cfg.ENC2_SW),
-        "theme": cfg.UI_THEME, "density": cfg.UI_STATUS_DENSITY,
-        "orientation": cfg.UI_ORIENTATION, "channel_layout": cfg.UI_CHANNEL_LAYOUT,
         "active": "hardware",
-    })
+    }))
 
 @app.get("/remote")
 async def remote_page(request: Request):
     nodes = await database.get_nodes(_conn)
-    return templates.TemplateResponse(request, "remote.html", {
+    return templates.TemplateResponse(request, "remote.html", _base_ctx({
         "nodes": nodes,
-        "theme": cfg.UI_THEME, "density": cfg.UI_STATUS_DENSITY,
-        "orientation": cfg.UI_ORIENTATION, "channel_layout": cfg.UI_CHANNEL_LAYOUT,
         "active": "remote", "now": int(time.time()),
-    })
+    }))
 
 # --- Route API JSON ---
 
@@ -400,9 +384,7 @@ async def legacy_telemetry(): return RedirectResponse("/hardware")
 
 @app.get("/setup")
 async def setup_page(request: Request):
-    return templates.TemplateResponse(request, "setup.html", {
-        "theme": cfg.UI_THEME,
-    })
+    return templates.TemplateResponse(request, "setup.html", _base_ctx())
 
 
 @app.get("/api/setup/serial-ports")
@@ -465,6 +447,36 @@ def _save_themes(themes: list) -> None:
     os.makedirs(os.path.dirname(THEMES_PATH) or ".", exist_ok=True)
     with open(THEMES_PATH, "w") as f:
         _json.dump(themes, f, indent=2)
+
+
+def _get_custom_theme(theme_id: str) -> dict | None:
+    """Returns the custom theme dict if found, None if built-in or not found."""
+    if theme_id in ("dark", "light", "hc"):
+        return None
+    for t in _load_themes():
+        if t["id"] == theme_id:
+            return t
+    return None
+
+
+def _base_ctx(extra: dict = None) -> dict:
+    """Shared context for all templates: theme, font, custom theme injection."""
+    ct = _get_custom_theme(cfg.UI_THEME)
+    cf = {}
+    for p in sorted(_glob.glob(f"{FONTS_PATH}/*.ttf") + _glob.glob(f"{FONTS_PATH}/*.woff2")):
+        name = os.path.splitext(os.path.basename(p))[0]
+        cf[name] = os.path.basename(p)
+    ctx = {
+        "theme":          cfg.UI_THEME,
+        "density":        cfg.UI_STATUS_DENSITY,
+        "orientation":    cfg.UI_ORIENTATION,
+        "channel_layout": cfg.UI_CHANNEL_LAYOUT,
+        "custom_theme":   ct,
+        "custom_fonts":   cf,
+    }
+    if extra:
+        ctx.update(extra)
+    return ctx
 
 
 def _read_node_info(port: str) -> dict:

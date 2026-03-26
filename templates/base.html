@@ -5,6 +5,23 @@
   <meta name="viewport" content="width=320, initial-scale=1, maximum-scale=1">
   <title>pi-Mesh</title>
   <link rel="stylesheet" href="/static/style.css">
+  {% if custom_fonts %}
+  <style>
+  {% for font_name, font_file in custom_fonts.items() %}
+  @font-face { font-family: {{ font_name | e }}; src: url('/static/fonts/{{ font_file | e }}'); }
+  {% endfor %}
+  </style>
+  {% endif %}
+  {% if custom_theme %}
+  <style id="custom-theme-style">
+  body.theme-{{ theme | e }} {
+    font-family: {{ custom_theme.font | e }};
+  {% for var, val in custom_theme.vars.items() %}
+    {{ var | e }}: {{ val | e }};
+  {% endfor %}
+  }
+  </style>
+  {% endif %}
   {% include 'icons.svg' %}
 </head>
 <body
