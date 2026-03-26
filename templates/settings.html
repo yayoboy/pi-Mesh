@@ -28,6 +28,66 @@
   </div>
 </div>
 
+<div class="section-header">Temi custom</div>
+<div id="custom-themes-list" style="padding:4px 0"></div>
+<div style="padding:8px">
+  <button class="btn btn-secondary" style="width:100%;font-size:12px" onclick="openThemeEditor(null)">+ Nuovo tema</button>
+</div>
+
+<div id="theme-editor" style="display:none;border-top:1px solid var(--border)">
+  <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+
+    <div class="setting-row">
+      <span class="setting-label">Nome</span>
+      <input type="text" id="te-name" maxlength="40" placeholder="Es. Foresta">
+    </div>
+
+    <div class="setting-row">
+      <span class="setting-label">Font</span>
+      <select id="te-font"></select>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <label style="font-size:11px;color:var(--text2)">Sfondo principale
+        <input type="color" id="te--bg" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Sfondo card
+        <input type="color" id="te--bg2" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Sfondo input
+        <input type="color" id="te--bg3" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Bordi
+        <input type="color" id="te--border" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Testo primario
+        <input type="color" id="te--text" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Testo secondario
+        <input type="color" id="te--text2" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Accent / bottoni
+        <input type="color" id="te--accent" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">OK / online
+        <input type="color" id="te--ok" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Avviso
+        <input type="color" id="te--warn" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+      <label style="font-size:11px;color:var(--text2)">Errore
+        <input type="color" id="te--danger" style="width:100%;height:28px;padding:2px;border:1px solid var(--border);border-radius:4px;background:none;cursor:pointer">
+      </label>
+    </div>
+
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary"   style="flex:1;font-size:12px" onclick="saveTheme()">Salva</button>
+      <button class="btn btn-secondary" style="flex:1;font-size:12px" onclick="cancelTheme()">Annulla</button>
+    </div>
+    <div id="te-status" style="font-size:11px;color:var(--text2)"></div>
+  </div>
+</div>
+
 <div class="section-header">Interfaccia</div>
 <div class="card" style="margin-top:0;margin-bottom:0;border-radius:0;border-left:none;border-right:none">
   <div class="setting-row">
@@ -296,5 +356,148 @@ document.getElementById('btn-reset-setup')
     fetch('/api/setup/reset', { method: 'POST' })
       .then(() => { location.href = '/setup' })
   })
+
+// ---- Theme editor ----
+const TE_VARS = ['--bg','--bg2','--bg3','--border','--text','--text2','--accent','--ok','--warn','--danger']
+let _teEditId  = null
+let _teOrigVars = {}
+
+function _slugify(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,32) || 'tema'
+}
+
+function _getCSSVar(v) {
+  return getComputedStyle(document.documentElement).getPropertyValue(v).trim()
+}
+
+function openThemeEditor(theme) {
+  _teEditId = theme ? theme.id : null
+  _teOrigVars = {}
+  for (const v of TE_VARS) _teOrigVars[v] = _getCSSVar(v) || '#000000'
+
+  document.getElementById('te-name').value = theme ? theme.name : ''
+
+  fetch('/api/themes/fonts').then(r=>r.json()).then(data => {
+    const sel = document.getElementById('te-font')
+    sel.textContent = ''
+    const allFonts = [...data.system_fonts, ...data.custom_fonts.map(f=>f.name)]
+    allFonts.forEach(f => {
+      const opt = document.createElement('option')
+      opt.value = f
+      opt.textContent = f
+      if (theme && theme.font === f) opt.selected = true
+      sel.appendChild(opt)
+    })
+    if (!theme) sel.value = 'system-ui'
+  })
+
+  const vars = theme ? theme.vars : _teOrigVars
+  for (const v of TE_VARS) {
+    const el = document.getElementById('te' + v)
+    if (el) el.value = vars[v] || '#000000'
+  }
+  for (const v of TE_VARS) {
+    const el = document.getElementById('te' + v)
+    if (el) el.oninput = () => document.documentElement.style.setProperty(v, el.value)
+  }
+  document.getElementById('te-font').onchange = e =>
+    document.documentElement.style.setProperty('font-family', e.target.value)
+
+  document.getElementById('theme-editor').style.display = 'block'
+  document.getElementById('theme-editor').scrollIntoView({behavior:'smooth'})
+}
+
+function cancelTheme() {
+  for (const v of TE_VARS) document.documentElement.style.removeProperty(v)
+  document.documentElement.style.removeProperty('font-family')
+  document.getElementById('theme-editor').style.display = 'none'
+}
+
+function saveTheme() {
+  const name = document.getElementById('te-name').value.trim()
+  if (!name) { document.getElementById('te-status').textContent = 'Inserisci un nome'; return }
+  const id   = _teEditId || _slugify(name)
+  const font = document.getElementById('te-font').value
+  const vars = {}
+  for (const v of TE_VARS) vars[v] = document.getElementById('te' + v).value
+  const btn = document.querySelector('#theme-editor .btn-primary')
+  btn.disabled = true
+  document.getElementById('te-status').textContent = 'Salvataggio\u2026'
+  fetch('/api/themes', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({id, name, font, vars})
+  })
+  .then(r=>r.json())
+  .then(data => {
+    btn.disabled = false
+    if (data.ok) {
+      document.getElementById('te-status').textContent = '\u2713 Salvato'
+      document.getElementById('theme-editor').style.display = 'none'
+      loadCustomThemes()
+    } else {
+      document.getElementById('te-status').textContent = 'Errore: ' + (data.error||'sconosciuto')
+    }
+  })
+}
+
+function loadCustomThemes() {
+  fetch('/api/themes').then(r=>r.json()).then(data => {
+    const list = document.getElementById('custom-themes-list')
+    list.textContent = ''
+    const custom = data.themes.filter(t => !t.builtin)
+    if (custom.length === 0) {
+      const p = document.createElement('p')
+      p.style.cssText = 'font-size:12px;color:var(--text2);padding:8px'
+      p.textContent = 'Nessun tema personalizzato.'
+      list.appendChild(p)
+      return
+    }
+    custom.forEach(t => {
+      const row = document.createElement('div')
+      row.className = 'setting-row'
+      const label = document.createElement('span')
+      label.textContent = t.name
+      label.style.fontSize = '13px'
+      const actions = document.createElement('div')
+      actions.style.cssText = 'display:flex;gap:4px'
+
+      const btnActivate = document.createElement('button')
+      btnActivate.className = 'btn btn-secondary'
+      btnActivate.style.fontSize = '11px'
+      btnActivate.textContent = 'Attiva'
+      btnActivate.onclick = () => {
+        fetch('/api/set-theme', {method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({theme: t.id})})
+          .then(r=>r.json()).then(d=>{ if(d.ok) location.reload() })
+      }
+
+      const btnEdit = document.createElement('button')
+      btnEdit.className = 'btn btn-secondary'
+      btnEdit.style.fontSize = '11px'
+      btnEdit.textContent = 'Modifica'
+      btnEdit.onclick = () => openThemeEditor(t)
+
+      const btnDel = document.createElement('button')
+      btnDel.className = 'btn btn-danger'
+      btnDel.style.fontSize = '11px'
+      btnDel.textContent = 'Elimina'
+      btnDel.onclick = () => {
+        if (!confirm('Eliminare il tema "' + t.name + '"?')) return
+        fetch('/api/themes/' + encodeURIComponent(t.id), {method:'DELETE'})
+          .then(r=>r.json()).then(() => loadCustomThemes())
+      }
+
+      actions.appendChild(btnActivate)
+      actions.appendChild(btnEdit)
+      actions.appendChild(btnDel)
+      row.appendChild(label)
+      row.appendChild(actions)
+      list.appendChild(row)
+    })
+  })
+}
+
+loadCustomThemes()
 </script>
 {% endblock %}
