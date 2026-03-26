@@ -59,8 +59,8 @@ async def test_get_themes_includes_custom(mock_hw, tmp_path, monkeypatch):
                  "--accent": "#ff0000", "--ok": "#00ff00", "--warn": "#ffff00",
                  "--danger": "#ff0000"}
     }]))
-    monkeypatch.setattr("main.THEMES_PATH", str(themes_file))
     app = _get_app()
+    monkeypatch.setattr("main.THEMES_PATH", str(themes_file))
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.get("/api/themes")
     data = resp.json()
