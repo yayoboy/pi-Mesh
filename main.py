@@ -268,8 +268,9 @@ async def keyboard_hide():
 @app.post("/api/set-theme")
 async def set_theme(payload: dict):
     theme = payload.get("theme", "dark")
-    if theme not in ("dark", "light", "hc"):
-        return JSONResponse({"ok": False}, status_code=400)
+    _valid_theme_ids = {"dark", "light", "hc"} | {t["id"] for t in _load_themes()}
+    if theme not in _valid_theme_ids:
+        return JSONResponse({"ok": False, "error": "tema non trovato"}, status_code=400)
     _update_config_env("UI_THEME", theme)
     cfg.UI_THEME = theme
     return {"ok": True}

@@ -179,3 +179,32 @@ async def test_base_html_injects_custom_theme_style(mock_hw, tmp_path, monkeypat
     assert resp.status_code == 200
     assert b"#aabbcc" in resp.content
     config.UI_THEME = "dark"  # reset
+
+
+@pytest.mark.asyncio
+async def test_set_theme_accepts_custom(mock_hw, tmp_path, monkeypatch):
+    from httpx import AsyncClient, ASGITransport
+    themes_file = tmp_path / "themes.json"
+    themes_file.write_text(_json.dumps([{
+        "id": "my-theme", "name": "My", "font": "system-ui",
+        "vars": {"--bg": "#111111", "--bg2": "#222222", "--bg3": "#333333",
+                 "--border": "#444444", "--text": "#ffffff", "--text2": "#aaaaaa",
+                 "--accent": "#ff0000", "--ok": "#00ff00", "--warn": "#ffff00",
+                 "--danger": "#ff0000"}
+    }]))
+    app = _get_app()
+    monkeypatch.setattr("main.THEMES_PATH", str(themes_file))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        resp = await ac.post("/api/set-theme", json={"theme": "my-theme"})
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_set_theme_rejects_unknown(mock_hw, tmp_path, monkeypatch):
+    from httpx import AsyncClient, ASGITransport
+    app = _get_app()
+    monkeypatch.setattr("main.THEMES_PATH", str(tmp_path / "themes.json"))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        resp = await ac.post("/api/set-theme", json={"theme": "nonexistent"})
+    assert resp.status_code == 400
