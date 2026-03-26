@@ -530,10 +530,9 @@ async def save_theme(payload: dict):
         return JSONResponse({"ok": False, "error": "id riservato"}, status_code=400)
     name = str(payload.get("name", theme_id))[:40]
     font = str(payload.get("font", "system-ui"))
-    import os as _os2, glob as _glob2
     allowed_fonts = set(_SYSTEM_FONTS)
-    for p in _glob2.glob(f"{FONTS_PATH}/*.ttf") + _glob2.glob(f"{FONTS_PATH}/*.woff2"):
-        allowed_fonts.add(_os2.path.splitext(_os2.path.basename(p))[0])
+    for p in _glob.glob(f"{FONTS_PATH}/*.ttf") + _glob.glob(f"{FONTS_PATH}/*.woff2"):
+        allowed_fonts.add(os.path.splitext(os.path.basename(p))[0])
     if font not in allowed_fonts:
         return JSONResponse({"ok": False, "error": "font non valido"}, status_code=400)
     vars_raw = payload.get("vars", {})
@@ -552,12 +551,11 @@ async def save_theme(payload: dict):
 
 @app.get("/api/themes/fonts")
 async def list_fonts():
-    import os as _os3, glob as _glob3
     custom = []
-    for p in sorted(_glob3.glob(f"{FONTS_PATH}/*.ttf") + _glob3.glob(f"{FONTS_PATH}/*.woff2")):
-        name = _os3.path.splitext(_os3.path.basename(p))[0]
-        ext  = _os3.path.splitext(p)[1].lstrip(".")
-        custom.append({"name": name, "file": _os3.path.basename(p), "format": ext})
+    for p in sorted(_glob.glob(f"{FONTS_PATH}/*.ttf") + _glob.glob(f"{FONTS_PATH}/*.woff2")):
+        name = os.path.splitext(os.path.basename(p))[0]
+        ext  = os.path.splitext(p)[1].lstrip(".")
+        custom.append({"name": name, "file": os.path.basename(p), "format": ext})
     return {"system_fonts": _SYSTEM_FONTS, "custom_fonts": custom}
 
 
