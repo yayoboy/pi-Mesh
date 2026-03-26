@@ -517,6 +517,59 @@ async def list_themes():
     return {"themes": _BUILTIN_THEMES + [dict(t, builtin=False) for t in custom]}
 
 
+_REQUIRED_VARS = {"--bg","--bg2","--bg3","--border","--text","--text2",
+                  "--accent","--ok","--warn","--danger"}
+
+
+@app.post("/api/themes")
+async def save_theme(payload: dict):
+    theme_id = str(payload.get("id", "")).strip().lower()
+    if not _ID_RE.match(theme_id):
+        return JSONResponse({"ok": False, "error": "id non valido"}, status_code=400)
+    if theme_id in ("dark", "light", "hc"):
+        return JSONResponse({"ok": False, "error": "id riservato"}, status_code=400)
+    name = str(payload.get("name", theme_id))[:40]
+    font = str(payload.get("font", "system-ui"))
+    import os as _os2, glob as _glob2
+    allowed_fonts = set(_SYSTEM_FONTS)
+    for p in _glob2.glob(f"{FONTS_PATH}/*.ttf") + _glob2.glob(f"{FONTS_PATH}/*.woff2"):
+        allowed_fonts.add(_os2.path.splitext(_os2.path.basename(p))[0])
+    if font not in allowed_fonts:
+        return JSONResponse({"ok": False, "error": "font non valido"}, status_code=400)
+    vars_raw = payload.get("vars", {})
+    if not isinstance(vars_raw, dict) or not _REQUIRED_VARS.issubset(vars_raw.keys()):
+        return JSONResponse({"ok": False, "error": "vars incompleto"}, status_code=400)
+    for k, v in vars_raw.items():
+        if k not in _REQUIRED_VARS:
+            return JSONResponse({"ok": False, "error": f"variabile sconosciuta: {k}"}, status_code=400)
+        if not _COLOR_RE.match(str(v)):
+            return JSONResponse({"ok": False, "error": f"colore non valido: {k}={v}"}, status_code=400)
+    themes = [t for t in _load_themes() if t["id"] != theme_id]
+    themes.append({"id": theme_id, "name": name, "font": font, "vars": vars_raw})
+    _save_themes(themes)
+    return {"ok": True}
+
+
+@app.get("/api/themes/fonts")
+async def list_fonts():
+    import os as _os3, glob as _glob3
+    custom = []
+    for p in sorted(_glob3.glob(f"{FONTS_PATH}/*.ttf") + _glob3.glob(f"{FONTS_PATH}/*.woff2")):
+        name = _os3.path.splitext(_os3.path.basename(p))[0]
+        ext  = _os3.path.splitext(p)[1].lstrip(".")
+        custom.append({"name": name, "file": _os3.path.basename(p), "format": ext})
+    return {"system_fonts": _SYSTEM_FONTS, "custom_fonts": custom}
+
+
+@app.delete("/api/themes/{theme_id}")
+async def delete_theme(theme_id: str):
+    if theme_id in ("dark", "light", "hc"):
+        return JSONResponse({"ok": False, "error": "tema built-in non eliminabile"}, status_code=400)
+    themes = [t for t in _load_themes() if t["id"] != theme_id]
+    _save_themes(themes)
+    return {"ok": True}
+
+
 def _update_config_env(key: str, value: str):
     env_path = "config.env"
     try:
