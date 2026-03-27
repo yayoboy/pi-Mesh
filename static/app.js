@@ -228,8 +228,11 @@ const markerCache = new Map()
 
 function initMapIfNeeded() {
   if (mapReady || typeof L === 'undefined') return
-  const bounds = window.MAP_BOUNDS
+  const el = document.getElementById('map-container')
+  if (!el) return
+  const bounds = JSON.parse(el.dataset.bounds || 'null')
   if (!bounds) return
+  const zoomMax = parseInt(el.dataset.zoomMax || '12')
   const center = [(bounds.lat_min + bounds.lat_max) / 2, (bounds.lon_min + bounds.lon_max) / 2]
 
   leafletMap = L.map('map-container', {
@@ -238,10 +241,11 @@ function initMapIfNeeded() {
     maxBoundsViscosity: 1.0,
   })
 
-  const osmLayer  = L.tileLayer('/tiles/osm/{z}/{x}/{y}',  { maxZoom: window.MAP_ZOOM_MAX })
-  const topoLayer = L.tileLayer('/tiles/topo/{z}/{x}/{y}', { maxZoom: window.MAP_ZOOM_MAX })
+  const osmLayer       = L.tileLayer('/tiles/osm/{z}/{x}/{y}',       { maxZoom: zoomMax })
+  const topoLayer      = L.tileLayer('/tiles/topo/{z}/{x}/{y}',      { maxZoom: zoomMax })
+  const satelliteLayer = L.tileLayer('/tiles/satellite/{z}/{x}/{y}', { maxZoom: zoomMax })
   osmLayer.addTo(leafletMap)
-  L.control.layers({ 'Stradale': osmLayer, 'Topo': topoLayer }).addTo(leafletMap)
+  L.control.layers({ 'Stradale': osmLayer, 'Topo': topoLayer, 'Satellite': satelliteLayer }).addTo(leafletMap)
 
   nodeCache.forEach(node => updateMapMarker(node))
   mapReady = true

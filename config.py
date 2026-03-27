@@ -20,8 +20,8 @@ DB_RUNTIME       = "/tmp/mesh_runtime.db"
 DB_SYNC_INTERVAL = int(os.getenv("DB_SYNC_INTERVAL", "300"))
 
 # GPIO encoder
-ENC1_A  = int(os.getenv("ENC1_A", "17"))
-ENC1_B  = int(os.getenv("ENC1_B", "27"))
+ENC1_A  = int(os.getenv("ENC1_A", "23"))
+ENC1_B  = int(os.getenv("ENC1_B", "24"))
 ENC1_SW = int(os.getenv("ENC1_SW", "22"))
 ENC2_A  = int(os.getenv("ENC2_A", "5"))
 ENC2_B  = int(os.getenv("ENC2_B", "6"))

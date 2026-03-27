@@ -225,7 +225,6 @@ def _parse_message(packet) -> dict | None:
             "is_outgoing": 0,
             "snr":         packet.get("rxSnr"),
             "rssi":        packet.get("rxRssi"),
-            "rx_snr":      packet.get("rxSnr"),
         }
     except Exception as e:
         logging.error(f"Parsing messaggio fallito: {e}")

@@ -25,7 +25,7 @@ async def broadcast(data: dict):
             await ws.send_json(data)
         except Exception:
             dead.add(ws)
-    ws_clients -= dead
+    ws_clients.difference_update(dead)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -48,12 +48,15 @@ async def lifespan(app: FastAPI):
     drivers = sensor_handler.init(sensor_list)
     asyncio.create_task(sensor_handler.start_polling(drivers, _conn, broadcast))
 
-    gpio_handler.init(
-        (cfg.ENC1_A, cfg.ENC1_B, cfg.ENC1_SW),
-        (cfg.ENC2_A, cfg.ENC2_B, cfg.ENC2_SW),
-        broadcast,
-        db_conn=_conn
-    )
+    try:
+        gpio_handler.init(
+            (cfg.ENC1_A, cfg.ENC1_B, cfg.ENC1_SW),
+            (cfg.ENC2_A, cfg.ENC2_B, cfg.ENC2_SW),
+            broadcast,
+            db_conn=_conn
+        )
+    except Exception as e:
+        logging.warning(f"GPIO non disponibile, encoder disabilitati: {e}")
 
     watchdog.start_all(_conn, broadcast)
 
@@ -93,23 +96,22 @@ async def root():
 @app.get("/messages")
 async def messages_page(request: Request):
     msgs = await database.get_messages(_conn, channel=0, limit=50)
-    return templates.TemplateResponse("messages.html", {
-        "request": request, "messages": msgs,
+    return templates.TemplateResponse(request, "messages.html", {
+        "messages": msgs,
         "theme": cfg.UI_THEME, "active": "messages"
     })
 
 @app.get("/nodes")
 async def nodes_page(request: Request):
     nodes = await database.get_nodes(_conn)
-    return templates.TemplateResponse("nodes.html", {
-        "request": request, "nodes": nodes,
+    return templates.TemplateResponse(request, "nodes.html", {
+        "nodes": nodes,
         "theme": cfg.UI_THEME, "active": "nodes"
     })
 
 @app.get("/map")
 async def map_page(request: Request):
-    return templates.TemplateResponse("map.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "map.html", {
         "bounds":   cfg.MAP_BOUNDS,
         "zoom_min": cfg.MAP_ZOOM_MIN,
         "zoom_max": cfg.MAP_ZOOM_MAX,
@@ -120,16 +122,15 @@ async def map_page(request: Request):
 @app.get("/telemetry")
 async def telemetry_page(request: Request):
     nodes = await database.get_nodes(_conn)
-    return templates.TemplateResponse("telemetry.html", {
-        "request": request, "nodes": nodes,
+    return templates.TemplateResponse(request, "telemetry.html", {
+        "nodes": nodes,
         "theme": cfg.UI_THEME, "active": "telemetry"
     })
 
 @app.get("/settings")
 async def settings_page(request: Request):
     node_info = meshtastic_client.get_local_node()
-    return templates.TemplateResponse("settings.html", {
-        "request":          request,
+    return templates.TemplateResponse(request, "settings.html", {
         "node":             node_info,
         "theme":            cfg.UI_THEME,
         "active":           "settings",
@@ -207,7 +208,7 @@ async def api_status():
 async def serve_tile(source: str, z: int, x: int, y: int):
     from fastapi.responses import Response
     # Validate source to prevent path traversal
-    if source not in ("osm", "topo"):
+    if source not in ("osm", "topo", "satellite"):
         return JSONResponse({"error": "invalid source"}, status_code=400)
     mbtiles_path = f"static/tiles/{source}.mbtiles"
     if os.path.isfile(mbtiles_path):

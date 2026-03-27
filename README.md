@@ -1,6 +1,6 @@
 # pi-Mesh
 
-A touch-friendly web dashboard for [Meshtastic](https://meshtastic.org/) LoRa mesh radio networks, designed to run on a **Raspberry Pi 3 A+** with a **Waveshare 3.5" SPI display** (480×320 px). Control your mesh network from a pocket-sized device — no internet required.
+A touch-friendly web dashboard for [Meshtastic](https://meshtastic.org/) LoRa mesh radio networks, designed to run on a **Raspberry Pi** with a **Waveshare 3.5" SPI display** (480×320 px). Control your mesh network from a pocket-sized device — no internet required.
 
 ![Dashboard preview: 5 tabs — Messages, Nodes, Map, Telemetry, Settings]
 
@@ -23,7 +23,7 @@ pi-Mesh connects to a Heltec LoRa radio via USB serial and exposes a real-time w
 
 | Component | Details |
 |-----------|---------|
-| Raspberry Pi 3 A+ | 512 MB RAM, ARM Cortex-A53 |
+| Raspberry Pi 3B+ / 4 / Zero 2W | 512 MB RAM minimum |
 | Waveshare 3.5" SPI Display | 480×320, XPT2046 resistive touch, ILI9486 driver |
 | Heltec LoRa 32 V3 (or compatible) | Connected via USB, exposed as `/dev/ttyMESHTASTIC` |
 | 2× Rotary encoders (optional) | GPIO-connected, for screen-free navigation |
@@ -32,54 +32,214 @@ pi-Mesh connects to a Heltec LoRa radio via USB serial and exposes a real-time w
 
 ---
 
-## Quick Start
+## Installation Guide
 
-### 1. Clone and install
+> **Key concept:** This guide has two types of steps:
+> - Steps marked **[PC/Mac]** — run these on your personal computer
+> - Steps marked **[Raspberry Pi]** — run these on the Pi, via SSH from your PC
+
+---
+
+### Step 0 — Prepare the Raspberry Pi
+
+> **[PC/Mac]** Do this before touching the Pi.
+
+1. Download and install **Raspberry Pi Imager** from [raspberrypi.com/software](https://www.raspberrypi.com/software/)
+2. Insert the microSD card into your PC
+3. In Raspberry Pi Imager:
+   - Choose your Pi model
+   - Choose **Raspberry Pi OS Lite (64-bit)** (no desktop needed)
+   - Click the gear icon (⚙️) before writing to pre-configure:
+     - **Hostname:** `pi-mesh`
+     - **Username/Password:** e.g. `pi` / `yourpassword`
+     - **Wi-Fi SSID and password** (your home network)
+     - **Enable SSH** → "Use password authentication"
+4. Write the image to the SD card, then insert it into the Pi and power it on
+5. Wait ~60 seconds for first boot
+
+---
+
+### Step 1 — Connect to the Pi via SSH
+
+> **[PC/Mac]** You'll do all the following steps by remote-controlling the Pi from your PC.
+
+Open a terminal on your PC (Terminal on Mac, PowerShell or Git Bash on Windows) and run:
 
 ```bash
+ssh pi@pi-mesh.local
+```
+
+> If `pi-mesh.local` doesn't work, find the Pi's IP address from your router's admin panel (usually at `192.168.1.1`) and use that instead:
+> ```bash
+> ssh pi@192.168.1.42
+> ```
+
+You'll be prompted for the password you set in Step 0. Once logged in, you'll see the Pi's command prompt — **all commands from here on run on the Pi unless noted otherwise.**
+
+---
+
+### Step 2 — Install system dependencies
+
+> **[Raspberry Pi]** Run this after logging in via SSH.
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3-pip python3-venv git python3-lgpio
+```
+
+> `python3-lgpio` is the system GPIO library used by pi-Mesh to control rotary encoders and the buzzer. It must be installed via `apt` (not `pip`) because it is not available as a standard PyPI package on Raspberry Pi OS Trixie (Debian 13).
+>
+> **Note:** On older Raspberry Pi OS (Bullseye or earlier) you may use `pigpiod` instead — see [Troubleshooting](#troubleshooting).
+
+---
+
+### Step 3 — Install the Waveshare display driver
+
+> **[Raspberry Pi]** Skip this if you're not using the physical display (e.g. testing headlessly).
+
+The Waveshare 3.5" SPI display requires a custom driver. Follow [Waveshare's official guide](https://www.waveshare.com/wiki/3.5inch_RPi_LCD_(A)) to install `LCD-show`, then come back here.
+
+After installing, set the display rotation in `config.env` (Step 5).
+
+---
+
+### Step 4 — Clone the repository
+
+> **[Raspberry Pi]**
+
+```bash
+cd ~
 git clone https://github.com/<your-username>/pi-Mesh.git
 cd pi-Mesh
-python3 -m venv venv
+```
+
+Create and activate a Python virtual environment, then install dependencies:
+
+```bash
+python3 -m venv --system-site-packages venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Configure
+> The `--system-site-packages` flag lets the venv access `python3-lgpio` (installed via `apt` in Step 2) alongside the packages installed via `pip`. Without this flag, GPIO would not work.
+>
+> You need to activate the venv (`source venv/bin/activate`) each time you open a new SSH session and want to run the app manually.
+
+---
+
+### Step 5 — Configure
+
+> **[Raspberry Pi]**
+
+Copy the default config file and open it for editing:
 
 ```bash
-cp config.env /boot/firmware/config.env   # or keep it in the project root
+cp config.env config.env.local
+nano config.env.local
 ```
 
-Edit the key settings:
+Key settings to check:
 
 ```env
-# Serial port where the Heltec radio appears
+# USB serial port of the Heltec radio — find it with: ls /dev/ttyUSB* /dev/ttyACM*
 SERIAL_PORT=/dev/ttyMESHTASTIC
 
-# Where to persist the database on the SD card
-DB_PERSISTENT=/home/pi/meshtastic-pi/data/mesh.db
+# Path where the database is saved permanently on the SD card
+DB_PERSISTENT=/home/pi/pi-Mesh/data/mesh.db
 
-# Map bounding box (default: Central Italy)
+# Map bounding box — set to your geographic area
 MAP_LAT_MIN=41.0
 MAP_LAT_MAX=43.0
 MAP_LON_MIN=11.5
 MAP_LON_MAX=14.5
 ```
 
-### 3. Run
+Save and exit nano: press `Ctrl+X`, then `Y`, then `Enter`.
+
+> **Finding the radio's serial port:** Plug the Heltec into the Pi's USB port, then run:
+> ```bash
+> ls /dev/ttyUSB* /dev/ttyACM*
+> ```
+> You'll see something like `/dev/ttyUSB0` or `/dev/ttyACM0`. Set `SERIAL_PORT` to that value.
+> To make it permanent, you can also create a udev rule — see [Troubleshooting](#troubleshooting).
+
+---
+
+### Step 6 — Run (manual test)
+
+> **[Raspberry Pi]**
+
+Make sure you're in the project directory with the venv active, then start the server:
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8080
+cd ~/pi-Mesh
+source venv/bin/activate
+uvicorn main:app --host 0.0.0.0 --port 8080 --env-file config.env.local
 ```
 
-Open `http://<raspberry-pi-ip>:8080` in a browser.
+You should see output like:
+```
+INFO:     Started server process
+INFO:     Uvicorn running on http://0.0.0.0:8080
+```
 
-### 4. Install as a system service (auto-start on boot)
+**Access the dashboard:**
+- From the Pi's touchscreen: the browser should open automatically
+- From your PC browser: go to `http://pi-mesh.local:8080` (or `http://192.168.1.42:8080`)
+
+Press `Ctrl+C` to stop the server.
+
+---
+
+### Step 7 — Install as a system service (auto-start on boot)
+
+> **[Raspberry Pi]** Do this once you've confirmed the app works.
 
 ```bash
+cd ~/pi-Mesh
 sudo cp meshtastic-pi.service /etc/systemd/system/
+sudo systemctl daemon-reload
 sudo systemctl enable --now meshtastic-pi
 ```
+
+The app will now start automatically every time the Pi boots. To check its status:
+
+```bash
+sudo systemctl status meshtastic-pi
+```
+
+To view live logs:
+
+```bash
+journalctl -u meshtastic-pi -f
+```
+
+---
+
+### Step 8 — Optional: set up offline maps
+
+> **[Raspberry Pi]** Skip if you don't need the Map tab.
+
+The map works entirely offline — no internet needed. You just need to provide map tiles.
+
+**Option A: MBTiles file (recommended)**
+
+Download a `.mbtiles` file for your region from a tool like [MapTiler](https://www.maptiler.com/) or [mbutil](https://github.com/mapbox/mbutil), then copy it to the Pi:
+
+```bash
+# Run this on your PC, replacing the path and IP as needed
+scp /path/to/osm.mbtiles pi@pi-mesh.local:~/pi-Mesh/static/tiles/
+```
+
+**Option B: PNG tile cache**
+
+Organize tiles as individual files on the Pi:
+
+```
+~/pi-Mesh/static/tiles/osm/{z}/{x}/{y}.png
+```
+
+The tile server tries MBTiles first and falls back to PNG automatically.
 
 ---
 
@@ -92,7 +252,7 @@ pi-Mesh/
 ├── database.py              # SQLite via aiosqlite — messages, nodes, telemetry
 ├── watchdog.py              # Background tasks: DB sync, reconnect, maintenance
 ├── gpio_handler.py          # Rotary encoders, button gestures, piezo buzzer
-├── sensor_handler.py        # I2C sensor drivers (BME280, INA219)
+├── sensor_handler.py        # I2C sensor drivers (BME280, INA219, etc.)
 ├── config.py                # Configuration — reads from environment / config.env
 ├── config.env               # Default values for all config variables
 │
@@ -159,12 +319,12 @@ Three themes switchable from Settings or via `UI_THEME` in config:
 
 ## Configuration Reference
 
-All variables can be set in `config.env` (or as environment variables via the systemd `EnvironmentFile`).
+All variables can be set in `config.env.local` (or as environment variables via the systemd `EnvironmentFile`).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SERIAL_PORT` | `/dev/ttyMESHTASTIC` | USB serial device for the radio |
-| `DB_PERSISTENT` | `/home/pi/meshtastic-pi/data/mesh.db` | SD-card path for database persistence |
+| `DB_PERSISTENT` | `/home/pi/pi-Mesh/data/mesh.db` | SD-card path for database persistence |
 | `DB_SYNC_INTERVAL` | `300` | Seconds between RAM→SD database syncs |
 | `ENC1_A/B/SW` | `23/24/22` | GPIO BCM pins for encoder 1 (tab navigation) |
 | `ENC2_A/B/SW` | `5/6/13` | GPIO pins for encoder 2 (scroll/zoom) |
@@ -178,31 +338,82 @@ All variables can be set in `config.env` (or as environment variables via the sy
 
 ---
 
-## Offline Maps
+## Troubleshooting
 
-Tiles are served locally — no internet connection needed during use.
+**Radio not detected**
 
-### Option A: MBTiles (recommended)
+```bash
+# [Raspberry Pi] Find the actual device name
+ls /dev/ttyUSB* /dev/ttyACM*
 
-Place a single SQLite file in `static/tiles/`:
+# Give the pi user serial access (then log out and back in)
+sudo usermod -aG dialout pi
 
-```
-static/tiles/osm.mbtiles    ← OpenStreetMap tiles
-static/tiles/topo.mbtiles   ← Topographic tiles (optional)
-```
+# To make the port name stable across reboots, create a udev rule:
+# Find the vendor/product ID first:
+lsusb   # e.g. "ID 10c4:ea60 Silicon Labs CP210x"
 
-MBTiles files can be downloaded with tools like [TileMill](https://tilemill-project.github.io/tilemill/), [mbutil](https://github.com/mapbox/mbutil), or [MapTiler](https://www.maptiler.com/).
-
-### Option B: PNG tile cache
-
-Organize tiles as individual files:
-
-```
-static/tiles/osm/{z}/{x}/{y}.png
-static/tiles/topo/{z}/{x}/{y}.png
+# Then create the rule:
+echo 'SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="ttyMESHTASTIC"' | sudo tee /etc/udev/rules.d/99-meshtastic.rules
+sudo udevadm control --reload && sudo udevadm trigger
 ```
 
-The tile server tries MBTiles first; falls back to PNG files automatically.
+**Display not working**
+
+The Waveshare 3.5" SPI display requires the `LCD-show` driver. Follow [Waveshare's official guide](https://www.waveshare.com/wiki/3.5inch_RPi_LCD_(A)) to install it, then set `DISPLAY_ROTATION` in `config.env.local`.
+
+**Map shows blank tiles**
+
+```bash
+# [Raspberry Pi] Verify tile files are in place
+ls ~/pi-Mesh/static/tiles/osm.mbtiles        # MBTiles
+ls ~/pi-Mesh/static/tiles/osm/10/            # or PNG files at zoom level 10
+```
+
+**Out of memory / process killed**
+
+```bash
+# [Raspberry Pi] Add compressed swap (run once)
+sudo bash ~/pi-Mesh/scripts/setup_zram.sh
+```
+
+**No GPIO / encoder input**
+
+```bash
+# [Raspberry Pi] Verify python3-lgpio is installed
+python3 -c "import lgpio; print('lgpio OK')"
+
+# If that fails, install it:
+sudo apt install -y python3-lgpio
+
+# Then recreate the venv so it can see the system package:
+cd ~/pi-Mesh
+rm -rf venv
+python3 -m venv --system-site-packages venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+> **On Raspberry Pi OS Bullseye or older only:** pigpiod is still used. Enable it with:
+> ```bash
+> sudo systemctl enable --now pigpiod
+> ```
+
+**App not starting after reboot**
+
+```bash
+# [Raspberry Pi] Check the service logs
+journalctl -u meshtastic-pi -n 50 --no-pager
+```
+
+**Connect from a location with no Wi-Fi**
+
+```bash
+# [Raspberry Pi] Set up the auto-hotspot (requires hostapd + dnsmasq)
+sudo apt install -y hostapd dnsmasq
+sudo bash ~/pi-Mesh/scripts/auto_ap.sh
+```
+The Pi will create a Wi-Fi hotspot named `pi-mesh-portal` if it can't connect to a known network within 60 seconds. Connect your phone or PC to it, then open `http://10.42.0.1:8080`.
 
 ---
 
@@ -210,15 +421,15 @@ The tile server tries MBTiles first; falls back to PNG files automatically.
 
 ### I2C Sensors
 
-Set `I2C_SENSORS` in `config.env` to auto-detect and poll sensors connected directly to the Pi:
+Connect a supported sensor to the Pi's I2C pins (SDA = GPIO 2 / pin 3, SCL = GPIO 3 / pin 5), then set `I2C_SENSORS` in `config.env.local`:
 
 ```env
 I2C_SENSORS=bme280:0x76,ina219:0x40
 ```
 
-Live readings appear in the **Telemetry** tab and are saved to the database (with pruning — last 200 readings per sensor kept).
+Live readings appear in the **Telemetry** tab and are saved to the database.
 
-#### Currently implemented drivers
+#### Supported local sensor drivers
 
 | Name | Address | Measures | Python library |
 |------|---------|----------|----------------|
@@ -240,118 +451,11 @@ Live readings appear in the **Telemetry** tab and are saved to the database (wit
 | `ina3221` | `0x40`–`0x43` | 3-channel voltage/current | `adafruit-circuitpython-ina3221` |
 | `max17048` | `0x36` | LiPo voltage, state of charge % | `adafruit-circuitpython-max1704x` |
 
-> **Adafruit drivers** (all except `bme280`, `bme680`, `ina219`) require `adafruit-blinka` to be installed on the Pi. See `requirements.txt` for install commands.
+> **Adafruit drivers** (all except `bme280`, `bme680`, `ina219`) require `adafruit-blinka`. See `requirements.txt`.
 
-#### Meshtastic firmware sensor support
+#### Sensor data from remote nodes
 
-The Meshtastic radio firmware natively supports many more sensors. The telemetry it sends over the mesh (visible in the Telemetry tab as `deviceMetrics` / `environmentMetrics`) can come from any of these:
-
-| Sensor | Category | Measures |
-|--------|----------|---------|
-| BME280 | Environment | Temp, humidity, pressure |
-| BME680 | Environment | Temp, humidity, pressure, VOC gas |
-| BMP280 | Environment | Temp, pressure (no humidity) |
-| BMP085 / BMP180 | Environment | Temp, pressure (legacy) |
-| SHT31 | Environment | Temp, humidity (high accuracy) |
-| SHTC3 | Environment | Temp, humidity (compact) |
-| MCP9808 | Environment | Temperature (precision ±0.0625°C) |
-| LPS22HB | Environment | Pressure, temp (waterproof) |
-| PMSA003I | Air quality | PM1.0, PM2.5, PM10 particulate matter |
-| SEN5X | Air quality | NOx, VOC, PM, temp, humidity |
-| VEML7700 | Light | Ambient lux |
-| TSL2591 | Light | Ambient lux (high dynamic range) |
-| RCWL-9620 | Distance | Ultrasonic range (cm) |
-| INA219 | Power | Voltage, current, power |
-| INA260 | Power | Voltage, current, power (higher accuracy) |
-| INA3221 | Power | 3-channel voltage/current |
-| MAX17048 | Power | LiPo state of charge (%) |
-
-Pi-Mesh receives and stores all this data from remote nodes automatically — no driver needed. The drivers in `sensor_handler.py` are only for sensors **physically wired to the Pi itself**.
-
-#### Adding a new local sensor driver
-
-The architecture requires exactly two things: a class in `sensor_handler.py` and an entry in `_DRIVER_MAP`. No other files need changing.
-
-**1. Add the class** (after `INA219Driver`, before `_DRIVER_MAP`):
-
-```python
-# sensor_handler.py
-
-class SHT31Driver(BaseSensor):
-    @property
-    def name(self): return "sht31"
-
-    def __init__(self, address: int):
-        super().__init__(address)
-        self._driver = None
-        if _SMBUS_AVAILABLE:
-            try:
-                import adafruit_sht31d
-                import board
-                i2c = board.I2C()
-                self._driver = adafruit_sht31d.SHT31D(i2c, address=self.address)
-            except Exception as e:
-                logging.error(f"SHT31 init error: {e}")
-
-    def read(self) -> dict | None:
-        if not self._driver:
-            return None
-        try:
-            return {
-                "temp":     round(self._driver.temperature, 1),
-                "humidity": round(self._driver.relative_humidity, 1),
-            }
-        except Exception as e:
-            logging.error(f"SHT31 read error: {e}")
-            return None
-```
-
-**2. Register it in `_DRIVER_MAP`**:
-
-```python
-_DRIVER_MAP = {
-    "bme280": BME280Driver,
-    "ina219": INA219Driver,
-    "sht31":  SHT31Driver,   # ← add this line
-}
-```
-
-**3. Add the Python library to `requirements.txt`**:
-
-```
-adafruit-circuitpython-sht31d
-```
-
-**4. Enable it in `config.env`**:
-
-```env
-I2C_SENSORS=sht31:0x44
-```
-
-That's it. The sensor is auto-detected on startup, polled every 30 seconds, and its values are broadcast live to the Telemetry tab via WebSocket.
-
-#### Driver rules
-
-- `name` — must be lowercase, no spaces; used as the key in `config.env` and as the database sensor name
-- `__init__` — initialize the hardware driver once; store in `self._driver`; wrap in `try/except` so a missing sensor never crashes startup
-- `read()` — return a `dict` of `str → number` values, or `None` on error; keep values rounded (1–2 decimal places)
-- `available()` — inherited from `BaseSensor`; does an I2C probe at the given address before adding the driver to the polling loop
-
-#### Sensor library reference
-
-| Sensor | `pip install` package | Notes |
-|--------|----------------------|-------|
-| BME680 | `bme680` | Same wiring as BME280 |
-| BMP280 | `adafruit-circuitpython-bmp280` | No humidity output |
-| SHT31 | `adafruit-circuitpython-sht31d` | More accurate than BME280 |
-| SHTC3 | `adafruit-circuitpython-shtc3` | |
-| MCP9808 | `adafruit-circuitpython-mcp9808` | |
-| PMSA003I | `adafruit-circuitpython-pm25` | Requires UART or I2C |
-| VEML7700 | `adafruit-circuitpython-veml7700` | |
-| TSL2591 | `adafruit-circuitpython-tsl2591` | |
-| INA260 | `adafruit-circuitpython-ina260` | Drop-in replacement for INA219 |
-| INA3221 | `adafruit-circuitpython-ina3221` | 3-channel |
-| MAX17048 | `adafruit-circuitpython-max1704x` | LiPo fuel gauge |
+The Meshtastic radio firmware natively supports many of the same sensors. The telemetry it sends over the mesh (visible in the Telemetry tab as `deviceMetrics` / `environmentMetrics`) is received and stored automatically — **no driver needed on the Pi** for remote nodes.
 
 ### Piezo Buzzer
 
@@ -362,7 +466,7 @@ Set `BUZZER_PIN` to a GPIO BCM pin number. The buzzer emits:
 
 ### Bot Framework
 
-Enable the echo bot from the **Settings** tab or write your own:
+Enable the echo bot from the **Settings** tab or write your own in `bots/`:
 
 ```python
 # bots/my_bot.py
@@ -374,17 +478,41 @@ def start(interface):
     pub.subscribe(on_message, "meshtastic.receive.text")
 ```
 
-### Optimizations for Raspberry Pi 3 A+
+---
 
-The `scripts/` directory contains deployment helpers:
+## GPIO Pinout
 
-```bash
-# ZRAM: adds ~300 MB of compressed swap without touching the SD card
-sudo bash scripts/setup_zram.sh
+The Waveshare 3.5" SPI display occupies the following BCM pins — **do not use them for other peripherals**:
 
-# Auto-AP: creates "pi-mesh-portal" hotspot if no Wi-Fi is found after 60s
-# (requires hostapd + dnsmasq)
-sudo bash scripts/auto_ap.sh
+| BCM | Function | Physical pin |
+|-----|----------|-------------|
+| 7 | Touch CS (CE1) | 26 |
+| 8 | LCD CS (CE0) | 24 |
+| 9 | SPI MISO | 21 |
+| 10 | SPI MOSI | 19 |
+| 11 | SPI SCLK | 23 |
+| 17 | Touch IRQ | 11 |
+| 18 | Backlight PWM | 12 |
+| 25 | LCD DC | 22 |
+| 27 | LCD RST | 13 |
+
+**Free BCM pins** available for encoders, buzzer, and other peripherals:
+
+```
+4 (pin 7)   5 (pin 29)  6 (pin 31)  12 (pin 32) ← PWM
+13 (pin 33) ← PWM       16 (pin 36) 19 (pin 35) 20 (pin 38)
+21 (pin 40) 22 (pin 15) 23 (pin 16) 24 (pin 18) 26 (pin 37)
+```
+
+I2C (GPIO 2/3, pins 3/5) is reserved for sensors. UART (GPIO 14/15, pins 8/10) is reserved for the serial console.
+
+**Default wiring** (as configured in `config.env`):
+
+```
+Encoder 1 (tab nav)  → A=GPIO23  B=GPIO24  SW=GPIO22
+Encoder 2 (scroll)   → A=GPIO5   B=GPIO6   SW=GPIO13
+Buzzer (optional)    → GPIO12  (PWM hardware)
+I2C sensors          → SDA=GPIO2  SCL=GPIO3
 ```
 
 ---
@@ -393,8 +521,14 @@ sudo bash scripts/auto_ap.sh
 
 ### Run tests
 
+> **[PC/Mac]** Tests run entirely on your PC — no hardware needed.
+
 ```bash
-pip install -r requirements-dev.txt
+git clone https://github.com/<your-username>/pi-Mesh.git
+cd pi-Mesh
+python3 -m venv venv
+source venv/bin/activate   # on Windows: venv\Scripts\activate
+pip install -r requirements.txt -r requirements-dev.txt
 pytest tests/ -v
 ```
 
@@ -444,14 +578,11 @@ The FastAPI backend exposes these JSON endpoints (used internally by the UI and 
 
 ## Creating Custom Themes
 
-The theme system is based on **CSS custom properties**. Each theme is a single CSS class that defines 9 variables; the rest of the stylesheet uses only those variables, so a new theme requires no other CSS changes.
+The theme system is based on **CSS custom properties**. Each theme is a single CSS class that defines 9 variables.
 
 ### Step 1 — Define the CSS variables in `static/style.css`
 
-Add a new block following the existing pattern. All 9 variables are required:
-
 ```css
-/* static/style.css */
 .theme-forest {
   --bg:       #1b2a1b;   /* main background */
   --bg2:      #243324;   /* cards, inputs, status bar, tab bar */
@@ -465,154 +596,25 @@ Add a new block following the existing pattern. All 9 variables are required:
 }
 ```
 
-| Variable | Used for |
-|----------|---------|
-| `--bg` | Page background, content area |
-| `--bg2` | Status bar, tab bar, cards, inputs, message bubbles (incoming) |
-| `--border` | All `border` and `border-top/bottom` rules |
-| `--text` | All body text, input values |
-| `--muted` | Timestamps, labels, dimmed metadata, tab icons (inactive) |
-| `--accent` | Active tab color, `<button>` background, outgoing message bubbles, focus outline, map markers (local node) |
-| `--ok` | WebSocket connected dot, online node badge |
-| `--warn` | Recent-but-not-online node badge |
-| `--danger` | WebSocket disconnected dot, input error flash |
-
 ### Step 2 — Allow the theme name in `main.py`
-
-The `/api/set-theme` endpoint validates the theme name against a hardcoded set. Add your new name:
 
 ```python
 # main.py  ~line 203
-@app.post("/api/set-theme")
-async def set_theme(payload: dict):
-    theme = payload.get("theme", "dark")
-    if theme not in ("dark", "light", "hc", "forest"):   # ← add here
-        return JSONResponse({"ok": False}, status_code=400)
-    ...
+if theme not in ("dark", "light", "hc", "forest"):   # ← add your theme name here
 ```
 
 ### Step 3 — Set it as default (optional)
 
 ```env
-# config.env
+# config.env.local
 UI_THEME=forest
-```
-
-Or switch at runtime via the API:
-
-```bash
-curl -X POST http://<pi-ip>:8080/api/set-theme \
-     -H "Content-Type: application/json" \
-     -d '{"theme": "forest"}'
 ```
 
 ### Step 4 — Add a button in Settings (optional)
 
-If you want to switch to the new theme from the touchscreen, add a button in `templates/settings.html` inside the "Tema UI" section:
-
 ```html
 <!-- templates/settings.html  ~line 54 -->
-<div style="display:flex; gap:8px;">
-  <button onclick="setTheme('dark')"   style="flex:1; min-height:36px; font-size:12px;">🌙 Dark</button>
-  <button onclick="setTheme('light')"  style="flex:1; min-height:36px; font-size:12px;">☀️ Light</button>
-  <button onclick="setTheme('hc')"     style="flex:1; min-height:36px; font-size:12px;">⬛ HC</button>
-  <button onclick="setTheme('forest')" style="flex:1; min-height:36px; font-size:12px;">🌲 Forest</button>
-</div>
-```
-
-### Theme design tips
-
-The display is 480×320 px and is typically viewed in outdoor or low-light conditions:
-
-- Keep `--bg` and `--bg2` close in lightness to avoid harsh contrast on the panel
-- Use `--accent` for interactive elements only — it should be clearly distinct from `--text`
-- Test `--ok`, `--warn`, `--danger` against `--bg2` (they appear as 8 px dots on top of it)
-- For outdoor use, prefer saturated colors and high `--text`/`--bg` contrast (≥ 4.5:1)
-
-### Complete example — "Red Night" theme for cockpit/vehicle use
-
-```css
-.theme-rednight {
-  --bg:       #1a0000;
-  --bg2:      #2a0000;
-  --border:   #5c0000;
-  --text:     #ffcccc;
-  --muted:    #cc6666;
-  --accent:   #ff4444;
-  --ok:       #cc0000;
-  --warn:     #ff6600;
-  --danger:   #ff0000;
-}
-```
-
-## GPIO Pinout
-
-The Waveshare 3.5" SPI display occupies the following BCM pins — **do not use them for other peripherals**:
-
-| BCM | Function | Physical pin |
-|-----|----------|-------------|
-| 7 | Touch CS (CE1) | 26 |
-| 8 | LCD CS (CE0) | 24 |
-| 9 | SPI MISO | 21 |
-| 10 | SPI MOSI | 19 |
-| 11 | SPI SCLK | 23 |
-| 17 | Touch IRQ | 11 |
-| 18 | Backlight PWM | 12 |
-| 25 | LCD DC | 22 |
-| 27 | LCD RST | 13 |
-
-**Free BCM pins** available for encoders, buzzer, and other peripherals:
-
-```
-4 (pin 7)   5 (pin 29)  6 (pin 31)  12 (pin 32) ← PWM
-13 (pin 33) ← PWM       16 (pin 36) 19 (pin 35) 20 (pin 38)
-21 (pin 40) 22 (pin 15) 23 (pin 16) 24 (pin 18) 26 (pin 37)
-```
-
-I2C (GPIO 2/3, pins 3/5) is reserved for sensors. UART (GPIO 14/15, pins 8/10) is reserved for the serial console.
-
-**Default wiring** (as configured in `config.env`):
-
-```
-Encoder 1 (tab nav)  → A=GPIO23  B=GPIO24  SW=GPIO22
-Encoder 2 (scroll)   → A=GPIO5   B=GPIO6   SW=GPIO13
-Buzzer (optional)    → GPIO12  (PWM hardware)
-I2C sensors          → SDA=GPIO2  SCL=GPIO3
-```
-
-## Troubleshooting
-
-**Radio not detected**
-
-```bash
-ls /dev/ttyUSB* /dev/ttyACM*   # find the actual device name
-sudo usermod -aG dialout pi    # give the pi user serial access
-# then set SERIAL_PORT in config.env
-```
-
-**Display not working**
-
-The Waveshare 3.5" SPI display requires the `LCD-show` driver. Follow [Waveshare's official guide](https://www.waveshare.com/wiki/3.5inch_RPi_LCD_(A)) to install it, then set `DISPLAY_ROTATION` in config.env.
-
-**Map shows blank tiles**
-
-Verify your tile files are in place:
-
-```bash
-ls static/tiles/osm.mbtiles        # MBTiles
-ls static/tiles/osm/10/            # or PNG files at zoom level 10
-```
-
-**Out of memory / process killed**
-
-Run `scripts/setup_zram.sh` to add compressed swap. Also ensure `MemoryMax=200M` in the systemd unit is appropriate for your workload.
-
-**No GPIO / encoder input**
-
-The `pigpiod` daemon must be running:
-
-```bash
-sudo systemctl enable --now pigpiod
+<button onclick="setTheme('forest')" style="flex:1; min-height:36px; font-size:12px;">🌲 Forest</button>
 ```
 
 ---

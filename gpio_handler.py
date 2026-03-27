@@ -8,11 +8,19 @@ _buzzer    = None
 
 try:
     from gpiozero import RotaryEncoder, Button
-    from gpiozero.pins.pigpio import PiGPIOFactory
-    _factory = PiGPIOFactory()
+    # Prefer lgpio (available on Raspberry Pi OS Bookworm/Trixie via python3-lgpio).
+    # Fall back to pigpio for older distros where pigpiod is still present.
+    try:
+        from gpiozero.pins.lgpio import LGPIOFactory
+        _factory = LGPIOFactory()
+        logging.info("GPIO: usando LGPIOFactory (lgpio)")
+    except Exception:
+        from gpiozero.pins.pigpio import PiGPIOFactory
+        _factory = PiGPIOFactory()
+        logging.info("GPIO: usando PiGPIOFactory (pigpio)")
     _GPIO_AVAILABLE = True
 except Exception:
-    logging.warning("gpiozero/pigpio non disponibile — GPIO disabilitato")
+    logging.warning("gpiozero non disponibile — GPIO disabilitato")
     _GPIO_AVAILABLE = False
 
 def init(enc1_pins: tuple, enc2_pins: tuple, broadcast_fn, db_conn=None, loop=None):
