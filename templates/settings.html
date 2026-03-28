@@ -170,6 +170,11 @@
   <div class="settings-section" style="border-top:1px solid var(--border);">
     <div class="settings-label">Sistema</div>
     <div id="sys-info" style="font-size:11px; color:var(--muted);"></div>
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <button onclick="systemReboot()" style="min-height:36px;">Riavvia</button>
+      <button onclick="systemShutdown()" style="min-height:36px;">Spegni</button>
+    </div>
+    <div id="sys-power-status" style="font-size:11px; color:var(--muted); margin-top:4px;"></div>
   </div>
 
 </div>
@@ -191,6 +196,24 @@ fetch('/api/status').then(r=>r.json()).then(s => {
   const el = document.getElementById('sys-info')
   el.textContent = 'Connesso: ' + (s.connected ? 'Si' : 'No') + ' | Nodi: ' + s.node_count + ' | RAM: ' + s.ram_mb + 'MB'
 })
+
+function systemReboot() {
+  if (!confirm('Sei sicuro di voler riavviare il sistema?')) return
+  const st = document.getElementById('sys-power-status')
+  st.textContent = 'Riavvio in corso...'
+  fetch('/api/system/reboot', {method:'POST'}).then(r=>r.json()).then(d => {
+    st.textContent = d.ok ? 'Riavvio avviato' : ('Errore: ' + d.error)
+  }).catch(() => { st.textContent = 'Errore di connessione' })
+}
+
+function systemShutdown() {
+  if (!confirm('Sei sicuro di voler spegnere il sistema?')) return
+  const st = document.getElementById('sys-power-status')
+  st.textContent = 'Spegnimento in corso...'
+  fetch('/api/system/shutdown', {method:'POST'}).then(r=>r.json()).then(d => {
+    st.textContent = d.ok ? 'Spegnimento avviato' : ('Errore: ' + d.error)
+  }).catch(() => { st.textContent = 'Errore di connessione' })
+}
 
 // WiFi status iniziale
 fetch('/api/wifi/status').then(r=>r.json()).then(s => {

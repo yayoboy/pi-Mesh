@@ -588,6 +588,26 @@ async def set_channel_psk(index: int, payload: dict):
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
+# --- System power ---
+
+@app.post("/api/system/reboot")
+async def system_reboot():
+    try:
+        await database.sync_to_sd(_conn)
+        subprocess.Popen(["sudo", "reboot"])
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+@app.post("/api/system/shutdown")
+async def system_shutdown():
+    try:
+        await database.sync_to_sd(_conn)
+        subprocess.Popen(["sudo", "shutdown", "-h", "now"])
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
 # --- WebSocket ---
 
 @app.websocket("/ws")
