@@ -24,6 +24,15 @@
     height: 28px; padding: 0 8px; border-bottom: 1px solid var(--border);
     font-size: 10px;
   }
+
+  .leaflet-control-zoom a {
+    background: rgba(10,12,20,0.55) !important;
+    border-color: rgba(42,58,74,0.5) !important;
+    color: var(--text,#ccc) !important;
+  }
+  .leaflet-control-zoom a:hover {
+    background: rgba(10,12,20,0.8) !important;
+  }
 </style>
 
 <div style="position:relative;width:100%;height:100%;">
@@ -50,7 +59,7 @@
           style="position:absolute;top:6px;right:6px;z-index:1000;
                  width:32px;height:32px;padding:0;
                  display:flex;align-items:center;justify-content:center;
-                 background:rgba(10,12,20,0.92);border:1px solid var(--border);
+                 background:rgba(10,12,20,0.55);border:1px solid rgba(42,58,74,0.5);
                  border-radius:4px;color:var(--text,#ccc);
                  -webkit-tap-highlight-color:transparent;">
     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -58,6 +67,43 @@
             d="M4 6h16M4 12h16M4 18h7"/>
     </svg>
   </button>
+
+  <!-- Layer switcher compatto (sotto panel toggle) -->
+  <div style="position:absolute;top:46px;right:6px;z-index:1000;
+              background:rgba(10,12,20,0.55);border:1px solid rgba(42,58,74,0.5);
+              border-radius:4px;overflow:hidden;width:32px;">
+    <button class="layer-btn" data-layer="osm" onclick="switchLayer('osm')"
+            title="Stradale"
+            style="width:100%;height:28px;padding:0;border:none;border-bottom:1px solid rgba(42,58,74,0.4);
+                   background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
+                   color:var(--accent,#4a9eff);
+                   -webkit-tap-highlight-color:transparent;">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+      </svg>
+    </button>
+    <button class="layer-btn" data-layer="topo" onclick="switchLayer('topo')"
+            title="Topo"
+            style="width:100%;height:28px;padding:0;border:none;border-bottom:1px solid rgba(42,58,74,0.4);
+                   background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
+                   color:var(--text,#ccc);
+                   -webkit-tap-highlight-color:transparent;">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 21l5-10 5 5 4-7 4 12"/>
+      </svg>
+    </button>
+    <button class="layer-btn" data-layer="satellite" onclick="switchLayer('satellite')"
+            title="Satellite"
+            style="width:100%;height:28px;padding:0;border:none;
+                   background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
+                   color:var(--text,#ccc);
+                   -webkit-tap-highlight-color:transparent;">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3"/>
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6.3 6.3l11.4 11.4M17.7 6.3L6.3 17.7"/>
+      </svg>
+    </button>
+  </div>
 
   <!-- Badge traceroute (top-left) -->
   <div id="traceroute-badge"
@@ -74,9 +120,23 @@
 
   <!-- Pannello unico (slide da destra) -->
   <div id="right-panel"
-       style="display:none;position:absolute;top:0;right:0;bottom:24px;width:160px;z-index:700;
+       style="display:none;position:absolute;top:0;right:0;bottom:0;width:160px;z-index:700;
               flex-direction:column;overflow:hidden;
               background:var(--bg,#0a0c14);border-left:1px solid var(--border);">
+
+    <!-- Legenda -->
+    <div style="padding:5px 10px 3px;font-size:9px;color:var(--accent);
+                text-transform:uppercase;letter-spacing:.08em;flex-shrink:0;
+                border-bottom:1px solid var(--border);">Legenda</div>
+    <div style="padding:4px 10px 6px;display:flex;flex-wrap:wrap;gap:6px 10px;font-size:9px;color:var(--text,#ccc);border-bottom:1px solid var(--border);flex-shrink:0;">
+      <span style="display:flex;align-items:center;gap:3px;"><span style="width:7px;height:7px;border-radius:50%;background:#4a9eff;box-shadow:0 0 3px #4a9eff;"></span>Locale</span>
+      <span style="display:flex;align-items:center;gap:3px;"><span style="width:7px;height:7px;border-radius:50%;background:#4caf50;"></span>Online</span>
+      <span style="display:flex;align-items:center;gap:3px;"><span style="width:7px;height:7px;border-radius:50%;background:#555;"></span>Offline</span>
+      <span style="display:flex;align-items:center;gap:3px;"><span style="width:14px;height:2px;background:#4caf50;border-radius:1px;"></span>buono</span>
+      <span style="display:flex;align-items:center;gap:3px;"><span style="width:14px;height:2px;background:#fb8c00;border-radius:1px;"></span>medio</span>
+      <span style="display:flex;align-items:center;gap:3px;"><span style="width:14px;height:2px;background:#e53935;border-radius:1px;"></span>scarso</span>
+      <span style="display:flex;align-items:center;gap:3px;"><span style="width:14px;height:2px;background:#ffd54f;opacity:0.8;border-radius:1px;"></span>route</span>
+    </div>
 
     <!-- Sezione filtri -->
     <div style="padding:5px 10px 3px;font-size:9px;color:var(--accent);
@@ -125,45 +185,18 @@
     </div>
   </div>
 
-  <!-- Legenda -->
-  <div id="map-legend"
-       style="position:absolute;bottom:0;left:0;right:0;height:24px;
-              background:rgba(8,10,18,0.97);border-top:1px solid var(--border);
-              display:flex;align-items:center;gap:7px;padding:0 7px;
-              font-size:9px;overflow-x:auto;white-space:nowrap;">
-    <div style="display:flex;align-items:center;gap:3px;">
-      <div style="width:7px;height:7px;border-radius:50%;background:#4a9eff;box-shadow:0 0 3px #4a9eff;flex-shrink:0;"></div>Locale
-    </div>
-    <div style="display:flex;align-items:center;gap:3px;">
-      <div style="width:7px;height:7px;border-radius:50%;background:#4caf50;flex-shrink:0;"></div>Online
-    </div>
-    <div style="display:flex;align-items:center;gap:3px;">
-      <div style="width:7px;height:7px;border-radius:50%;background:#555;flex-shrink:0;"></div>Offline
-    </div>
-    <div style="width:1px;height:12px;background:var(--border);flex-shrink:0;"></div>
-    <div style="display:flex;align-items:center;gap:3px;">
-      <div style="width:14px;height:2px;background:#4caf50;border-radius:1px;flex-shrink:0;"></div>buono
-    </div>
-    <div style="display:flex;align-items:center;gap:3px;">
-      <div style="width:14px;height:2px;background:#fb8c00;border-radius:1px;flex-shrink:0;"></div>medio
-    </div>
-    <div style="display:flex;align-items:center;gap:3px;">
-      <div style="width:14px;height:2px;background:#e53935;border-radius:1px;flex-shrink:0;"></div>scarso
-    </div>
-    <div style="width:1px;height:12px;background:var(--border);flex-shrink:0;"></div>
-    <div style="display:flex;align-items:center;gap:3px;">
-      <div style="width:14px;height:2px;background:#ffd54f;opacity:0.8;border-radius:1px;flex-shrink:0;"></div>route
-    </div>
-    <span style="flex:1"></span>
-    <button id="btn-center-board" onclick="centerOnBoard()" title="Centra sulla board"
-            style="background:none;border:1px solid var(--border);border-radius:3px;
-                   width:24px;height:18px;min-height:18px;min-width:24px;padding:0;
-                   display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5">
-        <circle cx="12" cy="12" r="3"/><path stroke-linecap="round" d="M12 2v4m0 12v4M2 12h4m12 0h4"/>
-      </svg>
-    </button>
-  </div>
+  <!-- Bottone centra sulla board (bottom-right, sopra zoom) -->
+  <button id="btn-center-board" onclick="centerOnBoard()" title="Centra sulla board"
+          style="position:absolute;bottom:70px;right:6px;z-index:1000;
+                 width:32px;height:32px;min-height:32px;padding:0;
+                 display:flex;align-items:center;justify-content:center;
+                 background:rgba(10,12,20,0.55);border:1px solid rgba(42,58,74,0.5);
+                 border-radius:4px;cursor:pointer;color:var(--text,#ccc);
+                 -webkit-tap-highlight-color:transparent;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <circle cx="12" cy="12" r="3"/><path stroke-linecap="round" d="M12 2v4m0 12v4M2 12h4m12 0h4"/>
+    </svg>
+  </button>
 
 </div>
 
@@ -227,7 +260,7 @@
   </div>
 </div>
 
-<script src="/static/map.js"></script>
+<script src="/static/map.js?v=4"></script>
 <script>
 // Sposta modal al body per evitare clipping da overflow:hidden
 document.body.appendChild(document.getElementById('marker-modal'))
