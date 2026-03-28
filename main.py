@@ -193,12 +193,17 @@ async def api_dm_threads():
 
 @app.get("/api/dm/messages")
 async def api_dm_messages(peer: str, limit: int = 50, before_id: int = None):
+    if not peer:
+        return JSONResponse({"ok": False, "error": "peer mancante"}, status_code=400)
     msgs = await database.get_dm_messages(_conn, peer, limit=limit, before_id=before_id)
     return JSONResponse({"messages": msgs})
 
 
 @app.post("/api/dm/read")
-async def api_dm_read(peer: str):
+async def api_dm_read(payload: dict):
+    peer = payload.get("peer", "")
+    if not peer:
+        return JSONResponse({"ok": False, "error": "peer mancante"}, status_code=400)
     await database.mark_dm_read(_conn, peer)
     return JSONResponse({"ok": True})
 
