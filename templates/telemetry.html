@@ -1,174 +1,166 @@
 {% extends "base.html" %}
 {% block content %}
-<div style="padding: 4px 8px; overflow-y: auto; height: 100%;">
+{% set local_node = namespace(id=none, name='Board') %}
+{% for n in nodes %}{% if n.is_local %}{% set local_node.id = n.id %}{% set local_node.name = n.short_name or n.id %}{% endif %}{% endfor %}
 
-  <!-- Telemetria Pi -->
-  <div id="pi-section" style="padding:4px 0; border-bottom:1px solid var(--border); margin-bottom:8px; font-size:12px; color:var(--muted);">
-    <span id="pi-ram"></span>
-    <span id="pi-temp" style="margin-left:12px;"></span>
-    <span id="pi-disk" style="margin-left:12px;"></span>
+<div style="overflow-y:auto; height:100%; padding:4px 8px;">
+
+  <!-- === Raspberry Pi === -->
+  <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; padding:4px 0 2px;">Raspberry Pi</div>
+  <div id="pi-metrics" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; font-size:12px;">
+    <span id="pi-ram"  style="background:var(--bg2); border-radius:4px; padding:2px 6px;">RAM: —</span>
+    <span id="pi-temp" style="background:var(--bg2); border-radius:4px; padding:2px 6px;">Temp: —</span>
+    <span id="pi-disk" style="background:var(--bg2); border-radius:4px; padding:2px 6px;">Disco: —</span>
   </div>
+  <div class="chart-wrap" style="margin-bottom:8px;"><canvas id="chart-pi-ram" height="60"></canvas></div>
 
-  <!-- Sensori I2C locali -->
-  <div id="sensors-section" style="display:flex; gap:8px; flex-wrap:wrap; padding:4px 0; border-bottom:1px solid var(--border); margin-bottom:8px;">
-    <div id="sensor-display" style="font-size:12px; color:var(--muted);">Nessun sensore rilevato</div>
+  <!-- === Board Meshtastic === -->
+  <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; padding:4px 0 2px;">{{ local_node.name }}</div>
+  <div id="board-metrics" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; font-size:12px; color:var(--muted);">In attesa dati board...</div>
+  <div class="chart-wrap"><canvas id="chart-battery" height="60"></canvas></div>
+  <div class="chart-wrap" style="margin-bottom:8px;"><canvas id="chart-ch-util" height="60"></canvas></div>
+
+  <!-- === Sensori I2C === -->
+  <div id="sensors-section" style="display:none;">
+    <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; padding:4px 0 2px;">Sensori I2C</div>
+    <div id="sensor-display" style="display:flex; gap:6px; flex-wrap:wrap; font-size:12px;"></div>
   </div>
-
-  <!-- Selezione nodo -->
-  <div style="display:flex; gap:4px; align-items:center; margin-bottom:4px;">
-    <label style="font-size:12px; color:var(--muted); flex-shrink:0;">Nodo:</label>
-    <select id="node-select" style="min-height:32px; font-size:12px;" onchange="loadNodeTelemetry(this.value)">
-      {% for n in nodes %}
-      <option value="{{ n.id }}"{% if n.is_local %} selected{% endif %}>{{ n.short_name or n.id }}{% if n.is_local %} (locale){% endif %}</option>
-      {% endfor %}
-      <option value="pi">Pi (sistema)</option>
-    </select>
-  </div>
-
-  <!-- Metriche dispositivo -->
-  <div id="device-metrics" style="display:flex; gap:8px; flex-wrap:wrap; padding:4px 0; margin-bottom:4px; font-size:12px; color:var(--muted);"></div>
-
-  <!-- Grafici -->
-  <div class="chart-wrap"><canvas id="chart-battery" height="80"></canvas></div>
-  <div class="chart-wrap"><canvas id="chart-ch-util" height="80"></canvas></div>
 
 </div>
 
 <script src="/static/chart.min.js"></script>
 <script>
-let battChart = null, chUtilChart = null
+const _LOCAL_NODE_ID = {% if local_node.id %}"{{ local_node.id | e }}"{% else %}null{% endif %}
 
-function initCharts() {
-  const opts = { responsive: true, animation: false,
-    scales: { x: { display: false }, y: { ticks: { color: '#888', font:{size:10} }, grid: { color: '#333' } } },
-    plugins: { legend: { labels: { color: '#e0e0e0', font:{size:10} } } }
+let piRamChart = null, battChart = null, chUtilChart = null
+
+function _makeChart(id, label, color) {
+  const opts = {
+    responsive: true, animation: false,
+    scales: {
+      x: { display: false },
+      y: { ticks: { color: '#888', font: { size: 9 } }, grid: { color: '#333' } }
+    },
+    plugins: { legend: { labels: { color: '#aaa', font: { size: 9 } } } }
   }
-  battChart   = new Chart(document.getElementById('chart-battery'), { type:'line', data:{ labels:[], datasets:[{label:'Batteria %', data:[], borderColor:'#4caf50', borderWidth:1.5, pointRadius:0, tension:0.3}] }, options: opts })
-  chUtilChart = new Chart(document.getElementById('chart-ch-util'), { type:'line', data:{ labels:[], datasets:[{label:'Ch. Util %', data:[], borderColor:'#ff9800', borderWidth:1.5, pointRadius:0, tension:0.3}] }, options: opts })
-}
-
-async function loadNodeTelemetry(nodeId) {
-  if (!nodeId) return
-  // Pulizia grafici
-  battChart.data.labels = []; battChart.data.datasets[0].data = []
-  chUtilChart.data.labels = []; chUtilChart.data.datasets[0].data = []
-  battChart.update(); chUtilChart.update()
-  document.getElementById('device-metrics').textContent = ''
-
-  if (nodeId === 'pi') {
-    await loadPiMetrics()
-    return
-  }
-  try {
-    const r = await fetch(`/api/telemetry/${nodeId}/deviceMetrics`)
-    if (!r.ok) return
-    const data = await r.json()
-    if (!Array.isArray(data) || data.length === 0) return
-    const labels = data.map(d => new Date(d.timestamp * 1000).toLocaleTimeString('it', { hour:'2-digit', minute:'2-digit' })).reverse()
-    battChart.data.labels    = labels
-    chUtilChart.data.labels  = labels
-    battChart.data.datasets[0].data   = data.map(d => d.values?.batteryLevel ?? null).reverse()
-    chUtilChart.data.datasets[0].data = data.map(d => d.values?.channelUtilization != null ? (d.values.channelUtilization * 100).toFixed(1) : null).reverse()
-    battChart.update(); chUtilChart.update()
-    if (data[0]?.values) updateDeviceMetrics(data[0].values)
-  } catch (_) {}
-}
-
-async function loadPiMetrics() {
-  try {
-    const r = await fetch('/api/telemetry/pi/systemMetrics?limit=1')
-    if (!r.ok) return
-    const data = await r.json()
-    if (!Array.isArray(data) || data.length === 0) return
-    const v = data[0].values
-    updatePiStats(v)
-  } catch (_) {}
-}
-
-function updatePiStats(v) {
-  if (v.ram_mb != null)       document.getElementById('pi-ram').textContent  = 'RAM: ' + v.ram_mb + 'MB'
-  if (v.cpu_temp_c != null)   document.getElementById('pi-temp').textContent = 'Temp: ' + v.cpu_temp_c + '\u00b0C'
-  if (v.disk_free_mb != null) document.getElementById('pi-disk').textContent = 'Disco: ' + v.disk_free_mb + 'MB liberi'
-  // Mostra nelle metriche device anche i dati Pi
-  const container = document.getElementById('device-metrics')
-  container.textContent = ''
-  const items = [
-    ['RAM', v.ram_mb != null ? v.ram_mb + 'MB' : null],
-    ['Temp', v.cpu_temp_c != null ? v.cpu_temp_c + '\u00b0C' : null],
-    ['Disco libero', v.disk_free_mb != null ? v.disk_free_mb + 'MB' : null],
-    ['Disco totale', v.disk_total_mb != null ? v.disk_total_mb + 'MB' : null],
-  ]
-  items.forEach(([label, val]) => {
-    if (val == null) return
-    const span = document.createElement('span')
-    span.style.cssText = 'background:var(--bg2); border-radius:4px; padding:2px 6px;'
-    span.textContent = label + ': ' + val
-    container.appendChild(span)
+  return new Chart(document.getElementById(id), {
+    type: 'line',
+    data: { labels: [], datasets: [{ label, data: [], borderColor: color, borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false }] },
+    options: opts
   })
 }
 
-function pushChartPoint(chart, ts, value) {
+function _pushPoint(chart, ts, value) {
   if (value == null) return
   chart.data.labels.push(ts)
   chart.data.datasets[0].data.push(value)
-  if (chart.data.labels.length > 100) {
+  if (chart.data.labels.length > 60) {
     chart.data.labels.shift()
     chart.data.datasets[0].data.shift()
   }
-  chart.update()
+  chart.update('none')
 }
 
-function updateDeviceMetrics(values) {
-  const container = document.getElementById('device-metrics')
+function _ts() {
+  return new Date().toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
+}
+
+function updatePiStats(v) {
+  if (v.ram_mb != null)       document.getElementById('pi-ram').textContent  = 'RAM: ' + v.ram_mb + ' MB'
+  if (v.cpu_temp_c != null)   document.getElementById('pi-temp').textContent = 'Temp: ' + v.cpu_temp_c + '\u00b0C'
+  if (v.disk_free_mb != null) document.getElementById('pi-disk').textContent = 'Disco: ' + Math.round(v.disk_free_mb / 1024 * 10) / 10 + ' GB liberi'
+  if (v.ram_mb != null) _pushPoint(piRamChart, _ts(), v.ram_mb)
+}
+
+function updateBoardMetrics(values) {
+  const container = document.getElementById('board-metrics')
   container.textContent = ''
   const items = [
-    ['Batt', values.batteryLevel != null ? values.batteryLevel + '%' : null],
-    ['Volt', values.voltage != null ? values.voltage.toFixed(2) + 'V' : null],
-    ['Ch.Util', values.channelUtilization != null ? (values.channelUtilization * 100).toFixed(1) + '%' : null],
-    ['AirTx', values.airUtilTx != null ? (values.airUtilTx * 100).toFixed(1) + '%' : null],
-    ['Uptime', values.uptimeSeconds != null ? formatUptime(values.uptimeSeconds) : null],
+    ['Batt',   values.batteryLevel      != null ? values.batteryLevel + '%' : null],
+    ['Volt',   values.voltage           != null ? values.voltage.toFixed(2) + 'V' : null],
+    ['Ch.Util',values.channelUtilization!= null ? (values.channelUtilization * 100).toFixed(1) + '%' : null],
+    ['AirTx',  values.airUtilTx        != null ? (values.airUtilTx * 100).toFixed(1) + '%' : null],
+    ['Uptime', values.uptimeSeconds     != null ? _fmtUptime(values.uptimeSeconds) : null],
   ]
+  let any = false
   items.forEach(([label, val]) => {
     if (val == null) return
+    any = true
     const span = document.createElement('span')
     span.style.cssText = 'background:var(--bg2); border-radius:4px; padding:2px 6px;'
     span.textContent = label + ': ' + val
     container.appendChild(span)
   })
+  if (!any) container.textContent = 'Nessun dato disponibile'
 }
 
-function formatUptime(s) {
+function _fmtUptime(s) {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60)
   return h + 'h ' + m + 'm'
 }
 
-// Aggiornamenti live telemetria board
+async function loadPiHistory() {
+  try {
+    const r = await fetch('/api/telemetry/pi/systemMetrics?limit=60')
+    if (!r.ok) return
+    const data = await r.json()
+    if (!Array.isArray(data) || data.length === 0) {
+      document.getElementById('pi-ram').textContent = 'Dati Pi non ancora disponibili'
+      return
+    }
+    // I dati arrivano dal più recente al meno recente — invertiamo per il chart
+    const sorted = [...data].reverse()
+    sorted.forEach(d => {
+      const ts = new Date(d.timestamp * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
+      if (d.values?.ram_mb != null) _pushPoint(piRamChart, ts, d.values.ram_mb)
+    })
+    // Mostra metriche più recenti nei badge
+    if (data[0]?.values) updatePiStats(data[0].values)
+  } catch (_) {}
+}
+
+async function loadBoardHistory() {
+  if (!_LOCAL_NODE_ID) return
+  try {
+    const r = await fetch(`/api/telemetry/${_LOCAL_NODE_ID}/deviceMetrics?limit=60`)
+    if (!r.ok) return
+    const data = await r.json()
+    if (!Array.isArray(data) || data.length === 0) return
+    const sorted = [...data].reverse()
+    sorted.forEach(d => {
+      const ts = new Date(d.timestamp * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
+      _pushPoint(battChart,   ts, d.values?.batteryLevel ?? null)
+      _pushPoint(chUtilChart, ts, d.values?.channelUtilization != null ? (d.values.channelUtilization * 100).toFixed(1) : null)
+    })
+    if (data[0]?.values) updateBoardMetrics(data[0].values)
+  } catch (_) {}
+}
+
+// Aggiornamenti live via WebSocket
 window.addEventListener('telemetry-update', e => {
   const { node_id, type, values } = e.detail
   if (type === 'systemMetrics' && node_id === 'pi') {
     updatePiStats(values)
-    const sel = document.getElementById('node-select')
-    if (sel && sel.value === 'pi') updatePiStats(values)
     return
   }
-  const sel = document.getElementById('node-select')
-  if (!sel || sel.value !== node_id || type !== 'deviceMetrics') return
-  const ts = new Date().toLocaleTimeString('it', { hour:'2-digit', minute:'2-digit' })
-  pushChartPoint(battChart,   ts, values.batteryLevel ?? null)
-  pushChartPoint(chUtilChart, ts, values.channelUtilization != null ? (values.channelUtilization * 100).toFixed(1) : null)
-  updateDeviceMetrics(values)
+  if (type === 'deviceMetrics' && (node_id === _LOCAL_NODE_ID || !_LOCAL_NODE_ID)) {
+    updateBoardMetrics(values)
+    _pushPoint(battChart,   _ts(), values.batteryLevel ?? null)
+    _pushPoint(chUtilChart, _ts(), values.channelUtilization != null ? (values.channelUtilization * 100).toFixed(1) : null)
+  }
 })
 
 // Sensori I2C
 window.addEventListener('sensor-update', e => {
   const { sensor, values } = e.detail
+  const section = document.getElementById('sensors-section')
+  section.style.display = ''
   const container = document.getElementById('sensor-display')
   let el = document.getElementById('sensor-' + sensor)
   if (!el) {
     el = document.createElement('div')
     el.id = 'sensor-' + sensor
-    el.style.cssText = 'padding:4px 8px; background:var(--bg2); border-radius:4px; font-size:12px;'
-    if (container.firstChild?.id === undefined) container.textContent = ''
+    el.style.cssText = 'padding:4px 8px; background:var(--bg2); border-radius:4px;'
     container.appendChild(el)
   }
   el.textContent = ''
@@ -183,15 +175,13 @@ window.addEventListener('sensor-update', e => {
 })
 
 function _initTelemetryPage() {
-  initCharts()
-  loadPiMetrics().then(() => {
-    const piRam = document.getElementById('pi-ram')
-    if (piRam && !piRam.textContent) piRam.textContent = 'Dati Pi non ancora disponibili'
-  })
-  const sel = document.getElementById('node-select')
-  if (sel && sel.value) loadNodeTelemetry(sel.value)
+  piRamChart = _makeChart('chart-pi-ram',  'RAM MB',    '#4a9eff')
+  battChart  = _makeChart('chart-battery', 'Batteria %','#4caf50')
+  chUtilChart= _makeChart('chart-ch-util', 'Ch.Util %', '#ff9800')
+  loadPiHistory()
+  loadBoardHistory()
 }
-// Funziona sia su caricamento diretto che su navigazione SPA (DOMContentLoaded già scattato)
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', _initTelemetryPage)
 } else {
