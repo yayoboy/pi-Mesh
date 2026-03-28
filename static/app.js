@@ -89,6 +89,7 @@ function handleInit(data) {
     if (el) el.textContent = local.short_name || local.id
     updateGpsBadge(local.latitude != null && local.longitude != null)
   }
+  window.dispatchEvent(new CustomEvent('ws-init', { detail: data }))
   fetch('/api/wifi/status').then(r => r.json()).then(s => {
     updateWifiBadge(s.state === 'connected')
   }).catch(() => {})

@@ -26,10 +26,15 @@
       <span style="color:var(--muted)">Nome</span><span>{{ n.long_name or n.short_name or '—' }}</span>
       <span style="color:var(--muted)">Hardware</span><span>{{ n.hw_model or '—' }}</span>
       <span style="color:var(--muted)">Firmware</span><span>{{ n.firmware_version or '—' }}</span>
+      {% if n.role %}<span style="color:var(--muted)">Ruolo</span><span>{{ n.role }}</span>{% endif %}
       {% if n.battery_level is not none %}<span style="color:var(--muted)">Batteria</span><span>{{ n.battery_level }}%</span>{% endif %}
+      {% if n.voltage is not none %}<span style="color:var(--muted)">Voltaggio</span><span>{{ '%.2f'|format(n.voltage) }}V</span>{% endif %}
       {% if n.snr is not none %}<span style="color:var(--muted)">SNR</span><span>{{ n.snr }} dB</span>{% endif %}
       {% if n.rssi is not none %}<span style="color:var(--muted)">RSSI</span><span>{{ n.rssi }} dBm</span>{% endif %}
       {% if n.latitude %}<span style="color:var(--muted)">Posizione</span><span>{{ '%.4f'|format(n.latitude) }}° {{ '%.4f'|format(n.longitude) }}°</span>{% endif %}
+      {% if n.altitude is not none %}<span style="color:var(--muted)">Altitudine</span><span>{{ n.altitude }}m</span>{% endif %}
+      {% if n.last_heard %}<span style="color:var(--muted)">Ultimo contatto</span><span class="rel-time" data-ts="{{ n.last_heard }}"></span>{% endif %}
+      {% if n.hop_count is not none %}<span style="color:var(--muted)">Hop</span><span>{{ n.hop_count }}</span>{% endif %}
       <span style="color:var(--muted)">Chiave pubblica</span><span id="pubkey-{{ n.id }}" style="font-family:monospace; font-size:10px; word-break:break-all;">—</span>
     </div>
     <div style="display:flex; flex-direction:column; gap:4px; border-top:1px solid var(--border); padding-top:6px;">
@@ -71,6 +76,31 @@
 {% endfor %}
 </div>
 <script>
+var _localNodeCoords = null
+
+function _haversineKm(lat1, lon1, lat2, lon2) {
+  var R = 6371
+  var dLat = (lat2 - lat1) * Math.PI / 180
+  var dLon = (lon2 - lon1) * Math.PI / 180
+  var a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+}
+
+function _relativeTime(ts) {
+  if (!ts) return '—'
+  var now = Date.now() / 1000
+  var diff = now - ts
+  if (diff < 60) return 'adesso'
+  if (diff < 3600) return Math.floor(diff / 60) + ' min fa'
+  if (diff < 86400) return Math.floor(diff / 3600) + ' ore fa'
+  return Math.floor(diff / 86400) + ' giorni fa'
+}
+
+function _formatDistance(km) {
+  if (km < 1) return Math.round(km * 1000) + 'm'
+  return km.toFixed(1) + 'km'
+}
+
 function makeSvgIcon(type) {
   const ns = 'http://www.w3.org/2000/svg'
   const svg = document.createElementNS(ns, 'svg')
@@ -146,13 +176,21 @@ function renderNodeRow(n) {
     ['Hardware', n.hw_model || '—'],
     ['Firmware', n.firmware_version || '—'],
   ]
+  if (n.role) fields.push(['Ruolo', n.role])
   if (n.battery_level != null) fields.push(['Batteria', n.battery_level + '%'])
+  if (n.voltage != null) fields.push(['Voltaggio', n.voltage.toFixed(2) + 'V'])
   if (n.snr != null) fields.push(['SNR', n.snr + ' dB'])
   if (n.rssi != null) fields.push(['RSSI', n.rssi + ' dBm'])
-  if (n.last_heard) {
-    fields.push(['Ultimo visto', new Date(n.last_heard * 1000).toLocaleTimeString('it', { hour:'2-digit', minute:'2-digit', second:'2-digit' })])
-  }
   if (n.latitude != null) fields.push(['Posizione', n.latitude.toFixed(4) + '° ' + n.longitude.toFixed(4) + '°'])
+  if (n.altitude != null) fields.push(['Altitudine', n.altitude + 'm'])
+  if (n.last_heard) {
+    fields.push(['Ultimo contatto', _relativeTime(n.last_heard)])
+  }
+  if (_localNodeCoords && n.latitude != null && n.longitude != null && !n.is_local) {
+    var dist = _haversineKm(_localNodeCoords.lat, _localNodeCoords.lon, n.latitude, n.longitude)
+    fields.push(['Distanza', _formatDistance(dist)])
+  }
+  if (n.hop_count != null) fields.push(['Hop', n.hop_count])
   fields.push(['Chiave pubblica', '—'])
   fields.forEach(([label, value]) => {
     const lEl = document.createElement('span')
@@ -277,8 +315,27 @@ function updateBadge(id, lastHeard) {
 updateBadge('{{ n.id }}', {{ n.last_heard or 0 }})
 {% endfor %}
 
+// Imposta coordinate nodo locale dalle righe server-rendered
+{% for n in nodes %}
+{% if n.is_local and n.latitude %}
+_localNodeCoords = { lat: {{ n.latitude }}, lon: {{ n.longitude }} }
+{% endif %}
+{% endfor %}
+
+// Formatta timestamp relativi nelle righe server-rendered
+document.querySelectorAll('.rel-time[data-ts]').forEach(function(el) {
+  el.textContent = _relativeTime(parseInt(el.dataset.ts))
+})
+
 // Aggiorna in tempo reale via WebSocket
 window.addEventListener('node-update', e => renderNodeRow(e.detail))
+window.addEventListener('ws-init', function(e) {
+  var data = e.detail
+  if (data && data.nodes) {
+    var local = data.nodes.find(function(n) { return n.is_local && n.latitude != null })
+    if (local) _localNodeCoords = { lat: local.latitude, lon: local.longitude }
+  }
+})
 
 function loadNodePubKey(nodeId) {
   const el = document.getElementById('pubkey-' + nodeId)

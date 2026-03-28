@@ -12,6 +12,16 @@ import database, meshtastic_client, gpio_handler, sensor_handler, sensor_detect,
 gc.set_threshold(100, 5, 5)
 
 ws_clients: set[WebSocket] = set()
+
+async def _enrich_nodes_hop_count(nodes):
+    """Attach latest hop_count from messages to each node dict."""
+    for n in nodes:
+        cur = await _conn.execute(
+            "SELECT hop_count FROM messages WHERE node_id=? AND hop_count IS NOT NULL ORDER BY id DESC LIMIT 1",
+            (n["id"],)
+        )
+        row = await cur.fetchone()
+        n["hop_count"] = row[0] if row else None
 _conn = None
 _keyboard_proc = None
 
@@ -103,6 +113,7 @@ async def messages_page(request: Request):
 @app.get("/nodes")
 async def nodes_page(request: Request):
     nodes = await database.get_nodes(_conn)
+    await _enrich_nodes_hop_count(nodes)
     return templates.TemplateResponse(request, "nodes.html", {
         "nodes": nodes,
         "theme": cfg.UI_THEME, "accent_color": cfg.UI_ACCENT, "active": "nodes"
@@ -174,7 +185,9 @@ async def apply_settings(payload: dict):
 
 @app.get("/api/nodes")
 async def api_nodes():
-    return await database.get_nodes(_conn)
+    nodes = await database.get_nodes(_conn)
+    await _enrich_nodes_hop_count(nodes)
+    return nodes
 
 @app.delete("/api/nodes/{node_id}")
 async def delete_node(node_id: str, cascade: bool = False):
@@ -717,11 +730,13 @@ async def ws_endpoint(websocket: WebSocket):
     await websocket.accept()
     ws_clients.add(websocket)
     try:
+        init_nodes = await database.get_nodes(_conn)
+        await _enrich_nodes_hop_count(init_nodes)
         await websocket.send_json({
             "type": "init",
             "data": {
                 "connected": meshtastic_client.is_connected(),
-                "nodes":     await database.get_nodes(_conn),
+                "nodes":     init_nodes,
                 "messages":  await database.get_messages(_conn, 0, 50),
                 "theme":     cfg.UI_THEME,
             }
