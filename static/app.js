@@ -84,6 +84,11 @@ function handlePosition(data) {
 
 function handleTelemetry(data) {
   if (activeTab.name === 'telemetry') updateTelemetryChart(data)
+  // aggiorna RAM badge da systemMetrics Pi
+  if (data.node_id === 'pi' && data.type === 'systemMetrics' && data.values?.ram_mb) {
+    const el = document.getElementById('ram-badge')
+    if (el) el.textContent = data.values.ram_mb + 'MB'
+  }
 }
 
 function handleSensor(data) {

@@ -2,6 +2,13 @@
 {% block content %}
 <div style="padding: 4px 8px; overflow-y: auto; height: 100%;">
 
+  <!-- Telemetria Pi -->
+  <div id="pi-section" style="padding:4px 0; border-bottom:1px solid var(--border); margin-bottom:8px; font-size:12px; color:var(--muted);">
+    <span id="pi-ram"></span>
+    <span id="pi-temp" style="margin-left:12px;"></span>
+    <span id="pi-disk" style="margin-left:12px;"></span>
+  </div>
+
   <!-- Sensori I2C locali -->
   <div id="sensors-section" style="display:flex; gap:8px; flex-wrap:wrap; padding:4px 0; border-bottom:1px solid var(--border); margin-bottom:8px;">
     <div id="sensor-display" style="font-size:12px; color:var(--muted);">Nessun sensore rilevato</div>
@@ -17,41 +24,45 @@
     </select>
   </div>
 
+  <!-- Metriche dispositivo -->
+  <div id="device-metrics" style="display:flex; gap:8px; flex-wrap:wrap; padding:4px 0; margin-bottom:4px; font-size:12px; color:var(--muted);"></div>
+
   <!-- Grafici -->
-  <div class="chart-wrap"><canvas id="chart-snr"     height="80"></canvas></div>
   <div class="chart-wrap"><canvas id="chart-battery" height="80"></canvas></div>
+  <div class="chart-wrap"><canvas id="chart-ch-util" height="80"></canvas></div>
 
 </div>
 
 <script src="/static/chart.min.js"></script>
 <script>
-let snrChart = null, battChart = null
+let battChart = null, chUtilChart = null
 
 function initCharts() {
   const opts = { responsive: true, animation: false,
     scales: { x: { display: false }, y: { ticks: { color: '#888', font:{size:10} }, grid: { color: '#333' } } },
     plugins: { legend: { labels: { color: '#e0e0e0', font:{size:10} } } }
   }
-  snrChart  = new Chart(document.getElementById('chart-snr'),     { type:'line', data:{ labels:[], datasets:[{label:'SNR (dB)',  data:[], borderColor:'#4a9eff', borderWidth:1.5, pointRadius:0, tension:0.3}] }, options: opts })
-  battChart = new Chart(document.getElementById('chart-battery'), { type:'line', data:{ labels:[], datasets:[{label:'Batteria %', data:[], borderColor:'#4caf50', borderWidth:1.5, pointRadius:0, tension:0.3}] }, options: opts })
+  battChart   = new Chart(document.getElementById('chart-battery'), { type:'line', data:{ labels:[], datasets:[{label:'Batteria %', data:[], borderColor:'#4caf50', borderWidth:1.5, pointRadius:0, tension:0.3}] }, options: opts })
+  chUtilChart = new Chart(document.getElementById('chart-ch-util'), { type:'line', data:{ labels:[], datasets:[{label:'Ch. Util %', data:[], borderColor:'#ff9800', borderWidth:1.5, pointRadius:0, tension:0.3}] }, options: opts })
 }
 
 async function loadNodeTelemetry(nodeId) {
+  if (!nodeId) return
   try {
     const r = await fetch(`/api/telemetry/${nodeId}/deviceMetrics`)
     if (!r.ok) return
     const data = await r.json()
-    if (!Array.isArray(data)) return
-    const labels = data.map(d => new Date(d.timestamp * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })).reverse()
-    snrChart.data.labels  = labels
-    battChart.data.labels = labels
-    snrChart.data.datasets[0].data  = data.map(d => d.values?.snr ?? null).reverse()
-    battChart.data.datasets[0].data = data.map(d => d.values?.batteryLevel ?? null).reverse()
-    snrChart.update()
+    if (!Array.isArray(data) || data.length === 0) return
+    const labels = data.map(d => new Date(d.timestamp * 1000).toLocaleTimeString('it', { hour:'2-digit', minute:'2-digit' })).reverse()
+    battChart.data.labels    = labels
+    chUtilChart.data.labels  = labels
+    battChart.data.datasets[0].data   = data.map(d => d.values?.batteryLevel ?? null).reverse()
+    chUtilChart.data.datasets[0].data = data.map(d => d.values?.channelUtilization != null ? (d.values.channelUtilization * 100).toFixed(1) : null).reverse()
     battChart.update()
-  } catch (e) {
-    // rete non disponibile o nodo senza telemetria — grafici vuoti
-  }
+    chUtilChart.update()
+    // mostra ultima lettura metriche
+    if (data[0]?.values) updateDeviceMetrics(data[0].values)
+  } catch (_) {}
 }
 
 function pushChartPoint(chart, ts, value) {
@@ -65,15 +76,45 @@ function pushChartPoint(chart, ts, value) {
   chart.update()
 }
 
-// Aggiornamenti live
+function updateDeviceMetrics(values) {
+  const container = document.getElementById('device-metrics')
+  container.textContent = ''
+  const items = [
+    ['Batt', values.batteryLevel != null ? values.batteryLevel + '%' : null],
+    ['Volt', values.voltage != null ? values.voltage.toFixed(2) + 'V' : null],
+    ['Ch.Util', values.channelUtilization != null ? (values.channelUtilization * 100).toFixed(1) + '%' : null],
+    ['AirTx', values.airUtilTx != null ? (values.airUtilTx * 100).toFixed(1) + '%' : null],
+    ['Uptime', values.uptimeSeconds != null ? formatUptime(values.uptimeSeconds) : null],
+  ]
+  items.forEach(([label, val]) => {
+    if (val == null) return
+    const span = document.createElement('span')
+    span.style.cssText = 'background:var(--bg2); border-radius:4px; padding:2px 6px;'
+    span.textContent = label + ': ' + val
+    container.appendChild(span)
+  })
+}
+
+function formatUptime(s) {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60)
+  return h + 'h ' + m + 'm'
+}
+
+// Aggiornamenti live telemetria board
 window.addEventListener('telemetry-update', e => {
   const { node_id, type, values } = e.detail
+  if (type === 'systemMetrics' && node_id === 'pi') {
+    if (values.ram_mb != null)     document.getElementById('pi-ram').textContent  = 'RAM: ' + values.ram_mb + 'MB'
+    if (values.cpu_temp_c != null) document.getElementById('pi-temp').textContent = 'Temp: ' + values.cpu_temp_c + '\u00b0C'
+    if (values.disk_free_mb != null) document.getElementById('pi-disk').textContent = 'Disco: ' + values.disk_free_mb + 'MB liberi'
+    return
+  }
   const sel = document.getElementById('node-select')
-  if (!sel || sel.value !== node_id) return
-  if (type !== 'deviceMetrics') return
-  const ts = new Date().toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
-  pushChartPoint(snrChart,  ts, values.snr)
-  pushChartPoint(battChart, ts, values.batteryLevel)
+  if (!sel || sel.value !== node_id || type !== 'deviceMetrics') return
+  const ts = new Date().toLocaleTimeString('it', { hour:'2-digit', minute:'2-digit' })
+  pushChartPoint(battChart,   ts, values.batteryLevel ?? null)
+  pushChartPoint(chUtilChart, ts, values.channelUtilization != null ? (values.channelUtilization * 100).toFixed(1) : null)
+  updateDeviceMetrics(values)
 })
 
 // Sensori I2C
@@ -85,11 +126,18 @@ window.addEventListener('sensor-update', e => {
     el = document.createElement('div')
     el.id = 'sensor-' + sensor
     el.style.cssText = 'padding:4px 8px; background:var(--bg2); border-radius:4px; font-size:12px;'
-    container.innerHTML = ''
+    if (container.firstChild?.id === undefined) container.textContent = ''
     container.appendChild(el)
   }
-  el.innerHTML = `<b>${escHtml(String(sensor))}</b><br>` +
-    Object.entries(values).map(([k, v]) => `${escHtml(String(k))}: ${escHtml(String(v))}`).join('<br>')
+  el.textContent = ''
+  const title = document.createElement('b')
+  title.textContent = sensor
+  el.appendChild(title)
+  Object.entries(values).forEach(([k, v]) => {
+    const line = document.createElement('div')
+    line.textContent = k + ': ' + v
+    el.appendChild(line)
+  })
 })
 
 document.addEventListener('DOMContentLoaded', () => {

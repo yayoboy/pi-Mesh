@@ -34,6 +34,50 @@ async def memory_watchdog_task(broadcast_fn, interval: int = 60):
             await asyncio.sleep(2)
             os.kill(os.getpid(), signal.SIGTERM)
 
+async def meshtastic_telemetry_poll_task(conn, broadcast_fn, interval: int = 60):
+    """Legge deviceMetrics dal nodo locale e telemetria Pi ogni `interval` secondi."""
+    import time, database
+    while True:
+        await asyncio.sleep(interval)
+        # --- Board Meshtastic ---
+        try:
+            iface = meshtastic_client._interface
+            if iface and meshtastic_client.is_connected():
+                my_num = (iface.myInfo or {}).get("myNodeNum")
+                nodes  = iface.nodes or {}
+                local  = next((v for v in nodes.values() if v.get("num") == my_num), None)
+                if local:
+                    met = local.get("deviceMetrics", {})
+                    if met:
+                        await database.save_telemetry(conn, "local", "deviceMetrics", dict(met))
+                        await broadcast_fn({"type": "telemetry", "data": {
+                            "node_id": "local", "type": "deviceMetrics", "values": dict(met)
+                        }})
+        except Exception as e:
+            logging.debug(f"meshtastic_poll: {e}")
+
+        # --- Sistema Raspberry Pi ---
+        try:
+            import resource, time as _time
+            rss_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+            pi_met = {"ram_mb": round(rss_mb, 1)}
+            # Temperatura CPU
+            temp_path = "/sys/class/thermal/thermal_zone0/temp"
+            if os.path.exists(temp_path):
+                with open(temp_path) as f:
+                    pi_met["cpu_temp_c"] = round(int(f.read().strip()) / 1000, 1)
+            # Spazio disco
+            st = os.statvfs(".")
+            pi_met["disk_free_mb"]  = round(st.f_bavail * st.f_frsize / 1024 / 1024, 1)
+            pi_met["disk_total_mb"] = round(st.f_blocks * st.f_frsize / 1024 / 1024, 1)
+            await database.save_telemetry(conn, "pi", "systemMetrics", pi_met)
+            await broadcast_fn({"type": "telemetry", "data": {
+                "node_id": "pi", "type": "systemMetrics", "values": pi_met
+            }})
+        except Exception as e:
+            logging.debug(f"pi_telemetry: {e}")
+
+
 async def db_maintenance_task(conn, interval: int = 3600):
     while True:
         await asyncio.sleep(interval)
@@ -49,3 +93,4 @@ def start_all(conn, broadcast_fn):
     loop.create_task(connection_watchdog_task(broadcast_fn))
     loop.create_task(memory_watchdog_task(broadcast_fn))
     loop.create_task(db_maintenance_task(conn))
+    loop.create_task(meshtastic_telemetry_poll_task(conn, broadcast_fn))
