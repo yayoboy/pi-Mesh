@@ -166,6 +166,22 @@
     <button onclick="saveBotConfig()" style="margin-top:4px; min-height:36px;">Salva bot</button>
   </div>
 
+  <!-- CONFIGURAZIONE -->
+  <div class="settings-section" style="border-top:1px solid var(--border);">
+    <div class="settings-label">Configurazione</div>
+    <div class="settings-row"><label>Porta seriale</label><input type="text" id="cfg-serial" value=""></div>
+    <div class="settings-row"><label>MAP lat min</label><input type="number" id="cfg-lat-min" step="0.1" value=""></div>
+    <div class="settings-row"><label>MAP lat max</label><input type="number" id="cfg-lat-max" step="0.1" value=""></div>
+    <div class="settings-row"><label>MAP lon min</label><input type="number" id="cfg-lon-min" step="0.1" value=""></div>
+    <div class="settings-row"><label>MAP lon max</label><input type="number" id="cfg-lon-max" step="0.1" value=""></div>
+    <div class="settings-row"><label>Zoom min</label><input type="number" id="cfg-zoom-min" min="1" max="19" value=""></div>
+    <div class="settings-row"><label>Zoom max</label><input type="number" id="cfg-zoom-max" min="1" max="19" value=""></div>
+    <div class="settings-row"><label>DB sync interval (s)</label><input type="number" id="cfg-db-sync" min="30" value=""></div>
+    <div class="settings-row"><label>I2C autoscan</label><input type="checkbox" id="cfg-i2c-autoscan" style="width:auto; min-height:auto; height:24px; width:24px;"></div>
+    <button onclick="saveConfig()" style="margin-top:4px; min-height:36px;">Salva configurazione</button>
+    <div id="cfg-status" style="font-size:11px; color:var(--muted); margin-top:4px;"></div>
+  </div>
+
   <!-- INFO SISTEMA -->
   <div class="settings-section" style="border-top:1px solid var(--border);">
     <div class="settings-label">Sistema</div>
@@ -394,6 +410,39 @@ async function saveHardwareConfig() {
   }
   const r = await fetch('/api/hardware-config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
   document.getElementById('hw-status').textContent = r.ok ? 'Salvato (riavvia per rotazione)' : 'Errore'
+}
+
+// Configurazione
+fetch('/api/config').then(r=>r.json()).then(c => {
+  document.getElementById('cfg-serial').value = c.SERIAL_PORT || ''
+  document.getElementById('cfg-lat-min').value = c.MAP_LAT_MIN
+  document.getElementById('cfg-lat-max').value = c.MAP_LAT_MAX
+  document.getElementById('cfg-lon-min').value = c.MAP_LON_MIN
+  document.getElementById('cfg-lon-max').value = c.MAP_LON_MAX
+  document.getElementById('cfg-zoom-min').value = c.MAP_ZOOM_MIN
+  document.getElementById('cfg-zoom-max').value = c.MAP_ZOOM_MAX
+  document.getElementById('cfg-db-sync').value = c.DB_SYNC_INTERVAL
+  document.getElementById('cfg-i2c-autoscan').checked = c.I2C_AUTOSCAN
+}).catch(() => {})
+
+async function saveConfig() {
+  const payload = {
+    SERIAL_PORT:    document.getElementById('cfg-serial').value,
+    MAP_LAT_MIN:    document.getElementById('cfg-lat-min').value,
+    MAP_LAT_MAX:    document.getElementById('cfg-lat-max').value,
+    MAP_LON_MIN:    document.getElementById('cfg-lon-min').value,
+    MAP_LON_MAX:    document.getElementById('cfg-lon-max').value,
+    MAP_ZOOM_MIN:   document.getElementById('cfg-zoom-min').value,
+    MAP_ZOOM_MAX:   document.getElementById('cfg-zoom-max').value,
+    DB_SYNC_INTERVAL: document.getElementById('cfg-db-sync').value,
+    I2C_AUTOSCAN:   document.getElementById('cfg-i2c-autoscan').checked ? '1' : '0',
+  }
+  const st = document.getElementById('cfg-status')
+  try {
+    const r = await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+    const d = await r.json()
+    st.textContent = d.ok ? 'Salvato' : ('Errore: ' + d.error)
+  } catch (_) { st.textContent = 'Errore di connessione' }
 }
 
 async function saveBotConfig() {

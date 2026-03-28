@@ -466,6 +466,48 @@ async def hardware_config(payload: dict):
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
+@app.get("/api/config")
+async def api_config():
+    return {
+        "SERIAL_PORT": cfg.SERIAL_PORT,
+        "MAP_LAT_MIN": cfg.MAP_BOUNDS["lat_min"],
+        "MAP_LAT_MAX": cfg.MAP_BOUNDS["lat_max"],
+        "MAP_LON_MIN": cfg.MAP_BOUNDS["lon_min"],
+        "MAP_LON_MAX": cfg.MAP_BOUNDS["lon_max"],
+        "MAP_ZOOM_MIN": cfg.MAP_ZOOM_MIN,
+        "MAP_ZOOM_MAX": cfg.MAP_ZOOM_MAX,
+        "DB_SYNC_INTERVAL": cfg.DB_SYNC_INTERVAL,
+        "I2C_AUTOSCAN": cfg.I2C_AUTOSCAN,
+    }
+
+@app.post("/api/config")
+async def api_config_save(payload: dict):
+    try:
+        for key, value in payload.items():
+            await _update_config_env(key, str(value))
+        # Update live cfg values
+        if "SERIAL_PORT" in payload:
+            cfg.SERIAL_PORT = payload["SERIAL_PORT"]
+        if "MAP_LAT_MIN" in payload:
+            cfg.MAP_BOUNDS["lat_min"] = float(payload["MAP_LAT_MIN"])
+        if "MAP_LAT_MAX" in payload:
+            cfg.MAP_BOUNDS["lat_max"] = float(payload["MAP_LAT_MAX"])
+        if "MAP_LON_MIN" in payload:
+            cfg.MAP_BOUNDS["lon_min"] = float(payload["MAP_LON_MIN"])
+        if "MAP_LON_MAX" in payload:
+            cfg.MAP_BOUNDS["lon_max"] = float(payload["MAP_LON_MAX"])
+        if "MAP_ZOOM_MIN" in payload:
+            cfg.MAP_ZOOM_MIN = int(payload["MAP_ZOOM_MIN"])
+        if "MAP_ZOOM_MAX" in payload:
+            cfg.MAP_ZOOM_MAX = int(payload["MAP_ZOOM_MAX"])
+        if "DB_SYNC_INTERVAL" in payload:
+            cfg.DB_SYNC_INTERVAL = int(payload["DB_SYNC_INTERVAL"])
+        if "I2C_AUTOSCAN" in payload:
+            cfg.I2C_AUTOSCAN = str(payload["I2C_AUTOSCAN"]) not in ("0", "false", "no", "False")
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
 @app.post("/api/bot-config")
 async def bot_config(payload: dict):
     echo = payload.get("echo", False)
