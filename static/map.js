@@ -319,6 +319,118 @@ function closeContextMenu() {
   if (m) m.remove()
 }
 
+function formatAgo(ts) {
+  if (!ts) return 'mai'
+  var sec = Math.floor(Date.now() / 1000 - ts)
+  if (sec < 60)   return sec + 's fa'
+  if (sec < 3600) return Math.floor(sec / 60) + ' min fa'
+  return Math.floor(sec / 3600) + 'h fa'
+}
+
+function makeStatBox(value, label) {
+  var box = document.createElement('div')
+  box.style.cssText = 'background:var(--panel,#12151f);border-radius:3px;padding:4px 6px;text-align:center;flex:1;'
+  var v = document.createElement('div')
+  v.style.cssText = 'color:var(--text,#ccc);font-weight:700;font-size:11px;'
+  v.textContent = value
+  var l = document.createElement('div')
+  l.style.cssText = 'color:var(--muted,#666);font-size:8px;'
+  l.textContent = label
+  box.append(v, l)
+  return box
+}
+
+function showNodePopup(marker, node) {
+  var popup = document.getElementById('node-popup')
+  if (!popup) return
+  popup.textContent = ''
+
+  var online  = (Date.now() / 1000 - (node.last_heard || 0)) < 1800
+  var bgColor = node.is_local ? '#4a9eff' : (online ? '#4caf50' : '#555')
+  var glow    = node.is_local ? 'box-shadow:0 0 8px #4a9eff;' : ''
+  var label   = String(node.short_name || node.id).slice(0, 6)
+
+  // Header: avatar + names + close button
+  var header = document.createElement('div')
+  header.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:7px;'
+
+  var avatar = document.createElement('div')
+  avatar.style.cssText = 'width:32px;height:32px;background:' + bgColor + ';border-radius:50%;' +
+    'border:2px solid #fff;' + glow + 'display:flex;align-items:center;justify-content:center;' +
+    'font-size:9px;font-weight:700;color:#fff;flex-shrink:0;font-family:monospace;box-sizing:border-box;'
+  avatar.textContent = label
+
+  var names = document.createElement('div')
+  names.style.cssText = 'flex:1;min-width:0;'
+  var longName = document.createElement('div')
+  longName.style.cssText = 'color:var(--text,#ccc);font-weight:600;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+  longName.textContent = node.long_name || node.short_name || node.id
+  names.appendChild(longName)
+  if (node.hw_model || node.hardware) {
+    var hw = document.createElement('div')
+    hw.style.cssText = 'color:var(--accent,#4a9eff);font-size:9px;'
+    hw.textContent = node.hw_model || node.hardware
+    names.appendChild(hw)
+  }
+
+  var closeBtn = document.createElement('button')
+  closeBtn.style.cssText = 'background:none;border:none;color:var(--muted,#666);cursor:pointer;padding:2px;flex-shrink:0;display:flex;'
+  closeBtn.title = 'Chiudi'
+  var svgNS = 'http://www.w3.org/2000/svg'
+  var s = document.createElementNS(svgNS, 'svg')
+  s.setAttribute('width', '12'); s.setAttribute('height', '12')
+  s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none')
+  s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '2.5')
+  var p = document.createElementNS(svgNS, 'path')
+  p.setAttribute('stroke-linecap', 'round'); p.setAttribute('stroke-linejoin', 'round')
+  p.setAttribute('d', 'M6 18L18 6M6 6l12 12')
+  s.appendChild(p)
+  closeBtn.appendChild(s)
+  closeBtn.onclick = function(e) { e.stopPropagation(); popup.style.display = 'none' }
+  header.append(avatar, names, closeBtn)
+
+  // short_name + id row
+  var meta = document.createElement('div')
+  meta.style.cssText = 'color:var(--muted,#888);font-size:9px;margin-bottom:3px;'
+  meta.textContent = '*' + (node.short_name || '') + '* \u00b7 ' + node.id
+
+  // last heard row
+  var heard = document.createElement('div')
+  heard.style.cssText = 'color:var(--muted,#888);font-size:9px;margin-bottom:7px;'
+  heard.textContent = 'Sentito ' + formatAgo(node.last_heard)
+
+  // stat boxes: hops, SNR, battery
+  var stats = document.createElement('div')
+  stats.style.cssText = 'display:flex;gap:5px;'
+  stats.append(
+    makeStatBox(node.hop_count != null ? String(node.hop_count) : '\u2014', 'Hops'),
+    makeStatBox(node.snr      != null ? node.snr + ' dB'        : '\u2014', 'SNR'),
+    makeStatBox(node.battery_level != null ? node.battery_level + '%' : '\u2014', 'Batt')
+  )
+
+  popup.append(header, meta, heard, stats)
+
+  // Position next to marker
+  var pt    = leafletMap.latLngToContainerPoint(marker.getLatLng())
+  var mapEl = document.getElementById('map-container')
+  var pw    = 200
+  var left  = pt.x + 20
+  if (left + pw > mapEl.offsetWidth - 10) left = pt.x - pw - 10
+  popup.style.left    = left + 'px'
+  popup.style.top     = Math.max(6, pt.y - 60) + 'px'
+  popup.style.display = 'block'
+
+  // Close on outside click
+  setTimeout(function() {
+    document.addEventListener('click', function closePopup(e) {
+      if (!popup.contains(e.target)) {
+        popup.style.display = 'none'
+        document.removeEventListener('click', closePopup)
+      }
+    })
+  }, 50)
+}
+
 // --- Inizializzazione mappa ---
 
 function initMapIfNeeded() {
@@ -449,12 +561,7 @@ function updateMapMarker(node) {
       iconAnchor: [17, 17],
     })
     var marker = L.marker([node.latitude, node.longitude], { icon: icon })
-    marker.bindPopup(
-      '<b>' + escHtml(String(node.short_name || node.id)) + '</b><br>' +
-      escHtml(String(node.long_name || '')) + '<br>' +
-      'SNR: ' + escHtml(String(node.snr != null ? node.snr : '\u2014')) + ' dB<br>' +
-      'Batt: ' + escHtml(String(node.battery_level != null ? node.battery_level : '\u2014')) + '%'
-    )
+    marker.on('click', function() { showNodePopup(marker, node) })
     initNodeContextMenu(marker, node)
     marker.addTo(leafletMap)
     markerCache.set(node.id, marker)

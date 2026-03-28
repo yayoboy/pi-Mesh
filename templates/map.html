@@ -260,7 +260,15 @@
   </div>
 </div>
 
-<script src="/static/map.js?v=4"></script>
+<!-- Popup info nodo (posizionato via JS) -->
+<div id="node-popup"
+     style="display:none;position:absolute;z-index:900;
+            background:rgba(10,12,20,0.96);border:1px solid var(--border,#2a3a4a);
+            border-radius:6px;padding:10px;width:190px;
+            box-shadow:0 4px 16px rgba(0,0,0,0.6);font-size:10px;pointer-events:auto;">
+</div>
+
+<script src="/static/map.js?v=5"></script>
 <script>
 // Sposta modal al body per evitare clipping da overflow:hidden
 document.body.appendChild(document.getElementById('marker-modal'))
