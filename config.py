@@ -47,7 +47,8 @@ MAP_ZOOM_MAX = int(os.getenv("MAP_ZOOM_MAX", "12"))
 DISPLAY_ROTATION = int(os.getenv("DISPLAY_ROTATION", "0"))
 
 # UI
-UI_THEME = os.getenv("UI_THEME", "dark")
+UI_THEME   = os.getenv("UI_THEME", "dark")
+UI_ACCENT  = os.getenv("UI_ACCENT", "")
 
 # Limiti memoria
 MAX_MESSAGES_PER_CHANNEL = 200

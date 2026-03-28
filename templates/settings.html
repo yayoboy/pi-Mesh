@@ -58,10 +58,26 @@
   <!-- TEMA -->
   <div class="settings-section" style="border-top:1px solid var(--border);">
     <div class="settings-label">Tema UI</div>
-    <div style="display:flex; gap:8px;">
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
       <button onclick="setTheme('dark')"  style="flex:1; min-height:36px; font-size:12px;">Dark</button>
       <button onclick="setTheme('light')" style="flex:1; min-height:36px; font-size:12px;">Light</button>
       <button onclick="setTheme('hc')"    style="flex:1; min-height:36px; font-size:12px;">HC</button>
+    </div>
+    <div class="settings-label">Colore accento</div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
+      {% set swatches = ['#4a9eff','#4caf50','#ff9800','#e91e63','#9c27b0','#00bcd4','#ff5722','#8bc34a'] %}
+      {% for c in swatches %}
+      <button onclick="applyAccent('{{ c }}')" title="{{ c }}"
+        style="background:{{ c }};width:28px;min-height:28px;border-radius:50%;border:2px solid transparent;padding:0;flex-shrink:0;"
+        id="swatch-{{ loop.index }}"></button>
+      {% endfor %}
+    </div>
+    <div class="settings-row" style="gap:6px;">
+      <label style="flex-shrink:0;">Personalizzato</label>
+      <input type="color" id="accent-picker" value="{{ accent_color or '#4a9eff' }}"
+             style="padding:2px; min-height:32px; width:48px; flex-shrink:0;"
+             oninput="applyAccent(this.value)">
+      <button onclick="saveAccent()" style="min-height:32px; font-size:12px;">Salva</button>
     </div>
   </div>
 
@@ -309,6 +325,23 @@ async function saveNodeConfig() {
 async function saveLoraConfig() {
   const payload = { lora: { region: document.getElementById('lora-region').value, modemPreset: document.getElementById('lora-preset').value } }
   await fetch('/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+}
+
+let _pendingAccent = null
+
+function applyAccent(color) {
+  _pendingAccent = color
+  document.documentElement.style.setProperty('--accent', color)
+  document.body.style.setProperty('--accent', color)
+  const picker = document.getElementById('accent-picker')
+  if (picker) picker.value = color
+}
+
+async function saveAccent() {
+  const color = _pendingAccent || document.getElementById('accent-picker')?.value
+  if (!color) return
+  const theme = document.body.className.replace('theme-', '') || 'dark'
+  await fetch('/api/set-theme', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({theme, accent_color: color})})
 }
 
 async function setTheme(theme) {

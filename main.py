@@ -98,7 +98,7 @@ async def messages_page(request: Request):
     msgs = await database.get_messages(_conn, channel=0, limit=50)
     return templates.TemplateResponse(request, "messages.html", {
         "messages": msgs,
-        "theme": cfg.UI_THEME, "active": "messages"
+        "theme": cfg.UI_THEME, "accent_color": cfg.UI_ACCENT, "active": "messages"
     })
 
 @app.get("/nodes")
@@ -106,7 +106,7 @@ async def nodes_page(request: Request):
     nodes = await database.get_nodes(_conn)
     return templates.TemplateResponse(request, "nodes.html", {
         "nodes": nodes,
-        "theme": cfg.UI_THEME, "active": "nodes"
+        "theme": cfg.UI_THEME, "accent_color": cfg.UI_ACCENT, "active": "nodes"
     })
 
 @app.get("/map")
@@ -115,8 +115,9 @@ async def map_page(request: Request):
         "bounds":   cfg.MAP_BOUNDS,
         "zoom_min": cfg.MAP_ZOOM_MIN,
         "zoom_max": cfg.MAP_ZOOM_MAX,
-        "theme":    cfg.UI_THEME,
-        "active":   "map"
+        "theme":        cfg.UI_THEME,
+        "accent_color": cfg.UI_ACCENT,
+        "active":       "map"
     })
 
 @app.get("/telemetry")
@@ -124,7 +125,7 @@ async def telemetry_page(request: Request):
     nodes = await database.get_nodes(_conn)
     return templates.TemplateResponse(request, "telemetry.html", {
         "nodes": nodes,
-        "theme": cfg.UI_THEME, "active": "telemetry"
+        "theme": cfg.UI_THEME, "accent_color": cfg.UI_ACCENT, "active": "telemetry"
     })
 
 @app.get("/settings")
@@ -133,6 +134,7 @@ async def settings_page(request: Request):
     return templates.TemplateResponse(request, "settings.html", {
         "node":             node_info,
         "theme":            cfg.UI_THEME,
+        "accent_color":     cfg.UI_ACCENT,
         "active":           "settings",
         "enc1":             (cfg.ENC1_A, cfg.ENC1_B, cfg.ENC1_SW),
         "enc2":             (cfg.ENC2_A, cfg.ENC2_B, cfg.ENC2_SW),
@@ -256,6 +258,11 @@ async def set_theme(payload: dict):
         return JSONResponse({"ok": False}, status_code=400)
     _update_config_env("UI_THEME", theme)
     cfg.UI_THEME = theme
+    accent = payload.get("accent_color", "").strip()
+    import re
+    if accent and re.fullmatch(r"#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?", accent):
+        _update_config_env("UI_ACCENT", accent)
+        cfg.UI_ACCENT = accent
     return {"ok": True}
 
 _ALLOWED_REMOTE_CONFIG_SECTIONS = {"device", "display", "network", "telemetry", "lora", "bluetooth", "position"}

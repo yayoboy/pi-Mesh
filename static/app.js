@@ -59,12 +59,15 @@ function handleInit(data) {
   data.nodes.forEach(n => nodeCache.set(n.id, n))
   if (activeTab.name === 'messages') renderMessages(data.messages)
   if (data.theme) applyTheme(data.theme)
-  // Mostra nome nodo locale nella status bar
   const local = data.nodes.find(n => n.is_local)
   if (local) {
     const el = document.getElementById('node-name')
     if (el) el.textContent = local.short_name || local.id
+    updateGpsBadge(local.latitude != null && local.longitude != null)
   }
+  fetch('/api/wifi/status').then(r => r.json()).then(s => {
+    updateWifiBadge(s.state === 'connected')
+  }).catch(() => {})
 }
 
 function handleMessage(data) {
@@ -80,6 +83,7 @@ function handleNode(data) {
   if (data.is_local) {
     const el = document.getElementById('node-name')
     if (el) el.textContent = data.short_name || data.id
+    updateGpsBadge(data.latitude != null && data.longitude != null)
   }
 }
 
@@ -89,15 +93,18 @@ function handlePosition(data) {
     node.latitude  = data.latitude
     node.longitude = data.longitude
     if (activeTab.name === 'map' && mapReady) updateMapMarker(node)
+    if (node.is_local) updateGpsBadge(true)
   }
 }
 
 function handleTelemetry(data) {
   if (activeTab.name === 'telemetry') updateTelemetryChart(data)
-  // aggiorna RAM badge da systemMetrics Pi
-  if (data.node_id === 'pi' && data.type === 'systemMetrics' && data.values?.ram_mb) {
-    const el = document.getElementById('ram-badge')
-    if (el) el.textContent = data.values.ram_mb + 'MB'
+  if (data.node_id === 'pi' && data.type === 'systemMetrics' && data.values) {
+    const v = data.values
+    const ram = document.getElementById('ram-badge')
+    if (ram && v.ram_mb) ram.textContent = v.ram_mb + 'MB'
+    const temp = document.getElementById('temp-badge')
+    if (temp && v.cpu_temp_c != null) temp.textContent = v.cpu_temp_c + '°C'
   }
 }
 
@@ -117,6 +124,16 @@ function updateConnectionStatus(connected) {
   const badge = document.getElementById('connection-badge')
   if (!badge) return
   badge.classList.toggle('connected', connected)
+}
+
+function updateGpsBadge(hasFix) {
+  const el = document.getElementById('gps-badge')
+  if (el) el.style.color = hasFix ? 'var(--ok)' : 'var(--muted)'
+}
+
+function updateWifiBadge(connected) {
+  const el = document.getElementById('wifi-badge')
+  if (el) el.style.color = connected ? 'var(--ok)' : 'var(--muted)'
 }
 
 // ===== ENCODER =====
