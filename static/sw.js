@@ -1,15 +1,14 @@
-// Service Worker — cache static assets only
-const CACHE = 'pi-mesh-v1'
+// Service Worker — network-first for static assets
+const CACHE = 'pi-mesh-v3'
 const STATIC = [
   '/static/style.css',
   '/static/app.js',
+  '/static/map.js',
   '/static/chart.min.js',
 ]
 
 self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(STATIC)).then(() => self.skipWaiting())
-  )
+  self.skipWaiting()
 })
 
 self.addEventListener('activate', e => {
@@ -21,11 +20,16 @@ self.addEventListener('activate', e => {
 })
 
 self.addEventListener('fetch', e => {
-  // Only cache GET requests for static assets
   if (e.request.method !== 'GET') return
   const url = new URL(e.request.url)
+  // Strip query params for matching
   if (!STATIC.includes(url.pathname)) return
+  // Network-first: try fresh copy, fall back to cache
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+    fetch(e.request).then(response => {
+      const clone = response.clone()
+      caches.open(CACHE).then(c => c.put(e.request, clone))
+      return response
+    }).catch(() => caches.match(e.request))
   )
 })
