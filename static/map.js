@@ -347,7 +347,7 @@ function initMapIfNeeded() {
   var satelliteLayer = L.tileLayer('/tiles/satellite/{z}/{x}/{y}', tileOpts)
   osmLayer.addTo(leafletMap)
   L.control.layers({ 'Stradale': osmLayer, 'Topo': topoLayer, 'Satellite': satelliteLayer }).addTo(leafletMap)
-  L.control.zoom({ position: 'topleft' }).addTo(leafletMap)
+  L.control.zoom({ position: 'bottomright' }).addTo(leafletMap)
 
   hopLinesLayer.addTo(leafletMap)
   customMarkersLayer.addTo(leafletMap)
