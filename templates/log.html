@@ -2,9 +2,35 @@
 {% block content %}
 <div id="log-wrap" style="display:flex;flex-direction:column;height:100%;gap:8px;padding:8px;box-sizing:border-box">
 
-  <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+  <!-- Toolbar row: [Board][Pi] | [search] | [ALL][WARN+][ERR] | [⏸][↓] -->
+  <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap">
+    <!-- Source selector -->
     <button id="btn-board" class="btn-pill active" onclick="showLog('board')">Board</button>
     <button id="btn-pi"    class="btn-pill"        onclick="showLog('pi')">Pi</button>
+
+    <span style="width:1px;height:18px;background:var(--border);margin:0 2px"></span>
+
+    <!-- Text search -->
+    <input id="log-search" type="search" placeholder="Cerca…"
+      style="font-size:11px;padding:3px 8px;border-radius:12px;border:1px solid var(--border);
+             background:var(--surface);color:var(--text);outline:none;width:140px">
+
+    <span style="width:1px;height:18px;background:var(--border);margin:0 2px"></span>
+
+    <!-- Level filter -->
+    <button id="btn-all"   class="btn-pill active" onclick="_setLevel('all')">ALL</button>
+    <button id="btn-warn"  class="btn-pill"        onclick="_setLevel('warn')">WARN+</button>
+    <button id="btn-error" class="btn-pill"        onclick="_setLevel('error')">ERR</button>
+
+    <span style="width:1px;height:18px;background:var(--border);margin:0 2px"></span>
+
+    <!-- Auto-scroll toggle -->
+    <button id="btn-pause" class="btn-pill" onclick="_togglePause()" title="Pausa auto-scroll">⏸</button>
+
+    <!-- Download -->
+    <button class="btn-pill" onclick="downloadLog()" title="Scarica log">↓</button>
+
+    <!-- Spacer + Clear (keep existing) -->
     <span style="flex:1"></span>
     <button class="btn-pill" onclick="clearLog()">Pulisci</button>
   </div>
@@ -27,7 +53,11 @@
 
 <script>
 (function(){
-  let _src = 'board'
+  let _src      = 'board'
+  let _level    = 'all'   // 'all' | 'warn' | 'error'
+  let _paused   = false
+
+  // ── helpers ──────────────────────────────────────────────────────────────
 
   function ts(t){ return new Date(t*1000).toLocaleTimeString('it',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) }
 
@@ -38,26 +68,102 @@
     return div
   }
 
+  // Apply search text + level filter to every child of log-list
+  function _applyFilters(){
+    const list = document.getElementById('log-list')
+    if(!list) return
+    const q = (document.getElementById('log-search').value || '').toLowerCase()
+    Array.from(list.children).forEach(function(el){
+      const matchLevel =
+        _level === 'all'   ? true :
+        _level === 'warn'  ? (el.classList.contains('warn') || el.classList.contains('error')) :
+        /* error */          el.classList.contains('error')
+      const matchText = q === '' || el.textContent.toLowerCase().includes(q)
+      el.style.display = (matchLevel && matchText) ? '' : 'none'
+    })
+  }
+
+  function _scrollBottom(){
+    if(_paused) return
+    const list = document.getElementById('log-list')
+    if(list) list.scrollTop = list.scrollHeight
+  }
+
+  // ── public: render / append ───────────────────────────────────────────────
+
   function renderEntries(entries){
     const list = document.getElementById('log-list')
     if(!list) return
     while(list.firstChild) list.removeChild(list.firstChild)
-    entries.forEach(e => list.appendChild(makeEntry(e)))
-    list.scrollTop = list.scrollHeight
+    entries.forEach(function(e){ list.appendChild(makeEntry(e)) })
+    _applyFilters()
+    _scrollBottom()
   }
 
   function appendEntry(e){
     const list = document.getElementById('log-list')
     if(!list) return
-    list.appendChild(makeEntry(e))
-    list.scrollTop = list.scrollHeight
+    const el = makeEntry(e)
+    list.appendChild(el)
+
+    // Apply filter to the single new element
+    const q = (document.getElementById('log-search').value || '').toLowerCase()
+    const matchLevel =
+      _level === 'all'   ? true :
+      _level === 'warn'  ? (el.classList.contains('warn') || el.classList.contains('error')) :
+                           el.classList.contains('error')
+    const matchText = q === '' || el.textContent.toLowerCase().includes(q)
+    if(!(matchLevel && matchText)) el.style.display = 'none'
+
+    _scrollBottom()
   }
+
+  // ── level filter ──────────────────────────────────────────────────────────
+
+  window._setLevel = function(level){
+    _level = level
+    document.getElementById('btn-all').classList.toggle('active',   level === 'all')
+    document.getElementById('btn-warn').classList.toggle('active',  level === 'warn')
+    document.getElementById('btn-error').classList.toggle('active', level === 'error')
+    _applyFilters()
+  }
+
+  // ── auto-scroll toggle ────────────────────────────────────────────────────
+
+  window._togglePause = function(){
+    _paused = !_paused
+    document.getElementById('btn-pause').classList.toggle('active', _paused)
+    if(!_paused) _scrollBottom()
+  }
+
+  // ── download ──────────────────────────────────────────────────────────────
+
+  window.downloadLog = function(){
+    const list = document.getElementById('log-list')
+    if(!list) return
+    const lines = Array.from(list.children)
+      .filter(function(el){ return el.style.display !== 'none' })
+      .map(function(el){ return el.textContent })
+      .join('\n')
+    const blob = new Blob([lines], {type:'text/plain'})
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'log-' + _src + '-' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.txt'
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  // ── search input ──────────────────────────────────────────────────────────
+
+  document.getElementById('log-search').addEventListener('input', _applyFilters)
+
+  // ── existing public API ───────────────────────────────────────────────────
 
   window.showLog = function(src){
     _src = src
     document.getElementById('btn-board').classList.toggle('active', src === 'board')
-    document.getElementById('btn-pi').classList.toggle('active', src === 'pi')
-    fetch('/api/logs/' + src).then(r=>r.json()).then(renderEntries).catch(()=>{})
+    document.getElementById('btn-pi').classList.toggle('active',    src === 'pi')
+    fetch('/api/logs/' + src).then(function(r){ return r.json() }).then(renderEntries).catch(function(){})
   }
 
   window.clearLog = function(){

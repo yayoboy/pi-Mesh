@@ -23,6 +23,12 @@
     HW: {{ n.hw_model or '—' }}<br>
     {% if n.latitude %}Pos: {{ '%.4f'|format(n.latitude) }}, {{ '%.4f'|format(n.longitude) }}<br>{% endif %}
     <button data-req-pos="{{ n.id }}" style="min-height:32px; margin-top:4px; width:auto; padding:0 12px; font-size:12px;">Richiedi pos</button>
+    <div style="margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <button class="btn-pill" data-forget-node="{{ n.id }}" style="min-height:32px; width:auto; padding:0 12px; font-size:12px;">Dimentica</button>
+      <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;">
+        <input type="checkbox" data-forget-cascade="{{ n.id }}"> anche messaggi e telemetria
+      </label>
+    </div>
   </div>
 </div>
 {% endfor %}
@@ -80,6 +86,23 @@ function renderNodeRow(n) {
   posBtn.style.cssText = 'min-height:32px; margin-top:4px; width:auto; padding:0 12px; font-size:12px;'
   detail.appendChild(posBtn)
 
+  const forgetRow = document.createElement('div')
+  forgetRow.style.cssText = 'margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;'
+  const forgetBtn = document.createElement('button')
+  forgetBtn.className = 'btn-pill'
+  forgetBtn.dataset.forgetNode = n.id
+  forgetBtn.textContent = 'Dimentica'
+  forgetBtn.style.cssText = 'min-height:32px; width:auto; padding:0 12px; font-size:12px;'
+  const cascadeLabel = document.createElement('label')
+  cascadeLabel.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;'
+  const cascadeCheck = document.createElement('input')
+  cascadeCheck.type = 'checkbox'
+  cascadeCheck.dataset.forgetCascade = n.id
+  const cascadeText = document.createTextNode(' anche messaggi e telemetria')
+  cascadeLabel.append(cascadeCheck, cascadeText)
+  forgetRow.append(forgetBtn, cascadeLabel)
+  detail.appendChild(forgetRow)
+
   row.append(header, detail)
 
   if (existing) {
@@ -117,6 +140,30 @@ document.getElementById('node-list').addEventListener('click', e => {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ text: '', destination: reqBtn.dataset.reqPos, type: 'position_request' })
     })
+    return
+  }
+  const forgetBtn = e.target.closest('[data-forget-node]')
+  if (forgetBtn) {
+    e.stopPropagation()
+    const nodeId = forgetBtn.dataset.forgetNode
+    if (!confirm('Dimentica il nodo ' + nodeId + '?')) return
+    const cascadeCheck = document.querySelector('[data-forget-cascade="' + nodeId + '"]')
+    const cascade = cascadeCheck ? cascadeCheck.checked : false
+    fetch('/api/nodes/' + encodeURIComponent(nodeId) + (cascade ? '?cascade=true' : ''), {method: 'DELETE'})
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          const row = document.querySelector('[data-node-id="' + nodeId + '"]')
+          if (row) row.remove()
+          if (!document.querySelector('[data-node-id]')) {
+            const msg = document.createElement('div')
+            msg.id = 'no-nodes'
+            msg.style.cssText = 'padding:24px; text-align:center; color:var(--muted); font-size:13px;'
+            msg.textContent = 'Nessun nodo rilevato'
+            document.getElementById('node-list').appendChild(msg)
+          }
+        }
+      })
     return
   }
   const item = e.target.closest('[data-node-id]')

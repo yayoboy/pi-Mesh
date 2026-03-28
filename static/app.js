@@ -7,6 +7,27 @@ const activeTab = { name: document.querySelector('.tab.active')?.dataset.tab || 
 const nodeCache = new Map()
 const messageCache = []
 
+// ===== TOAST =====
+let _lastConnected = null
+
+function showToast(msg, type, duration) {
+  if (duration === undefined) duration = 3000
+  const container = document.getElementById('toast-container')
+  if (!container) return
+  const el = document.createElement('div')
+  el.className = 'toast' + (type ? ' toast-' + type : '')
+  el.textContent = msg
+  container.appendChild(el)
+  // trigger animation on next frame
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => { el.classList.add('show') })
+  })
+  setTimeout(() => {
+    el.classList.remove('show')
+    setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el) }, 300)
+  }, duration)
+}
+
 // ===== UTILITY =====
 function reexecScripts(container) {
   container.querySelectorAll('script').forEach(oldScript => {
@@ -75,10 +96,13 @@ function handleMessage(data) {
   messageCache.unshift(data)
   if (messageCache.length > 200) messageCache.pop()
   if (activeTab.name === 'messages') appendMessage(data)
+  showToast('MSG ' + (data.node_id || 'Msg') + ': ' + (data.text || '').slice(0, 30))
 }
 
 function handleNode(data) {
+  const isNew = !nodeCache.has(data.id)
   nodeCache.set(data.id, data)
+  if (isNew && !data.is_local) showToast('Nuovo nodo: ' + (data.short_name || data.id))
   if (activeTab.name === 'nodes') updateNodeRow(data)
   if (activeTab.name === 'map' && mapReady) updateMapMarker(data)
   if (data.is_local) {
@@ -129,6 +153,12 @@ function updateConnectionStatus(connected) {
   const badge = document.getElementById('connection-badge')
   if (!badge) return
   badge.classList.toggle('connected', connected)
+  if (_lastConnected !== connected) {
+    if (_lastConnected !== null) {
+      showToast(connected ? 'Connesso' : 'Disconnesso', connected ? 'ok' : 'warn')
+    }
+    _lastConnected = connected
+  }
 }
 
 function updateGpsBadge(hasFix) {
@@ -337,6 +367,11 @@ function updateNodeRow(data) { window.dispatchEvent(new CustomEvent('node-update
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
+  if (!document.getElementById('toast-container')) {
+    const tc = document.createElement('div')
+    tc.id = 'toast-container'
+    document.body.appendChild(tc)
+  }
   initWS()
   setInterval(() => { if (wsReady && ws.readyState === WebSocket.OPEN) ws.send('ping') }, 20000)
   attachKeyboardListeners()

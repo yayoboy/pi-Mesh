@@ -226,3 +226,11 @@ canvas { max-width: 100%; }
 .settings-row label { flex: 1; font-size: 13px; }
 .settings-row input,
 .settings-row select { flex: 1; min-height: 36px; font-size: 13px; }
+
+/* ===== TOAST ===== */
+#toast-container{position:fixed;bottom:56px;right:8px;z-index:9999;display:flex;flex-direction:column-reverse;gap:6px;pointer-events:none}
+.toast{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:11px;max-width:200px;opacity:0;transform:translateX(16px);transition:opacity .25s,transform .25s;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(0)}
+.toast.toast-ok{border-color:var(--ok)}
+.toast.toast-warn{border-color:#f0a030;color:#f0a030}
+.toast.toast-error{border-color:#e05050;color:#e05050}

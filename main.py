@@ -176,6 +176,11 @@ async def apply_settings(payload: dict):
 async def api_nodes():
     return await database.get_nodes(_conn)
 
+@app.delete("/api/nodes/{node_id}")
+async def delete_node(node_id: str, cascade: bool = False):
+    await database.delete_node(_conn, node_id, cascade)
+    return {"ok": True}
+
 @app.get("/api/messages")
 async def api_messages(channel: int = 0, limit: int = 50, before_id: int = None):
     return await database.get_messages(_conn, channel, limit, before_id)

@@ -107,6 +107,13 @@ async def get_node(conn, node_id: str):
     row = await cur.fetchone()
     return dict(row) if row else None
 
+async def delete_node(conn, node_id: str, cascade: bool = False):
+    await conn.execute("DELETE FROM nodes WHERE id=?", (node_id,))
+    if cascade:
+        await conn.execute("DELETE FROM messages WHERE node_id=?", (node_id,))
+        await conn.execute("DELETE FROM telemetry WHERE node_id=?", (node_id,))
+    await conn.commit()
+
 async def save_telemetry(conn, node_id: str, type_: str, value_dict: dict):
     import json
     await conn.execute(
