@@ -597,7 +597,7 @@ async def start_polling(drivers: list, conn, broadcast_fn, interval: int = 30):
     while True:
         for driver in drivers:
             try:
-                data = driver.read()
+                data = await asyncio.to_thread(driver.read)
                 if data is not None:
                     await database.save_sensor_reading(conn, driver.name, data)
                     await broadcast_fn({"type": "sensor", "data": {"sensor": driver.name, "values": data}})

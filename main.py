@@ -20,7 +20,7 @@ def get_conn():
 
 async def broadcast(data: dict):
     dead = set()
-    for ws in ws_clients:
+    for ws in list(ws_clients):
         try:
             await ws.send_json(data)
         except Exception:
@@ -270,12 +270,12 @@ async def set_theme(payload: dict):
     theme = payload.get("theme", "dark")
     if theme not in ("dark", "light", "hc"):
         return JSONResponse({"ok": False}, status_code=400)
-    _update_config_env("UI_THEME", theme)
+    await _update_config_env("UI_THEME", theme)
     cfg.UI_THEME = theme
     accent = payload.get("accent_color", "").strip()
     import re
     if accent and re.fullmatch(r"#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?", accent):
-        _update_config_env("UI_ACCENT", accent)
+        await _update_config_env("UI_ACCENT", accent)
         cfg.UI_ACCENT = accent
     return {"ok": True}
 
@@ -286,8 +286,11 @@ async def remote_config(payload: dict):
     node_id = payload.pop("remote_node_id", None)
     if not node_id:
         return JSONResponse({"ok": False, "error": "node_id mancante"}, status_code=400)
+    iface = meshtastic_client._interface
+    if not iface:
+        return JSONResponse({"ok": False, "error": "Non connesso"}, status_code=503)
     try:
-        node = meshtastic_client._interface.getNode(node_id)
+        node = await asyncio.to_thread(iface.getNode, node_id)
         for section, values in payload.items():
             if section not in _ALLOWED_REMOTE_CONFIG_SECTIONS:
                 logging.warning(f"remote-config: sezione '{section}' non permessa, ignorata")
@@ -308,20 +311,20 @@ async def hardware_config(payload: dict):
     try:
         if "enc1_pins" in payload:
             pins = [int(p.strip()) for p in payload["enc1_pins"].split(",")]
-            _update_config_env("ENC1_A",  str(pins[0]))
-            _update_config_env("ENC1_B",  str(pins[1]))
-            _update_config_env("ENC1_SW", str(pins[2]))
+            await _update_config_env("ENC1_A",  str(pins[0]))
+            await _update_config_env("ENC1_B",  str(pins[1]))
+            await _update_config_env("ENC1_SW", str(pins[2]))
         if "enc2_pins" in payload:
             pins = [int(p.strip()) for p in payload["enc2_pins"].split(",")]
-            _update_config_env("ENC2_A",  str(pins[0]))
-            _update_config_env("ENC2_B",  str(pins[1]))
-            _update_config_env("ENC2_SW", str(pins[2]))
+            await _update_config_env("ENC2_A",  str(pins[0]))
+            await _update_config_env("ENC2_B",  str(pins[1]))
+            await _update_config_env("ENC2_SW", str(pins[2]))
         if "i2c_sensors" in payload:
-            _update_config_env("I2C_SENSORS", payload["i2c_sensors"])
+            await _update_config_env("I2C_SENSORS", payload["i2c_sensors"])
         if "display_rotation" in payload:
-            _update_config_env("DISPLAY_ROTATION", str(payload["display_rotation"]))
+            await _update_config_env("DISPLAY_ROTATION", str(payload["display_rotation"]))
         if "buzzer_pin" in payload:
-            _update_config_env("BUZZER_PIN", str(int(payload["buzzer_pin"])))
+            await _update_config_env("BUZZER_PIN", str(int(payload["buzzer_pin"])))
         return {"ok": True}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -337,8 +340,7 @@ async def bot_config(payload: dict):
             return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
     return {"ok": True}
 
-def _update_config_env(key: str, value: str):
-    # Prefer config.env.local (loaded by systemd EnvironmentFile) if present
+def _update_config_env_sync(key: str, value: str):
     env_path = "config.env.local" if os.path.exists("config.env.local") else "config.env"
     try:
         with open(env_path) as f:
@@ -352,6 +354,9 @@ def _update_config_env(key: str, value: str):
             f.write(content)
     except Exception as e:
         logging.error(f"_update_config_env fallito: {e}")
+
+async def _update_config_env(key: str, value: str):
+    await asyncio.to_thread(_update_config_env_sync, key, value)
 
 @app.get("/api/wifi/status")
 async def wifi_status():

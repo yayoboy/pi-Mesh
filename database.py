@@ -1,4 +1,4 @@
-import os, shutil, logging, time
+import asyncio, os, shutil, logging, time
 import aiosqlite
 import config as cfg
 
@@ -183,7 +183,7 @@ async def sync_to_sd(conn, runtime_path: str = None, persistent_path: str = None
         await conn.commit()
         await conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         tmp = persistent + ".tmp"
-        shutil.copy2(runtime, tmp)
-        os.replace(tmp, persistent)
+        await asyncio.to_thread(shutil.copy2, runtime, tmp)
+        await asyncio.to_thread(os.replace, tmp, persistent)
     except Exception as e:
         logging.error(f"Sync DB fallito: {e}")

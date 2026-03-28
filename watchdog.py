@@ -57,13 +57,19 @@ async def pi_telemetry_task(conn, broadcast_fn, broadcast_interval: int = 10, db
         try:
             rss_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
             pi_met = {"ram_mb": round(rss_mb, 1)}
-            temp_path = "/sys/class/thermal/thermal_zone0/temp"
-            if os.path.exists(temp_path):
-                with open(temp_path) as f:
-                    pi_met["cpu_temp_c"] = round(int(f.read().strip()) / 1000, 1)
-            st = os.statvfs(".")
-            pi_met["disk_free_mb"]  = round(st.f_bavail * st.f_frsize / 1024 / 1024, 1)
-            pi_met["disk_total_mb"] = round(st.f_blocks * st.f_frsize / 1024 / 1024, 1)
+
+            def _read_disk_temp():
+                result = {}
+                temp_path = "/sys/class/thermal/thermal_zone0/temp"
+                if os.path.exists(temp_path):
+                    with open(temp_path) as f:
+                        result["cpu_temp_c"] = round(int(f.read().strip()) / 1000, 1)
+                st = os.statvfs(".")
+                result["disk_free_mb"]  = round(st.f_bavail * st.f_frsize / 1024 / 1024, 1)
+                result["disk_total_mb"] = round(st.f_blocks * st.f_frsize / 1024 / 1024, 1)
+                return result
+
+            pi_met.update(await asyncio.to_thread(_read_disk_temp))
             await broadcast_fn({"type": "telemetry", "data": {
                 "node_id": "pi", "type": "systemMetrics", "values": pi_met
             }})
@@ -90,12 +96,13 @@ async def board_telemetry_task(conn, broadcast_fn, interval: int = 30):
                 continue
             local_id = None
             try:
-                local_id = iface.getMyNodeInfo().get("user", {}).get("id")
+                info = await asyncio.to_thread(iface.getMyNodeInfo)
+                local_id = info.get("user", {}).get("id")
             except Exception:
                 pass
             if not local_id:
                 continue
-            nodes = iface.nodes or {}
+            nodes = dict(iface.nodes or {})
             local = nodes.get(local_id) or next(
                 (v for v in nodes.values() if v.get("user", {}).get("id") == local_id), None)
             if not local:

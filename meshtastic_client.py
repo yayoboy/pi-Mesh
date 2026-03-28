@@ -111,10 +111,11 @@ def is_connected() -> bool:
     return _connected
 
 def get_local_node():
-    if not _interface:
+    iface = _interface
+    if not iface:
         return None
     try:
-        info = _interface.getMyNodeInfo()
+        info = iface.getMyNodeInfo()
         return {
             "id":         info.get("user", {}).get("id"),
             "long_name":  info.get("user", {}).get("longName"),
@@ -125,14 +126,16 @@ def get_local_node():
         return None
 
 async def send_message(text: str, channel: int = 0, destination: str = "^all"):
-    if not _interface:
+    iface = _interface
+    if not iface:
         raise RuntimeError("Non connesso")
-    await asyncio.to_thread(_interface.sendText, text, channelIndex=channel, destinationId=destination)
+    await asyncio.to_thread(iface.sendText, text, channelIndex=channel, destinationId=destination)
 
 async def set_config(config_dict: dict):
-    if not _interface:
+    iface = _interface
+    if not iface:
         raise RuntimeError("Non connesso")
-    node = await asyncio.to_thread(_interface.getNode, '^local')
+    node = await asyncio.to_thread(iface.getNode, '^local')
     for section, values in config_dict.items():
         cfg_section = getattr(node.localConfig, section, None)
         if cfg_section is None:
@@ -143,8 +146,9 @@ async def set_config(config_dict: dict):
             await asyncio.to_thread(node.writeConfig, section)
 
 async def request_position(node_id: str):
-    if _interface:
-        _interface.sendPosition(destinationId=node_id)
+    iface = _interface
+    if iface:
+        await asyncio.to_thread(iface.sendPosition, node_id)
 
 # --- Callback pubsub (thread separati) ---
 
