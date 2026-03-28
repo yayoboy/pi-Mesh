@@ -84,7 +84,6 @@ for d in ["static", "static/tiles", "templates"]:
     os.makedirs(d, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/tiles",  StaticFiles(directory="static/tiles"), name="tiles")
 templates = Jinja2Templates(directory="templates")
 
 # --- Route pagine ---
