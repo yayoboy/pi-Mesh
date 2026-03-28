@@ -318,7 +318,12 @@ function closeContextMenu() {
 // --- Inizializzazione mappa ---
 
 function initMapIfNeeded() {
-  if (mapReady || typeof L === 'undefined') return
+  // If already initialized, just invalidate size and return
+  if (mapReady) {
+    if (leafletMap) setTimeout(function() { leafletMap.invalidateSize() }, 100)
+    return
+  }
+  if (typeof L === 'undefined') return
   hopLinesLayer = L.layerGroup()
   tracerouteLayer = L.layerGroup()
   customMarkersLayer = L.layerGroup()
@@ -328,17 +333,27 @@ function initMapIfNeeded() {
   if (!bounds) return
   var zoomMin = parseInt(el.dataset.zoomMin || '7')
   var zoomMax = parseInt(el.dataset.zoomMax || '12')
-  var center  = [
-    (bounds.lat_min + bounds.lat_max) / 2,
-    (bounds.lon_min + bounds.lon_max) / 2,
-  ]
+
+  // Restore saved view or use default center
+  var savedView = null
+  try { savedView = JSON.parse(localStorage.getItem('mapView')) } catch(e) {}
+  var center = savedView
+    ? [savedView.lat, savedView.lng]
+    : [(bounds.lat_min + bounds.lat_max) / 2, (bounds.lon_min + bounds.lon_max) / 2]
+  var zoom = savedView ? savedView.zoom : 10
 
   leafletMap = L.map('map-container', {
-    center: center, zoom: 10, zoomControl: false,
+    center: center, zoom: zoom, zoomControl: false,
     minZoom: zoomMin, maxZoom: zoomMax,
     maxBounds: [[bounds.lat_min, bounds.lon_min], [bounds.lat_max, bounds.lon_max]],
     maxBoundsViscosity: 1.0,
     tap: true,
+  })
+
+  // Save view on move/zoom
+  leafletMap.on('moveend', function() {
+    var c = leafletMap.getCenter()
+    localStorage.setItem('mapView', JSON.stringify({ lat: c.lat, lng: c.lng, zoom: leafletMap.getZoom() }))
   })
 
   var tileOpts       = { minZoom: zoomMin, maxZoom: zoomMax }
@@ -360,6 +375,9 @@ function initMapIfNeeded() {
   renderHopLines()
   loadCustomMarkers()
 
+  // Invalidate size after delay to ensure container is visible
+  setTimeout(function() { leafletMap.invalidateSize() }, 200)
+
   var trNode = new URLSearchParams(window.location.search).get('traceroute')
   if (trNode) {
     fetch('/api/traceroute/' + encodeURIComponent(trNode))
@@ -367,6 +385,17 @@ function initMapIfNeeded() {
       .then(function(data) {
         if (data.results && data.results[0]) renderTraceroutePath(data.results[0].hops)
       })
+  }
+}
+
+function centerOnBoard() {
+  if (!mapReady || !leafletMap) return
+  var local = null
+  nodeCache.forEach(function(node) {
+    if (node.is_local && node.latitude && node.longitude) local = node
+  })
+  if (local) {
+    leafletMap.setView([local.latitude, local.longitude], leafletMap.getZoom())
   }
 }
 
