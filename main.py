@@ -314,7 +314,8 @@ async def bot_config(payload: dict):
     return {"ok": True}
 
 def _update_config_env(key: str, value: str):
-    env_path = "config.env"
+    # Prefer config.env.local (loaded by systemd EnvironmentFile) if present
+    env_path = "config.env.local" if os.path.exists("config.env.local") else "config.env"
     try:
         with open(env_path) as f:
             content = f.read()

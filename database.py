@@ -6,6 +6,7 @@ async def init_db(runtime_path: str = None, persistent_path: str = None) -> aios
     runtime    = runtime_path    or cfg.DB_RUNTIME
     persistent = persistent_path or cfg.DB_PERSISTENT
 
+    os.makedirs(os.path.dirname(persistent), exist_ok=True)
     if os.path.exists(persistent):
         shutil.copy2(persistent, runtime)
 
@@ -178,6 +179,7 @@ async def sync_to_sd(conn, runtime_path: str = None, persistent_path: str = None
     runtime    = runtime_path    or cfg.DB_RUNTIME
     persistent = persistent_path or cfg.DB_PERSISTENT
     try:
+        os.makedirs(os.path.dirname(persistent), exist_ok=True)
         await conn.commit()
         await conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         tmp = persistent + ".tmp"
