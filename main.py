@@ -479,6 +479,12 @@ async def hardware_config(payload: dict):
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
+@app.get("/api/serial-ports")
+async def get_serial_ports():
+    import glob as g
+    candidates = sorted(g.glob('/dev/ttyACM*') + g.glob('/dev/ttyUSB*') + g.glob('/dev/ttyMESHTASTIC'))
+    return {"ports": candidates, "current": cfg.SERIAL_PORT}
+
 @app.get("/api/config")
 async def api_config():
     return {
