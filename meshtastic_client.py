@@ -150,8 +150,9 @@ async def _sync_nodes(interface):
                 "altitude":      pos.get("altitude"),
                 "is_local":      1 if info.get("num") == interface.myInfo.get("myNodeNum") else 0,
             }
-            if _conn_getter:
-                await database.save_node(_conn_getter(), node)
+            conn = _conn_getter() if _conn_getter else None
+            if conn:
+                await database.save_node(conn, node)
             await _broadcast({"type": "node", "data": node})
     except Exception as e:
         logging.error(f"_sync_nodes fallito: {e}")

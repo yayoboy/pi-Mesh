@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
 <div id="node-list">
+{% if not nodes %}
+<div id="no-nodes" style="padding:24px; text-align:center; color:var(--muted); font-size:13px;">
+  Nessun nodo rilevato
+</div>
+{% endif %}
 {% for n in nodes %}
 <div class="list-item" data-node-id="{{ n.id }}" style="flex-direction:column; align-items:stretch; cursor:pointer;">
   <div style="display:flex; align-items:center; gap:8px;">
@@ -10,30 +15,82 @@
       <div style="font-size:11px; color:var(--muted);">{{ n.long_name or '' }}</div>
     </div>
     <div style="font-size:11px; color:var(--muted); text-align:right;">
-      {% if n.battery_level is not none %}🔋{{ n.battery_level }}%{% endif %}<br>
+      {% if n.battery_level is not none %}Batt {{ n.battery_level }}%{% endif %}<br>
       {% if n.snr is not none %}SNR {{ n.snr }}dB{% endif %}
     </div>
   </div>
   <div id="detail-{{ n.id }}" style="display:none; padding-top:8px; font-size:12px; color:var(--muted); border-top:1px solid var(--border); margin-top:8px;">
     HW: {{ n.hw_model or '—' }}<br>
     {% if n.latitude %}Pos: {{ '%.4f'|format(n.latitude) }}, {{ '%.4f'|format(n.longitude) }}<br>{% endif %}
-    <button data-req-pos="{{ n.id }}" style="min-height:32px; margin-top:4px; width:auto; padding:0 12px; font-size:12px;">📍 Richiedi pos</button>
+    <button data-req-pos="{{ n.id }}" style="min-height:32px; margin-top:4px; width:auto; padding:0 12px; font-size:12px;">Richiedi pos</button>
   </div>
 </div>
 {% endfor %}
 </div>
 <script>
-// Badge stato in base a last_heard
-document.querySelectorAll('[id^="badge-"]').forEach(badge => {
-  const nodeId = badge.id.replace('badge-','')
-  // last_heard è iniettato come data attribute nel template
-})
+function renderNodeRow(n) {
+  const existing = document.querySelector('[data-node-id="' + escHtml(n.id) + '"]')
+  const detailWasOpen = existing && document.getElementById('detail-' + n.id)?.style.display === 'block'
 
-// Aggiorna badge via JS con nodeCache dal parent
-window.addEventListener('node-update', e => {
-  const n = e.detail
+  const row = document.createElement('div')
+  row.className = 'list-item'
+  row.dataset.nodeId = n.id
+  row.style.cssText = 'flex-direction:column; align-items:stretch; cursor:pointer;'
+
+  // Header row
+  const header = document.createElement('div')
+  header.style.cssText = 'display:flex; align-items:center; gap:8px;'
+
+  const badge = document.createElement('div')
+  badge.className = 'node-badge'
+  badge.id = 'badge-' + n.id
+
+  const info = document.createElement('div')
+  info.style.flex = '1'
+  const nameEl = document.createElement('div')
+  nameEl.style.fontWeight = 'bold'
+  nameEl.textContent = n.short_name || n.id
+  const longEl = document.createElement('div')
+  longEl.style.cssText = 'font-size:11px; color:var(--muted);'
+  longEl.textContent = n.long_name || ''
+  info.append(nameEl, longEl)
+
+  const stats = document.createElement('div')
+  stats.style.cssText = 'font-size:11px; color:var(--muted); text-align:right;'
+  stats.textContent = (n.battery_level != null ? 'Batt ' + n.battery_level + '%' : '') + '\n' +
+                      (n.snr != null ? 'SNR ' + n.snr + 'dB' : '')
+
+  header.append(badge, info, stats)
+
+  // Detail panel
+  const detail = document.createElement('div')
+  detail.id = 'detail-' + n.id
+  detail.style.cssText = 'display:none; padding-top:8px; font-size:12px; color:var(--muted); border-top:1px solid var(--border); margin-top:8px;'
+  const hw = document.createElement('span')
+  hw.textContent = 'HW: ' + (n.hw_model || '—')
+  detail.appendChild(hw)
+  if (n.latitude != null) {
+    const pos = document.createElement('div')
+    pos.textContent = 'Pos: ' + n.latitude.toFixed(4) + ', ' + n.longitude.toFixed(4)
+    detail.appendChild(pos)
+  }
+  const posBtn = document.createElement('button')
+  posBtn.dataset.reqPos = n.id
+  posBtn.textContent = 'Richiedi pos'
+  posBtn.style.cssText = 'min-height:32px; margin-top:4px; width:auto; padding:0 12px; font-size:12px;'
+  detail.appendChild(posBtn)
+
+  row.append(header, detail)
+
+  if (existing) {
+    existing.replaceWith(row)
+    if (detailWasOpen) detail.style.display = 'block'
+  } else {
+    document.getElementById('no-nodes')?.remove()
+    document.getElementById('node-list').appendChild(row)
+  }
   updateBadge(n.id, n.last_heard)
-})
+}
 
 function updateBadge(id, lastHeard) {
   const badge = document.getElementById('badge-' + id)
@@ -42,28 +99,29 @@ function updateBadge(id, lastHeard) {
   badge.className = 'node-badge ' + (ago < 300 ? 'online' : ago < 1800 ? 'recent' : 'offline')
 }
 
-// Inizializza badge
+// Inizializza badge per nodi server-rendered
 {% for n in nodes %}
 updateBadge('{{ n.id }}', {{ n.last_heard or 0 }})
 {% endfor %}
 
-// Event delegation per toggle dettaglio e richiesta posizione
+// Aggiorna in tempo reale via WebSocket
+window.addEventListener('node-update', e => renderNodeRow(e.detail))
+
+// Toggle dettaglio e richiesta posizione
 document.getElementById('node-list').addEventListener('click', e => {
-  const item = e.target.closest('[data-node-id]')
   const reqBtn = e.target.closest('[data-req-pos]')
   if (reqBtn) {
     e.stopPropagation()
-    const nodeId = reqBtn.dataset.reqPos
     fetch('/send', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ text: '', destination: nodeId, type: 'position_request' })
+      body: JSON.stringify({ text: '', destination: reqBtn.dataset.reqPos, type: 'position_request' })
     })
     return
   }
+  const item = e.target.closest('[data-node-id]')
   if (item) {
-    const nodeId = item.dataset.nodeId
-    const el = document.getElementById('detail-' + nodeId)
+    const el = document.getElementById('detail-' + item.dataset.nodeId)
     if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'
   }
 })
