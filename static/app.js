@@ -107,7 +107,7 @@ function handleNode(data) {
   nodeCache.set(data.id, data)
   if (isNew && !data.is_local) showToast('Nuovo nodo: ' + (data.short_name || data.id))
   if (activeTab.name === 'nodes') updateNodeRow(data)
-  if (activeTab.name === 'map' && mapReady) updateMapMarker(data)
+  if (activeTab.name === 'map' && typeof mapReady !== 'undefined' && mapReady) updateMapMarker(data)
   if (data.is_local) {
     const el = document.getElementById('node-name')
     if (el) el.textContent = data.short_name || data.id
@@ -120,7 +120,7 @@ function handlePosition(data) {
   if (node) {
     node.latitude  = data.latitude
     node.longitude = data.longitude
-    if (activeTab.name === 'map' && mapReady) updateMapMarker(node)
+    if (activeTab.name === 'map' && typeof mapReady !== 'undefined' && mapReady) updateMapMarker(node)
     if (node.is_local) updateGpsBadge(true)
   }
 }
@@ -215,7 +215,7 @@ function enc2Nodes(action) {
   if (list) list.scrollTop += (action === 'cw' ? 48 : -48)
 }
 function enc2Map(action) {
-  if (!mapReady) return
+  if (typeof mapReady === 'undefined' || !mapReady) return
   if (action === 'cw') leafletMap.zoomIn()
   if (action === 'ccw') leafletMap.zoomOut()
 }
