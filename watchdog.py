@@ -43,16 +43,23 @@ async def meshtastic_telemetry_poll_task(conn, broadcast_fn, interval: int = 60)
         try:
             iface = meshtastic_client._interface
             if iface and meshtastic_client.is_connected():
-                my_num = (iface.myInfo or {}).get("myNodeNum")
-                nodes  = iface.nodes or {}
-                local  = next((v for v in nodes.values() if v.get("num") == my_num), None)
-                if local:
-                    met = local.get("deviceMetrics", {})
-                    if met:
-                        await database.save_telemetry(conn, "local", "deviceMetrics", dict(met))
-                        await broadcast_fn({"type": "telemetry", "data": {
-                            "node_id": "local", "type": "deviceMetrics", "values": dict(met)
-                        }})
+                # Usa l'ID reale del nodo locale
+                local_id = None
+                try:
+                    my_info  = iface.getMyNodeInfo()
+                    local_id = my_info.get("user", {}).get("id")
+                except Exception:
+                    pass
+                if local_id:
+                    nodes = iface.nodes or {}
+                    local = nodes.get(local_id) or next((v for v in nodes.values() if v.get("user", {}).get("id") == local_id), None)
+                    if local:
+                        met = local.get("deviceMetrics", {})
+                        if met:
+                            await database.save_telemetry(conn, local_id, "deviceMetrics", dict(met))
+                            await broadcast_fn({"type": "telemetry", "data": {
+                                "node_id": local_id, "type": "deviceMetrics", "values": dict(met)
+                            }})
         except Exception as e:
             logging.debug(f"meshtastic_poll: {e}")
 

@@ -19,8 +19,9 @@
     <label style="font-size:12px; color:var(--muted); flex-shrink:0;">Nodo:</label>
     <select id="node-select" style="min-height:32px; font-size:12px;" onchange="loadNodeTelemetry(this.value)">
       {% for n in nodes %}
-      <option value="{{ n.id }}">{{ n.short_name or n.id }}</option>
+      <option value="{{ n.id }}"{% if n.is_local %} selected{% endif %}>{{ n.short_name or n.id }}{% if n.is_local %} (locale){% endif %}</option>
       {% endfor %}
+      <option value="pi">Pi (sistema)</option>
     </select>
   </div>
 
@@ -48,6 +49,16 @@ function initCharts() {
 
 async function loadNodeTelemetry(nodeId) {
   if (!nodeId) return
+  // Pulizia grafici
+  battChart.data.labels = []; battChart.data.datasets[0].data = []
+  chUtilChart.data.labels = []; chUtilChart.data.datasets[0].data = []
+  battChart.update(); chUtilChart.update()
+  document.getElementById('device-metrics').textContent = ''
+
+  if (nodeId === 'pi') {
+    await loadPiMetrics()
+    return
+  }
   try {
     const r = await fetch(`/api/telemetry/${nodeId}/deviceMetrics`)
     if (!r.ok) return
@@ -58,11 +69,42 @@ async function loadNodeTelemetry(nodeId) {
     chUtilChart.data.labels  = labels
     battChart.data.datasets[0].data   = data.map(d => d.values?.batteryLevel ?? null).reverse()
     chUtilChart.data.datasets[0].data = data.map(d => d.values?.channelUtilization != null ? (d.values.channelUtilization * 100).toFixed(1) : null).reverse()
-    battChart.update()
-    chUtilChart.update()
-    // mostra ultima lettura metriche
+    battChart.update(); chUtilChart.update()
     if (data[0]?.values) updateDeviceMetrics(data[0].values)
   } catch (_) {}
+}
+
+async function loadPiMetrics() {
+  try {
+    const r = await fetch('/api/telemetry/pi/systemMetrics?limit=1')
+    if (!r.ok) return
+    const data = await r.json()
+    if (!Array.isArray(data) || data.length === 0) return
+    const v = data[0].values
+    updatePiStats(v)
+  } catch (_) {}
+}
+
+function updatePiStats(v) {
+  if (v.ram_mb != null)       document.getElementById('pi-ram').textContent  = 'RAM: ' + v.ram_mb + 'MB'
+  if (v.cpu_temp_c != null)   document.getElementById('pi-temp').textContent = 'Temp: ' + v.cpu_temp_c + '\u00b0C'
+  if (v.disk_free_mb != null) document.getElementById('pi-disk').textContent = 'Disco: ' + v.disk_free_mb + 'MB liberi'
+  // Mostra nelle metriche device anche i dati Pi
+  const container = document.getElementById('device-metrics')
+  container.textContent = ''
+  const items = [
+    ['RAM', v.ram_mb != null ? v.ram_mb + 'MB' : null],
+    ['Temp', v.cpu_temp_c != null ? v.cpu_temp_c + '\u00b0C' : null],
+    ['Disco libero', v.disk_free_mb != null ? v.disk_free_mb + 'MB' : null],
+    ['Disco totale', v.disk_total_mb != null ? v.disk_total_mb + 'MB' : null],
+  ]
+  items.forEach(([label, val]) => {
+    if (val == null) return
+    const span = document.createElement('span')
+    span.style.cssText = 'background:var(--bg2); border-radius:4px; padding:2px 6px;'
+    span.textContent = label + ': ' + val
+    container.appendChild(span)
+  })
 }
 
 function pushChartPoint(chart, ts, value) {
@@ -104,9 +146,9 @@ function formatUptime(s) {
 window.addEventListener('telemetry-update', e => {
   const { node_id, type, values } = e.detail
   if (type === 'systemMetrics' && node_id === 'pi') {
-    if (values.ram_mb != null)     document.getElementById('pi-ram').textContent  = 'RAM: ' + values.ram_mb + 'MB'
-    if (values.cpu_temp_c != null) document.getElementById('pi-temp').textContent = 'Temp: ' + values.cpu_temp_c + '\u00b0C'
-    if (values.disk_free_mb != null) document.getElementById('pi-disk').textContent = 'Disco: ' + values.disk_free_mb + 'MB liberi'
+    updatePiStats(values)
+    const sel = document.getElementById('node-select')
+    if (sel && sel.value === 'pi') updatePiStats(values)
     return
   }
   const sel = document.getElementById('node-select')
@@ -142,6 +184,12 @@ window.addEventListener('sensor-update', e => {
 
 document.addEventListener('DOMContentLoaded', () => {
   initCharts()
+  // Carica sempre le metriche Pi in background
+  loadPiMetrics().then(() => {
+    const piRam = document.getElementById('pi-ram')
+    if (!piRam.textContent) piRam.textContent = 'Dati Pi non ancora disponibili'
+  })
+  // Carica telemetria del nodo selezionato
   const sel = document.getElementById('node-select')
   if (sel && sel.value) loadNodeTelemetry(sel.value)
 })

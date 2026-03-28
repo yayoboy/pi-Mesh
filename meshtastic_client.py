@@ -131,13 +131,22 @@ async def _sync_nodes(interface):
     import database
     await _broadcast({"type": "status", "data": {"connected": True}})
     try:
+        # Determina l'ID del nodo locale in modo affidabile
+        local_id = None
+        try:
+            my_info = interface.getMyNodeInfo()
+            local_id = my_info.get("user", {}).get("id")
+        except Exception:
+            pass
+
         nodes_dict = interface.nodes or {}
         for node_id, info in nodes_dict.items():
             user = info.get("user", {})
             pos  = info.get("position", {})
             met  = info.get("deviceMetrics", {})
+            nid  = user.get("id") or (info.get("num") and f"!{info['num']:08x}") or node_id
             node = {
-                "id":            info.get("num") and f"!{info['num']:08x}" or node_id,
+                "id":            nid,
                 "long_name":     user.get("longName", ""),
                 "short_name":    user.get("shortName", ""),
                 "hw_model":      user.get("hwModel", ""),
@@ -148,7 +157,7 @@ async def _sync_nodes(interface):
                 "latitude":      pos.get("latitudeI", 0) / 1e7 if pos.get("latitudeI") else None,
                 "longitude":     pos.get("longitudeI", 0) / 1e7 if pos.get("longitudeI") else None,
                 "altitude":      pos.get("altitude"),
-                "is_local":      1 if info.get("num") == interface.myInfo.get("myNodeNum") else 0,
+                "is_local":      1 if local_id and nid == local_id else 0,
             }
             conn = _conn_getter() if _conn_getter else None
             if conn:
