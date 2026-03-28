@@ -5,121 +5,189 @@
 
 <div style="overflow-y:auto; height:100%; padding:4px 8px;">
 
-  <!-- === Raspberry Pi === -->
-  <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; padding:4px 0 2px;">Raspberry Pi</div>
-  <div id="pi-metrics" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; font-size:12px;">
-    <span id="pi-ram"  style="background:var(--bg2); border-radius:4px; padding:2px 6px;">RAM: —</span>
-    <span id="pi-temp" style="background:var(--bg2); border-radius:4px; padding:2px 6px;">Temp: —</span>
-    <span id="pi-disk" style="background:var(--bg2); border-radius:4px; padding:2px 6px;">Disco: —</span>
+  <!-- === Metric badges === -->
+  <div id="badges-row" style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:6px; font-size:11px;">
+    <span id="bdg-ram"    class="t-badge" style="border-left:3px solid #4a9eff;">RAM: —</span>
+    <span id="bdg-batt"   class="t-badge" style="border-left:3px solid #4caf50;">Batt: —</span>
+    <span id="bdg-temp"   class="t-badge" style="border-left:3px solid #ff5722;">Temp: —</span>
+    <span id="bdg-chutil" class="t-badge" style="border-left:3px solid #ff9800;">ChUtil: —</span>
+    <span id="bdg-airtx"  class="t-badge" style="border-left:3px solid #9c27b0;">AirTx: —</span>
+    <span id="bdg-disk"   class="t-badge" style="border-left:3px solid #00bcd4;">Disco: —</span>
   </div>
-  <div class="chart-wrap" style="margin-bottom:8px;"><canvas id="chart-pi-ram" height="60"></canvas></div>
 
-  <!-- === Board Meshtastic === -->
-  <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; padding:4px 0 2px;">{{ local_node.name }}</div>
-  <div id="board-metrics" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; font-size:12px; color:var(--muted);">In attesa dati board...</div>
-  <div class="chart-wrap"><canvas id="chart-battery" height="60"></canvas></div>
-  <div class="chart-wrap" style="margin-bottom:8px;"><canvas id="chart-ch-util" height="60"></canvas></div>
-  <div style="display:flex; gap:6px; margin-top:4px; flex-wrap:wrap;">
+  <!-- === Combined Board + Pi chart === -->
+  <div class="chart-wrap" style="height:45%; min-height:100px; margin-bottom:8px;">
+    <canvas id="chart-main"></canvas>
+  </div>
+
+  <!-- === Export buttons === -->
+  <div style="display:flex; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
     <button class="btn-pill" onclick="exportTelemetry('json')" style="font-size:11px;">JSON</button>
     <button class="btn-pill" onclick="exportTelemetry('csv')" style="font-size:11px;">CSV</button>
   </div>
 
-  <!-- === Sensori I2C === -->
+  <!-- === Sensori I2C (hidden until sensor-update fires) === -->
   <div id="sensors-section" style="display:none;">
     <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; padding:4px 0 2px;">Sensori I2C</div>
-    <div id="sensor-display" style="display:flex; gap:6px; flex-wrap:wrap; font-size:12px;"></div>
-    <button class="btn-pill" onclick="exportSensors('csv')" style="font-size:11px; margin-top:4px;">Esporta sensori CSV</button>
+    <div id="sensor-badges" style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:6px; font-size:11px;"></div>
+    <div class="chart-wrap" style="height:40%; min-height:80px; margin-bottom:6px;">
+      <canvas id="chart-sensors"></canvas>
+    </div>
+    <button class="btn-pill" onclick="exportSensors('csv')" style="font-size:11px;">Esporta sensori CSV</button>
   </div>
 
 </div>
 
+<style>
+.t-badge {
+  background: var(--bg2);
+  border-radius: 4px;
+  padding: 2px 6px 2px 5px;
+  white-space: nowrap;
+}
+</style>
+
 <script>
 const _LOCAL_NODE_ID = {% if local_node.id %}"{{ local_node.id | e }}"{% else %}null{% endif %}
 
-let piRamChart = null, battChart = null, chUtilChart = null
-
-function _makeChart(id, label, color) {
-  const opts = {
-    responsive: true, animation: false,
-    scales: {
-      x: { display: false },
-      y: { ticks: { color: '#888', font: { size: 9 } }, grid: { color: '#333' } }
-    },
-    plugins: { legend: { labels: { color: '#aaa', font: { size: 9 } } } }
-  }
-  return new Chart(document.getElementById(id), {
-    type: 'line',
-    data: { labels: [], datasets: [{ label, data: [], borderColor: color, borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false }] },
-    options: opts
-  })
-}
-
-function _pushPoint(chart, ts, value) {
-  if (value == null) return
-  chart.data.labels.push(ts)
-  chart.data.datasets[0].data.push(value)
-  if (chart.data.labels.length > 60) {
-    chart.data.labels.shift()
-    chart.data.datasets[0].data.shift()
-  }
-  chart.update('none')
-}
-
-function _ts() {
-  return new Date().toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
-}
-
-function updatePiStats(v) {
-  if (v.ram_mb != null)       document.getElementById('pi-ram').textContent  = 'RAM: ' + v.ram_mb + ' MB'
-  if (v.cpu_temp_c != null)   document.getElementById('pi-temp').textContent = 'Temp: ' + v.cpu_temp_c + '\u00b0C'
-  if (v.disk_free_mb != null) document.getElementById('pi-disk').textContent = 'Disco: ' + Math.round(v.disk_free_mb / 1024 * 10) / 10 + ' GB liberi'
-  if (v.ram_mb != null) _pushPoint(piRamChart, _ts(), v.ram_mb)
-}
-
-function updateBoardMetrics(values) {
-  const container = document.getElementById('board-metrics')
-  container.textContent = ''
-  const items = [
-    ['Batt',   values.batteryLevel      != null ? values.batteryLevel + '%' : null],
-    ['Volt',   values.voltage           != null ? values.voltage.toFixed(2) + 'V' : null],
-    ['Ch.Util',values.channelUtilization!= null ? (values.channelUtilization * 100).toFixed(1) + '%' : null],
-    ['AirTx',  values.airUtilTx        != null ? (values.airUtilTx * 100).toFixed(1) + '%' : null],
-    ['Uptime', values.uptimeSeconds     != null ? _fmtUptime(values.uptimeSeconds) : null],
-  ]
-  let any = false
-  items.forEach(([label, val]) => {
-    if (val == null) return
-    any = true
-    const span = document.createElement('span')
-    span.style.cssText = 'background:var(--bg2); border-radius:4px; padding:2px 6px;'
-    span.textContent = label + ': ' + val
-    container.appendChild(span)
-  })
-  if (!any) container.textContent = 'Nessun dato disponibile'
-}
+// ─── helpers ────────────────────────────────────────────────────────────────
 
 function _fmtUptime(s) {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60)
   return h + 'h ' + m + 'm'
 }
 
+function _ts() {
+  return new Date().toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
+}
+
+function _tsFromEpoch(epoch) {
+  return new Date(epoch * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
+}
+
+const MAX_PTS = 60
+
+// ─── Main combined chart ─────────────────────────────────────────────────────
+
+let mainChart = null
+
+// Dataset indices
+const DS = { RAM: 0, BATT: 1, TEMP: 2, CHUTIL: 3, AIRTX: 4, DISK: 5 }
+
+function _initMainChart() {
+  const ctx = document.getElementById('chart-main').getContext('2d')
+  mainChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'RAM MB',    data: [], borderColor: '#4a9eff', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false, yAxisID: 'y'  },
+        { label: 'Batt %',   data: [], borderColor: '#4caf50', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false, yAxisID: 'y'  },
+        { label: 'Temp °C',  data: [], borderColor: '#ff5722', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false, yAxisID: 'y1' },
+        { label: 'Ch.Util %',data: [], borderColor: '#ff9800', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false, yAxisID: 'y'  },
+        { label: 'AirTx %',  data: [], borderColor: '#9c27b0', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false, yAxisID: 'y1' },
+        { label: 'Disco GB', data: [], borderColor: '#00bcd4', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false, yAxisID: 'y1' },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      scales: {
+        x: { display: false },
+        y: {
+          position: 'left',
+          ticks: { color: '#888', font: { size: 9 } },
+          grid:  { color: '#333' }
+        },
+        y1: {
+          position: 'right',
+          ticks: { color: '#888', font: { size: 9 } },
+          grid:  { drawOnChartArea: false }
+        }
+      },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            color: '#aaa',
+            font: { size: 8 },
+            pointStyle: true,
+            boxWidth: 10,
+            usePointStyle: true
+          }
+        }
+      }
+    }
+  })
+}
+
+// Track the last ts pushed so all datasets that arrive in the same "tick" share one label
+let _lastMainTs = null
+
+function _pushMain(dsIdx, ts, value) {
+  if (value == null || mainChart == null) return
+  const labels = mainChart.data.labels
+  const ds = mainChart.data.datasets[dsIdx]
+
+  ds.data.push(value)
+  if (ds.data.length > MAX_PTS) ds.data.shift()
+
+  // Add a new label only once per unique timestamp
+  if (ts !== _lastMainTs) {
+    _lastMainTs = ts
+    labels.push(ts)
+    if (labels.length > MAX_PTS) labels.shift()
+  }
+
+  mainChart.update('none')
+}
+
+// Pushes a value at a given timestamp, extending labels if needed (for history load)
+function _pushMainHistory(dsIdx, ts, value) {
+  if (value == null || mainChart == null) return
+  const ds = mainChart.data.datasets[dsIdx]
+  ds.data.push(value)
+  if (ds.data.length > MAX_PTS) ds.data.shift()
+}
+
+function _finalizeLabels(labels) {
+  if (!mainChart) return
+  const trimmed = labels.slice(-MAX_PTS)
+  mainChart.data.labels = trimmed
+  mainChart.update('none')
+}
+
+// ─── Badges ──────────────────────────────────────────────────────────────────
+
+function _updateBadges(v) {
+  if (v.ram_mb        != null) document.getElementById('bdg-ram').textContent    = 'RAM: '    + v.ram_mb + ' MB'
+  if (v.batteryLevel  != null) document.getElementById('bdg-batt').textContent   = 'Batt: '   + v.batteryLevel + '%'
+  if (v.cpu_temp_c    != null) document.getElementById('bdg-temp').textContent   = 'Temp: '   + v.cpu_temp_c + '\u00b0C'
+  if (v.channelUtilization != null) document.getElementById('bdg-chutil').textContent = 'ChUtil: ' + (v.channelUtilization * 100).toFixed(1) + '%'
+  if (v.airUtilTx     != null) document.getElementById('bdg-airtx').textContent  = 'AirTx: '  + (v.airUtilTx * 100).toFixed(1) + '%'
+  if (v.disk_free_mb  != null) document.getElementById('bdg-disk').textContent   = 'Disco: '  + (Math.round(v.disk_free_mb / 1024 * 10) / 10) + ' GB'
+}
+
+// ─── History loaders ─────────────────────────────────────────────────────────
+
 async function loadPiHistory() {
   try {
     const r = await fetch('/api/telemetry/pi/systemMetrics?limit=60')
     if (!r.ok) return
     const data = await r.json()
-    if (!Array.isArray(data) || data.length === 0) {
-      document.getElementById('pi-ram').textContent = 'Dati Pi non ancora disponibili'
-      return
-    }
-    // I dati arrivano dal più recente al meno recente — invertiamo per il chart
+    if (!Array.isArray(data) || data.length === 0) return
     const sorted = [...data].reverse()
+    const labels = []
     sorted.forEach(d => {
-      const ts = new Date(d.timestamp * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
-      if (d.values?.ram_mb != null) _pushPoint(piRamChart, ts, d.values.ram_mb)
+      const ts = _tsFromEpoch(d.timestamp)
+      labels.push(ts)
+      if (d.values?.ram_mb       != null) _pushMainHistory(DS.RAM,  ts, d.values.ram_mb)
+      if (d.values?.cpu_temp_c   != null) _pushMainHistory(DS.TEMP, ts, d.values.cpu_temp_c)
+      if (d.values?.disk_free_mb != null) _pushMainHistory(DS.DISK, ts, Math.round(d.values.disk_free_mb / 1024 * 10) / 10)
     })
-    // Mostra metriche più recenti nei badge
-    if (data[0]?.values) updatePiStats(data[0].values)
+    _finalizeLabels(labels)
+    if (data[0]?.values) _updateBadges(data[0].values)
   } catch (_) {}
 }
 
@@ -132,51 +200,125 @@ async function loadBoardHistory() {
     if (!Array.isArray(data) || data.length === 0) return
     const sorted = [...data].reverse()
     sorted.forEach(d => {
-      const ts = new Date(d.timestamp * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
-      _pushPoint(battChart,   ts, d.values?.batteryLevel ?? null)
-      _pushPoint(chUtilChart, ts, d.values?.channelUtilization != null ? (d.values.channelUtilization * 100).toFixed(1) : null)
+      const ts = _tsFromEpoch(d.timestamp)
+      if (d.values?.batteryLevel       != null) _pushMainHistory(DS.BATT,   ts, d.values.batteryLevel)
+      if (d.values?.channelUtilization != null) _pushMainHistory(DS.CHUTIL, ts, parseFloat((d.values.channelUtilization * 100).toFixed(1)))
+      if (d.values?.airUtilTx          != null) _pushMainHistory(DS.AIRTX,  ts, parseFloat((d.values.airUtilTx * 100).toFixed(1)))
     })
-    if (data[0]?.values) updateBoardMetrics(data[0].values)
+    mainChart && mainChart.update('none')
+    if (data[0]?.values) _updateBadges(data[0].values)
   } catch (_) {}
 }
 
-// Aggiornamenti live via WebSocket
+// ─── Live updates ─────────────────────────────────────────────────────────────
+
 window.addEventListener('telemetry-update', e => {
   const { node_id, type, values } = e.detail
+  if (!values) return
+
   if (type === 'systemMetrics' && node_id === 'pi') {
-    updatePiStats(values)
+    _updateBadges(values)
+    const ts = _ts()
+    if (values.ram_mb       != null) _pushMain(DS.RAM,  ts, values.ram_mb)
+    if (values.cpu_temp_c   != null) _pushMain(DS.TEMP, ts, values.cpu_temp_c)
+    if (values.disk_free_mb != null) _pushMain(DS.DISK, ts, Math.round(values.disk_free_mb / 1024 * 10) / 10)
     return
   }
+
   if (type === 'deviceMetrics' && (node_id === _LOCAL_NODE_ID || !_LOCAL_NODE_ID)) {
-    updateBoardMetrics(values)
-    _pushPoint(battChart,   _ts(), values.batteryLevel ?? null)
-    _pushPoint(chUtilChart, _ts(), values.channelUtilization != null ? (values.channelUtilization * 100).toFixed(1) : null)
+    _updateBadges(values)
+    const ts = _ts()
+    if (values.batteryLevel       != null) _pushMain(DS.BATT,   ts, values.batteryLevel)
+    if (values.channelUtilization != null) _pushMain(DS.CHUTIL, ts, parseFloat((values.channelUtilization * 100).toFixed(1)))
+    if (values.airUtilTx          != null) _pushMain(DS.AIRTX,  ts, parseFloat((values.airUtilTx * 100).toFixed(1)))
   }
 })
 
-// Sensori I2C
+// ─── I2C sensor chart ─────────────────────────────────────────────────────────
+
+let sensorChart = null
+const _sensorPalette = ['#e91e63','#00e5ff','#76ff03','#ffea00','#ff6d00','#d500f9','#1de9b6','#ff1744']
+const _sensorKeys = {}   // metric_key -> dataset index
+let _sensorPaletteIdx = 0
+
+function _ensureSensorChart() {
+  if (sensorChart) return
+  const ctx = document.getElementById('chart-sensors').getContext('2d')
+  sensorChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      scales: {
+        x: { display: false },
+        y: { ticks: { color: '#888', font: { size: 9 } }, grid: { color: '#333' } }
+      },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { color: '#aaa', font: { size: 8 }, boxWidth: 10, usePointStyle: true }
+        }
+      }
+    }
+  })
+}
+
+function _getSensorDataset(key) {
+  if (_sensorKeys[key] != null) return _sensorKeys[key]
+  const idx = sensorChart.data.datasets.length
+  const color = _sensorPalette[_sensorPaletteIdx % _sensorPalette.length]
+  _sensorPaletteIdx++
+  sensorChart.data.datasets.push({
+    label: key,
+    data: [],
+    borderColor: color,
+    borderWidth: 1.5,
+    pointRadius: 0,
+    tension: 0.3,
+    fill: false
+  })
+  _sensorKeys[key] = idx
+  return idx
+}
+
 window.addEventListener('sensor-update', e => {
   const { sensor, values } = e.detail
   const section = document.getElementById('sensors-section')
   section.style.display = ''
-  const container = document.getElementById('sensor-display')
-  let el = document.getElementById('sensor-' + sensor)
-  if (!el) {
-    el = document.createElement('div')
-    el.id = 'sensor-' + sensor
-    el.style.cssText = 'padding:4px 8px; background:var(--bg2); border-radius:4px;'
-    container.appendChild(el)
-  }
-  el.textContent = ''
-  const title = document.createElement('b')
-  title.textContent = sensor
-  el.appendChild(title)
+
+  _ensureSensorChart()
+
+  const ts = _ts()
+  sensorChart.data.labels.push(ts)
+  if (sensorChart.data.labels.length > MAX_PTS) sensorChart.data.labels.shift()
+
+  // Update sensor badges
+  const badgesRow = document.getElementById('sensor-badges')
   Object.entries(values).forEach(([k, v]) => {
-    const line = document.createElement('div')
-    line.textContent = k + ': ' + v
-    el.appendChild(line)
+    const key = sensor + '.' + k
+    const dsIdx = _getSensorDataset(key)
+    const ds = sensorChart.data.datasets[dsIdx]
+    ds.data.push(v)
+    if (ds.data.length > MAX_PTS) ds.data.shift()
+
+    // Badge
+    let bdg = document.getElementById('sbdg-' + key.replace(/\./g, '-'))
+    if (!bdg) {
+      bdg = document.createElement('span')
+      bdg.id = 'sbdg-' + key.replace(/\./g, '-')
+      bdg.className = 't-badge'
+      bdg.style.borderLeft = '3px solid ' + _sensorPalette[dsIdx % _sensorPalette.length]
+      badgesRow.appendChild(bdg)
+    }
+    bdg.textContent = key + ': ' + v
   })
+
+  sensorChart.update('none')
 })
+
+// ─── Export ───────────────────────────────────────────────────────────────────
 
 function exportTelemetry(format) {
   if (!_LOCAL_NODE_ID) return
@@ -188,20 +330,19 @@ function exportTelemetry(format) {
 }
 
 function exportSensors(format) {
-  // esporta il primo sensore visibile
-  const el = document.querySelector('#sensor-display > div')
+  const el = document.querySelector('#sensor-badges .t-badge')
   if (!el) return
-  const name = el.id.replace('sensor-', '')
+  const name = el.id.replace('sbdg-', '').split('-')[0]
   const a = document.createElement('a')
   a.href = `/api/export/sensors?name=${encodeURIComponent(name)}&format=${format}&limit=1000`
   a.download = `sensors-${name}.${format}`
   a.click()
 }
 
+// ─── Init ─────────────────────────────────────────────────────────────────────
+
 function _initTelemetryPage() {
-  piRamChart = _makeChart('chart-pi-ram',  'RAM MB',    '#4a9eff')
-  battChart  = _makeChart('chart-battery', 'Batteria %','#4caf50')
-  chUtilChart= _makeChart('chart-ch-util', 'Ch.Util %', '#ff9800')
+  _initMainChart()
   loadPiHistory()
   loadBoardHistory()
 }
