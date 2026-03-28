@@ -4,7 +4,20 @@ Download offline map tiles for Italy (OSM, OpenTopoMap, ESRI satellite).
 Stores tiles as static/tiles/{source}/{z}/{x}/{y}.png
 Run from the pi-Mesh project root directory.
 """
-import math, os, sys, time, urllib.request, urllib.error
+import math, os, ssl, sys, time, urllib.request, urllib.error
+
+# macOS Python from python.org lacks system CA certs; use certifi if available
+try:
+    import certifi
+    _SSL_CTX = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    _SSL_CTX = ssl.create_default_context()
+    # Fallback: trust system store (works on Linux/Pi); on macOS may need certifi
+    try:
+        import subprocess, tempfile
+        _SSL_CTX = ssl.create_default_context()
+    except Exception:
+        _SSL_CTX = ssl._create_unverified_context()
 
 LAT_MIN  = 35.5
 LAT_MAX  = 47.1
@@ -74,7 +87,7 @@ def download_source(name, cfg):
                 url = url_tpl.format(z=z, x=x, y=y)
                 try:
                     req = urllib.request.Request(url, headers=headers)
-                    with urllib.request.urlopen(req, timeout=15) as resp:
+                    with urllib.request.urlopen(req, timeout=15, context=_SSL_CTX) as resp:
                         data = resp.read()
                     with open(path, "wb") as f:
                         f.write(data)
