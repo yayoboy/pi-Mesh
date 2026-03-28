@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="log-wrap" style="display:flex;flex-direction:column;height:100%;gap:8px;padding:8px;box-sizing:border-box">
+
+  <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+    <button id="btn-board" class="btn-pill active" onclick="showLog('board')">Board</button>
+    <button id="btn-pi"    class="btn-pill"        onclick="showLog('pi')">Pi</button>
+    <span style="flex:1"></span>
+    <button class="btn-pill" onclick="clearLog()">Pulisci</button>
+  </div>
+
+  <div id="log-list" style="flex:1;overflow-y:auto;font-family:monospace;font-size:11px;line-height:1.5"></div>
+
+</div>
+
+<style>
+.btn-pill{
+  background:var(--surface);color:var(--text);border:1px solid var(--border);
+  border-radius:12px;padding:3px 10px;font-size:11px;cursor:pointer;
+}
+.btn-pill.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.log-entry{padding:2px 4px;border-bottom:1px solid var(--border)}
+.log-entry.warn{color:#f0a030}
+.log-entry.error{color:#e05050}
+.log-entry.info{color:var(--text)}
+</style>
+
+<script>
+(function(){
+  let _src = 'board'
+
+  function ts(t){ return new Date(t*1000).toLocaleTimeString('it',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) }
+
+  function makeEntry(e){
+    const div = document.createElement('div')
+    div.className = 'log-entry ' + (e.level || 'info')
+    div.textContent = ts(e.ts) + ' [' + (e.level||'info').toUpperCase() + '] ' + e.msg
+    return div
+  }
+
+  function renderEntries(entries){
+    const list = document.getElementById('log-list')
+    if(!list) return
+    while(list.firstChild) list.removeChild(list.firstChild)
+    entries.forEach(e => list.appendChild(makeEntry(e)))
+    list.scrollTop = list.scrollHeight
+  }
+
+  function appendEntry(e){
+    const list = document.getElementById('log-list')
+    if(!list) return
+    list.appendChild(makeEntry(e))
+    list.scrollTop = list.scrollHeight
+  }
+
+  window.showLog = function(src){
+    _src = src
+    document.getElementById('btn-board').classList.toggle('active', src === 'board')
+    document.getElementById('btn-pi').classList.toggle('active', src === 'pi')
+    fetch('/api/logs/' + src).then(r=>r.json()).then(renderEntries).catch(()=>{})
+  }
+
+  window.clearLog = function(){
+    const list = document.getElementById('log-list')
+    if(list) while(list.firstChild) list.removeChild(list.firstChild)
+  }
+
+  window.addEventListener('log-entry', function(e){
+    const entry = e.detail
+    if(entry.source === _src) appendEntry(entry)
+  })
+
+  showLog('board')
+})()
+</script>
+{% endblock %}

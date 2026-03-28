@@ -140,7 +140,7 @@ function updateWifiBadge(connected) {
 function handleEncoder(data) {
   const { encoder, action } = data
   if (encoder === 1) {
-    const tabs = ['messages', 'nodes', 'map', 'telemetry', 'settings']
+    const tabs = ['messages', 'nodes', 'map', 'telemetry', 'settings', 'log']
     const current = tabs.indexOf(activeTab.name)
     if (action === 'cw' && current < tabs.length - 1) navigateTo(tabs[current + 1])
     else if (action === 'ccw' && current > 0) navigateTo(tabs[current - 1])
@@ -154,6 +154,7 @@ function handleEncoder(data) {
       map:       enc2Map,
       telemetry: enc2Telemetry,
       settings:  enc2Settings,
+      log:       enc2Log,
     }
     handlers[activeTab.name]?.(action)
   }
@@ -178,6 +179,10 @@ function enc2Telemetry(action) {
 }
 function enc2Settings(action) {
   const el = document.getElementById('content')
+  if (el) el.scrollTop += (action === 'cw' ? 48 : -48)
+}
+function enc2Log(action) {
+  const el = document.getElementById('log-list')
   if (el) el.scrollTop += (action === 'cw' ? 48 : -48)
 }
 

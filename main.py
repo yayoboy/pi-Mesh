@@ -127,6 +127,12 @@ async def telemetry_page(request: Request):
         "theme": cfg.UI_THEME, "accent_color": cfg.UI_ACCENT, "active": "telemetry"
     })
 
+@app.get("/log")
+async def log_page(request: Request):
+    return templates.TemplateResponse(request, "log.html", {
+        "theme": cfg.UI_THEME, "accent_color": cfg.UI_ACCENT, "active": "log"
+    })
+
 @app.get("/settings")
 async def settings_page(request: Request):
     node_info = meshtastic_client.get_local_node()
@@ -195,6 +201,15 @@ async def api_i2c_scan(live: bool = False):
         return JSONResponse({"sensors": merged, "source": "live"})
     sensors = getattr(app.state, "i2c_sensors", [])
     return JSONResponse({"sensors": sensors, "source": "startup"})
+
+@app.get("/api/logs/{source}")
+async def api_logs(source: str):
+    if source == "board":
+        return meshtastic_client.get_board_log()
+    if source == "pi":
+        import watchdog as wd
+        return wd.get_pi_log()
+    return JSONResponse({"error": "source non valida"}, status_code=400)
 
 @app.get("/api/status")
 async def api_status():

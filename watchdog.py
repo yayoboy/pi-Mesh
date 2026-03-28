@@ -1,6 +1,15 @@
-import asyncio, gc, logging, os, signal
+import asyncio, gc, logging, os, signal, time
+from collections import deque
 import database, meshtastic_client
 import config as cfg
+
+_pi_log: deque = deque(maxlen=300)
+
+def _pi_log_event(level: str, msg: str):
+    _pi_log.append({"ts": int(time.time()), "level": level, "msg": msg})
+
+def get_pi_log() -> list:
+    return list(_pi_log)
 
 async def db_sync_task(conn, interval: int = None):
     interval = interval or cfg.DB_SYNC_INTERVAL
@@ -27,9 +36,11 @@ async def memory_watchdog_task(broadcast_fn, interval: int = 60):
         rss_mb = rss_kb / 1024
         if rss_mb > 120:
             logging.warning(f"RAM alta: {rss_mb:.1f}MB")
+            _pi_log_event("warn", f"RAM alta: {rss_mb:.1f}MB — GC eseguito")
             gc.collect()
         if rss_mb > 150:
             logging.error(f"RAM critica: {rss_mb:.1f}MB — riavvio")
+            _pi_log_event("error", f"RAM critica: {rss_mb:.1f}MB — riavvio in corso")
             await broadcast_fn({"type": "status", "data": {"warning": "riavvio per memoria"}})
             await asyncio.sleep(2)
             os.kill(os.getpid(), signal.SIGTERM)

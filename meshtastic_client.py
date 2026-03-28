@@ -1,4 +1,5 @@
-import asyncio, logging, time
+import asyncio, glob, logging, os, time
+from collections import deque
 
 try:
     from pubsub import pub
@@ -7,7 +8,6 @@ try:
 except ImportError:
     logging.warning("meshtastic non disponibile — client disabilitato")
     _MESHTASTIC_AVAILABLE = False
-    # Stub per evitare errori di import
     class _PubStub:
         AUTO_TOPIC = None
         def subscribe(self, *a, **kw): pass
@@ -16,13 +16,34 @@ except ImportError:
 
 import config as cfg
 
-_interface    = None
-_loop         = None
-_broadcast    = None
-_connected    = False
+_interface     = None
+_loop          = None
+_broadcast     = None
+_connected     = False
 _is_connecting = False
-_conn_getter  = None
-_shutdown     = False
+_conn_getter   = None
+_shutdown      = False
+
+# Ring buffer eventi board per tab Log
+_board_log: deque = deque(maxlen=300)
+
+def _log_event(level: str, msg: str):
+    _board_log.append({"ts": int(time.time()), "level": level, "msg": msg})
+
+def get_board_log() -> list:
+    return list(_board_log)
+
+def _find_serial_port() -> str:
+    """Auto-rileva porta seriale Meshtastic. Prova porta configurata, poi scansiona ttyACM*/ttyUSB*."""
+    if cfg.SERIAL_PORT and os.path.exists(cfg.SERIAL_PORT):
+        return cfg.SERIAL_PORT
+    candidates = sorted(glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*'))
+    if candidates:
+        logging.info(f"Auto-rilevato porta seriale: {candidates[0]} (disponibili: {candidates})")
+        _log_event("info", f"Auto-rilevato porta: {candidates[0]}")
+        return candidates[0]
+    logging.warning(f"Nessuna porta seriale trovata, uso configurazione: {cfg.SERIAL_PORT}")
+    return cfg.SERIAL_PORT
 
 def init(loop, broadcast_fn, conn_getter=None):
     global _loop, _broadcast, _conn_getter
@@ -58,13 +79,17 @@ async def connect():
     _is_connecting = True
     try:
         while not _shutdown:
+            port = _find_serial_port()
             try:
-                _interface = meshtastic.serial_interface.SerialInterface(cfg.SERIAL_PORT)
+                _log_event("info", f"Tentativo connessione su {port}...")
+                _interface = meshtastic.serial_interface.SerialInterface(port)
                 _connected = True
-                logging.info("Connesso a Heltec V3")
+                _log_event("info", f"Connesso a {port}")
+                logging.info(f"Connesso a {port}")
                 return
             except Exception as e:
                 _connected = False
+                _log_event("warn", f"Connessione fallita ({e}), riprovo in 10s...")
                 logging.warning(f"Connessione fallita ({e}), riprovo in 10s...")
                 await asyncio.sleep(10)
     finally:
@@ -80,6 +105,7 @@ async def disconnect():
             pass
         _interface = None
     _connected = False
+    _log_event("info", "Disconnesso dal dispositivo")
 
 def is_connected() -> bool:
     return _connected
@@ -125,6 +151,7 @@ async def request_position(node_id: str):
 def _on_connected(interface, topic=None):
     global _connected
     _connected = True
+    _log_event("info", "Connessione Meshtastic stabilita")
     _bridge(_sync_nodes(interface))
 
 async def _sync_nodes(interface):
@@ -169,6 +196,7 @@ async def _sync_nodes(interface):
 def _on_lost(interface, topic=None):
     global _connected
     _connected = False
+    _log_event("warn", "Connessione Meshtastic persa")
     _bridge(_broadcast({"type": "status", "data": {"connected": False}}))
 
 def _on_receive_text(packet, interface):
@@ -180,6 +208,7 @@ async def _handle_message(packet):
     if data and _conn_getter:
         await database.save_message(_conn_getter(), **data)
     if data:
+        _log_event("info", f"Messaggio da {data['node_id']}: {data['text'][:60]}")
         await _broadcast({"type": "message", "data": data})
         try:
             import gpio_handler
