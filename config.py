@@ -40,7 +40,7 @@ MAP_BOUNDS = {
     "lon_min": float(os.getenv("MAP_LON_MIN", "11.5")),
     "lon_max": float(os.getenv("MAP_LON_MAX", "14.5")),
 }
-MAP_ZOOM_MIN = int(os.getenv("MAP_ZOOM_MIN", "8"))
+MAP_ZOOM_MIN = int(os.getenv("MAP_ZOOM_MIN", "7"))
 MAP_ZOOM_MAX = int(os.getenv("MAP_ZOOM_MAX", "12"))
 
 # Display

@@ -281,18 +281,21 @@ function initMapIfNeeded() {
   if (!el) return
   const bounds = JSON.parse(el.dataset.bounds || 'null')
   if (!bounds) return
+  const zoomMin = parseInt(el.dataset.zoomMin || '7')
   const zoomMax = parseInt(el.dataset.zoomMax || '12')
   const center = [(bounds.lat_min + bounds.lat_max) / 2, (bounds.lon_min + bounds.lon_max) / 2]
 
   leafletMap = L.map('map-container', {
     center, zoom: 10, zoomControl: false,
+    minZoom: zoomMin, maxZoom: zoomMax,
     maxBounds: [[bounds.lat_min, bounds.lon_min], [bounds.lat_max, bounds.lon_max]],
     maxBoundsViscosity: 1.0,
   })
 
-  const osmLayer       = L.tileLayer('/tiles/osm/{z}/{x}/{y}',       { maxZoom: zoomMax })
-  const topoLayer      = L.tileLayer('/tiles/topo/{z}/{x}/{y}',      { maxZoom: zoomMax })
-  const satelliteLayer = L.tileLayer('/tiles/satellite/{z}/{x}/{y}', { maxZoom: zoomMax })
+  const tileOpts = { minZoom: zoomMin, maxZoom: zoomMax }
+  const osmLayer       = L.tileLayer('/tiles/osm/{z}/{x}/{y}',       tileOpts)
+  const topoLayer      = L.tileLayer('/tiles/topo/{z}/{x}/{y}',      tileOpts)
+  const satelliteLayer = L.tileLayer('/tiles/satellite/{z}/{x}/{y}', tileOpts)
   osmLayer.addTo(leafletMap)
   L.control.layers({ 'Stradale': osmLayer, 'Topo': topoLayer, 'Satellite': satelliteLayer }).addTo(leafletMap)
 
