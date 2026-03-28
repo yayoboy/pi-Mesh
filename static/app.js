@@ -290,4 +290,6 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault()
     navigateTo(tab.dataset.tab)
   })
+  // se la pagina è stata caricata direttamente sul tab mappa
+  if (document.getElementById('map-container')) initMapIfNeeded()
 })
