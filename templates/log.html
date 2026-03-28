@@ -2,37 +2,56 @@
 {% block content %}
 <div id="log-wrap" style="display:flex;flex-direction:column;height:100%;gap:8px;padding:8px;box-sizing:border-box">
 
-  <!-- Toolbar row: [Board][Pi] | [search] | [ALL][WARN+][ERR] | [⏸][↓] -->
-  <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap">
-    <!-- Source selector -->
-    <button id="btn-board" class="btn-pill active" onclick="showLog('board')">Board</button>
-    <button id="btn-pi"    class="btn-pill"        onclick="showLog('pi')">Pi</button>
+  <!-- Row 1: Board / Pi tab toggle -->
+  <div style="display:flex;flex-shrink:0;border-bottom:1px solid var(--border)">
+    <button id="btn-board" class="log-tab active" onclick="showLog('board')">Board</button>
+    <button id="btn-pi"    class="log-tab"        onclick="showLog('pi')">Pi</button>
+  </div>
 
-    <span style="width:1px;height:18px;background:var(--border);margin:0 2px"></span>
-
+  <!-- Row 2: search + icon-only filter/action buttons -->
+  <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
     <!-- Text search -->
     <input id="log-search" type="search" placeholder="Cerca…"
-      style="font-size:11px;padding:3px 8px;border-radius:12px;border:1px solid var(--border);
-             background:var(--surface);color:var(--text);outline:none;width:140px">
+      style="flex:1;min-width:0;font-size:11px;padding:3px 8px;border-radius:6px;
+             border:1px solid var(--border);background:var(--surface);color:var(--text);outline:none">
 
-    <span style="width:1px;height:18px;background:var(--border);margin:0 2px"></span>
+    <!-- Level filter: ALL (3 lines), WARN+ (triangle), ERR (circle-X) -->
+    <button id="btn-all"   class="log-icon-btn active" onclick="_setLevel('all')"   title="Tutti">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <line x1="2" y1="4" x2="12" y2="4"/><line x1="2" y1="7" x2="12" y2="7"/><line x1="2" y1="10" x2="12" y2="10"/>
+      </svg>
+    </button>
+    <button id="btn-warn"  class="log-icon-btn"        onclick="_setLevel('warn')"  title="WARN+">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M7 2 L13 12 H1 Z"/><line x1="7" y1="6" x2="7" y2="9"/><circle cx="7" cy="10.5" r="0.5" fill="currentColor" stroke="none"/>
+      </svg>
+    </button>
+    <button id="btn-error" class="log-icon-btn"        onclick="_setLevel('error')" title="ERR">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <circle cx="7" cy="7" r="5.5"/><line x1="5" y1="5" x2="9" y2="9"/><line x1="9" y1="5" x2="5" y2="9"/>
+      </svg>
+    </button>
 
-    <!-- Level filter -->
-    <button id="btn-all"   class="btn-pill active" onclick="_setLevel('all')">ALL</button>
-    <button id="btn-warn"  class="btn-pill"        onclick="_setLevel('warn')">WARN+</button>
-    <button id="btn-error" class="btn-pill"        onclick="_setLevel('error')">ERR</button>
+    <!-- Pause (two vertical bars) -->
+    <button id="btn-pause" class="log-icon-btn" onclick="_togglePause()" title="Pausa auto-scroll">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+        <rect x="3" y="2" width="3" height="10" rx="1"/><rect x="8" y="2" width="3" height="10" rx="1"/>
+      </svg>
+    </button>
 
-    <span style="width:1px;height:18px;background:var(--border);margin:0 2px"></span>
+    <!-- Download (arrow down) -->
+    <button class="log-icon-btn" onclick="downloadLog()" title="Scarica log">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="7" y1="2" x2="7" y2="9"/><polyline points="4,7 7,10 10,7"/><line x1="2" y1="12" x2="12" y2="12"/>
+      </svg>
+    </button>
 
-    <!-- Auto-scroll toggle -->
-    <button id="btn-pause" class="btn-pill" onclick="_togglePause()" title="Pausa auto-scroll">⏸</button>
-
-    <!-- Download -->
-    <button class="btn-pill" onclick="downloadLog()" title="Scarica log">↓</button>
-
-    <!-- Spacer + Clear (keep existing) -->
-    <span style="flex:1"></span>
-    <button class="btn-pill" onclick="clearLog()">Pulisci</button>
+    <!-- Clear (trash) -->
+    <button class="log-icon-btn" onclick="clearLog()" title="Pulisci log">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="2,4 3,4 12,4"/><path d="M5 4V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1"/><path d="M11 4l-.8 7.2A1 1 0 0 1 9.2 12H4.8a1 1 0 0 1-1-.8L3 4"/>
+      </svg>
+    </button>
   </div>
 
   <div id="log-list" style="flex:1;overflow-y:auto;font-family:monospace;font-size:11px;line-height:1.5"></div>
@@ -40,11 +59,20 @@
 </div>
 
 <style>
-.btn-pill{
-  background:var(--surface);color:var(--text);border:1px solid var(--border);
-  border-radius:12px;padding:3px 10px;font-size:11px;cursor:pointer;
+.log-tab{
+  flex:1;background:var(--surface);color:var(--text-muted,#888);
+  border:none;border-bottom:2px solid transparent;
+  min-height:36px;font-size:12px;cursor:pointer;
 }
-.btn-pill.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.log-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.log-icon-btn{
+  width:32px;height:32px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--surface);color:var(--text);
+  border:1px solid var(--border);border-radius:6px;
+  cursor:pointer;padding:0;
+}
+.log-icon-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .log-entry{padding:2px 4px;border-bottom:1px solid var(--border)}
 .log-entry.warn{color:#f0a030}
 .log-entry.error{color:#e05050}
