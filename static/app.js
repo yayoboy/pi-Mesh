@@ -96,8 +96,9 @@ function handleInit(data) {
 function handleMessage(data) {
   messageCache.unshift(data)
   if (messageCache.length > 200) messageCache.pop()
-  if (activeTab.name === 'messages') appendMessage(data)
-  showToast('MSG ' + (data.node_id || 'Msg') + ': ' + (data.text || '').slice(0, 30))
+  window.dispatchEvent(new CustomEvent('message-new', { detail: data }))
+  const prefix = (data.destination && data.destination !== '^all') ? 'DM ' : 'MSG '
+  if (typeof showToast === 'function') showToast(prefix + (data.node_id || '') + ': ' + (data.text || '').slice(0, 30))
 }
 
 function handleNode(data) {
@@ -143,15 +144,7 @@ function handleLog(data) {
 }
 
 function handleAck(data) {
-  // Marca come consegnato l'ultimo messaggio outgoing verso quel nodo
-  const rows = document.querySelectorAll('.msg-row.outgoing')
-  rows.forEach(row => {
-    const ackEl = row.querySelector('.msg-ack')
-    if (ackEl && !ackEl.classList.contains('delivered')) {
-      ackEl.classList.add('delivered')
-      ackEl.title = 'Consegnato'
-    }
-  })
+  window.dispatchEvent(new CustomEvent('msg-ack', { detail: data }))
 }
 
 function handleStatus(data) {

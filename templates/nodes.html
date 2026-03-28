@@ -7,36 +7,81 @@
 </div>
 {% endif %}
 {% for n in nodes %}
-<div class="list-item" data-node-id="{{ n.id }}" style="flex-direction:column; align-items:stretch; cursor:pointer;">
+<div class="list-item" data-node-id="{{ n.id }}" style="flex-direction:column; align-items:stretch;">
   <div style="display:flex; align-items:center; gap:8px;">
     <div class="node-badge" id="badge-{{ n.id }}"></div>
     <div style="flex:1">
       <div style="font-weight:bold;">{{ n.short_name or n.id }}</div>
       <div style="font-size:11px; color:var(--muted);">{{ n.long_name or '' }}</div>
     </div>
-    <div style="font-size:11px; color:var(--muted); text-align:right;">
-      {% if n.battery_level is not none %}Batt {{ n.battery_level }}%{% endif %}<br>
-      {% if n.snr is not none %}SNR {{ n.snr }}dB{% endif %}
-    </div>
+    <button data-menu-btn="{{ n.id }}" style="background:none; border:none; padding:4px; cursor:pointer; color:var(--muted); flex-shrink:0;">
+      <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24">
+        <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+      </svg>
+    </button>
   </div>
-  <div id="detail-{{ n.id }}" style="display:none; padding-top:8px; font-size:12px; color:var(--muted); border-top:1px solid var(--border); margin-top:8px;">
-    HW: {{ n.hw_model or '—' }}<br>
-    {% if n.firmware_version %}Firmware: {{ n.firmware_version | e }}<br>{% endif %}
-    {% if n.role %}Ruolo: {{ n.role | e }}<br>{% endif %}
-    {% if n.rssi is not none %}RSSI: {{ n.rssi }}dBm<br>{% endif %}
-    {% if n.latitude %}Pos: {{ '%.4f'|format(n.latitude) }}, {{ '%.4f'|format(n.longitude) }}<br>{% endif %}
-    <button data-req-pos="{{ n.id }}" style="min-height:32px; margin-top:4px; width:auto; padding:0 12px; font-size:12px;">Richiedi pos</button>
-    <div style="margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-      <button class="btn-pill" data-forget-node="{{ n.id }}" style="min-height:32px; width:auto; padding:0 12px; font-size:12px;">Dimentica</button>
-      <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;">
-        <input type="checkbox" data-forget-cascade="{{ n.id }}"> anche messaggi e telemetria
-      </label>
+  <div id="detail-{{ n.id }}" style="display:none; padding-top:8px; border-top:1px solid var(--border); margin-top:8px;">
+    <div style="display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:11px; margin-bottom:8px;">
+      <span style="color:var(--muted)">ID</span><span>{{ n.id }}</span>
+      <span style="color:var(--muted)">Nome</span><span>{{ n.long_name or n.short_name or '—' }}</span>
+      <span style="color:var(--muted)">Hardware</span><span>{{ n.hw_model or '—' }}</span>
+      <span style="color:var(--muted)">Firmware</span><span>{{ n.firmware_version or '—' }}</span>
+      {% if n.battery_level is not none %}<span style="color:var(--muted)">Batteria</span><span>{{ n.battery_level }}%</span>{% endif %}
+      {% if n.snr is not none %}<span style="color:var(--muted)">SNR</span><span>{{ n.snr }} dB</span>{% endif %}
+      {% if n.rssi is not none %}<span style="color:var(--muted)">RSSI</span><span>{{ n.rssi }} dBm</span>{% endif %}
+      {% if n.latitude %}<span style="color:var(--muted)">Posizione</span><span>{{ '%.4f'|format(n.latitude) }}° {{ '%.4f'|format(n.longitude) }}°</span>{% endif %}
+    </div>
+    <div style="display:flex; flex-direction:column; gap:4px; border-top:1px solid var(--border); padding-top:6px;">
+      <a href="/messages?open_dm={{ n.id | urlencode }}" style="display:flex; align-items:center; gap:6px; color:var(--text,#ccc); font-size:12px; text-decoration:none;">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+        Invia DM
+      </a>
+      <button data-req-pos="{{ n.id }}" style="display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--text,#ccc); font-size:12px; text-align:left;">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Richiedi posizione
+      </button>
+      <div style="border-top:1px solid var(--border); padding-top:4px; margin-top:2px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <button data-forget-node="{{ n.id }}" style="display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--danger,#ef9a9a); font-size:12px; text-align:left;">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          Elimina nodo
+        </button>
+        <label style="display:flex; align-items:center; gap:4px; font-size:11px; cursor:pointer; color:var(--muted);">
+          <input type="checkbox" data-forget-cascade="{{ n.id }}"> anche messaggi e telemetria
+        </label>
+      </div>
     </div>
   </div>
 </div>
 {% endfor %}
 </div>
 <script>
+function makeSvgIcon(type) {
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('width', '13'); svg.setAttribute('height', '13')
+  svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '2'); svg.setAttribute('viewBox', '0 0 24 24')
+  if (type === 'menu') {
+    svg.setAttribute('fill', 'currentColor'); svg.setAttribute('stroke', 'none')
+    ;[['5','12'],['12','12'],['19','12']].forEach(([cx, cy]) => {
+      const c = document.createElementNS(ns, 'circle')
+      c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', '2')
+      svg.appendChild(c)
+    })
+  } else {
+    const paths = {
+      chat:  'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z',
+      pin:   'M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z',
+      trash: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
+    }
+    const p = document.createElementNS(ns, 'path')
+    p.setAttribute('stroke-linecap', 'round'); p.setAttribute('stroke-linejoin', 'round')
+    p.setAttribute('d', paths[type])
+    svg.appendChild(p)
+  }
+  return svg
+}
+
 function renderNodeRow(n) {
   const existing = document.querySelector('[data-node-id="' + escHtml(n.id) + '"]')
   const detailWasOpen = existing && document.getElementById('detail-' + n.id)?.style.display === 'block'
@@ -44,9 +89,9 @@ function renderNodeRow(n) {
   const row = document.createElement('div')
   row.className = 'list-item'
   row.dataset.nodeId = n.id
-  row.style.cssText = 'flex-direction:column; align-items:stretch; cursor:pointer;'
+  row.style.cssText = 'flex-direction:column; align-items:stretch;'
 
-  // Header row
+  // Header
   const header = document.createElement('div')
   header.style.cssText = 'display:flex; align-items:center; gap:8px;'
 
@@ -64,63 +109,82 @@ function renderNodeRow(n) {
   longEl.textContent = n.long_name || ''
   info.append(nameEl, longEl)
 
-  const stats = document.createElement('div')
-  stats.style.cssText = 'font-size:11px; color:var(--muted); text-align:right;'
-  stats.textContent = (n.battery_level != null ? 'Batt ' + n.battery_level + '%' : '') + '\n' +
-                      (n.snr != null ? 'SNR ' + n.snr + 'dB' : '')
+  const menuBtn = document.createElement('button')
+  menuBtn.dataset.menuBtn = n.id
+  menuBtn.style.cssText = 'background:none; border:none; padding:4px; cursor:pointer; color:var(--muted); flex-shrink:0;'
+  menuBtn.appendChild(makeSvgIcon('menu'))
 
-  header.append(badge, info, stats)
+  header.append(badge, info, menuBtn)
 
   // Detail panel
   const detail = document.createElement('div')
   detail.id = 'detail-' + n.id
-  detail.style.cssText = 'display:none; padding-top:8px; font-size:12px; color:var(--muted); border-top:1px solid var(--border); margin-top:8px;'
-  const hw = document.createElement('span')
-  hw.textContent = 'HW: ' + (n.hw_model || '—')
-  detail.appendChild(hw)
-  if (n.firmware_version) {
-    const fw = document.createElement('div')
-    fw.textContent = 'Firmware: ' + n.firmware_version
-    detail.appendChild(fw)
+  detail.style.cssText = 'display:none; padding-top:8px; border-top:1px solid var(--border); margin-top:8px;'
+
+  // Info grid
+  const grid = document.createElement('div')
+  grid.style.cssText = 'display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:11px; margin-bottom:8px;'
+  const fields = [
+    ['ID', n.id],
+    ['Nome', n.long_name || n.short_name || '—'],
+    ['Hardware', n.hw_model || '—'],
+    ['Firmware', n.firmware_version || '—'],
+  ]
+  if (n.battery_level != null) fields.push(['Batteria', n.battery_level + '%'])
+  if (n.snr != null) fields.push(['SNR', n.snr + ' dB'])
+  if (n.rssi != null) fields.push(['RSSI', n.rssi + ' dBm'])
+  if (n.last_heard) {
+    fields.push(['Ultimo visto', new Date(n.last_heard * 1000).toLocaleTimeString('it', { hour:'2-digit', minute:'2-digit', second:'2-digit' })])
   }
-  if (n.role) {
-    const roleEl = document.createElement('div')
-    roleEl.textContent = 'Ruolo: ' + n.role
-    detail.appendChild(roleEl)
-  }
-  if (n.rssi != null) {
-    const rssiEl = document.createElement('div')
-    rssiEl.textContent = 'RSSI: ' + n.rssi + ' dBm'
-    detail.appendChild(rssiEl)
-  }
-  if (n.latitude != null) {
-    const pos = document.createElement('div')
-    pos.textContent = 'Pos: ' + n.latitude.toFixed(4) + ', ' + n.longitude.toFixed(4)
-    detail.appendChild(pos)
-  }
+  if (n.latitude != null) fields.push(['Posizione', n.latitude.toFixed(4) + '° ' + n.longitude.toFixed(4) + '°'])
+  fields.forEach(([label, value]) => {
+    const lEl = document.createElement('span')
+    lEl.style.color = 'var(--muted)'
+    lEl.textContent = label
+    const vEl = document.createElement('span')
+    vEl.textContent = value
+    grid.append(lEl, vEl)
+  })
+  detail.appendChild(grid)
+
+  // Actions
+  const actions = document.createElement('div')
+  actions.style.cssText = 'display:flex; flex-direction:column; gap:4px; border-top:1px solid var(--border); padding-top:6px;'
+
+  // DM button
+  const dmBtn = document.createElement('button')
+  dmBtn.style.cssText = 'display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--text,#ccc); font-size:12px; text-align:left;'
+  dmBtn.appendChild(makeSvgIcon('chat'))
+  dmBtn.appendChild(document.createTextNode('Invia DM'))
+  dmBtn.onclick = () => { window.location.href = '/messages?open_dm=' + encodeURIComponent(n.id) }
+  actions.appendChild(dmBtn)
+
+  // Position button
   const posBtn = document.createElement('button')
   posBtn.dataset.reqPos = n.id
-  posBtn.textContent = 'Richiedi pos'
-  posBtn.style.cssText = 'min-height:32px; margin-top:4px; width:auto; padding:0 12px; font-size:12px;'
-  detail.appendChild(posBtn)
+  posBtn.style.cssText = 'display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--text,#ccc); font-size:12px; text-align:left;'
+  posBtn.appendChild(makeSvgIcon('pin'))
+  posBtn.appendChild(document.createTextNode('Richiedi posizione'))
+  actions.appendChild(posBtn)
 
-  const forgetRow = document.createElement('div')
-  forgetRow.style.cssText = 'margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;'
+  // Delete button + cascade
+  const deleteRow = document.createElement('div')
+  deleteRow.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-top:1px solid var(--border); padding-top:4px; margin-top:2px;'
   const forgetBtn = document.createElement('button')
-  forgetBtn.className = 'btn-pill'
   forgetBtn.dataset.forgetNode = n.id
-  forgetBtn.textContent = 'Dimentica'
-  forgetBtn.style.cssText = 'min-height:32px; width:auto; padding:0 12px; font-size:12px;'
+  forgetBtn.style.cssText = 'display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--danger,#ef9a9a); font-size:12px; text-align:left;'
+  forgetBtn.appendChild(makeSvgIcon('trash'))
+  forgetBtn.appendChild(document.createTextNode('Elimina nodo'))
   const cascadeLabel = document.createElement('label')
-  cascadeLabel.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;'
+  cascadeLabel.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:11px; cursor:pointer; color:var(--muted);'
   const cascadeCheck = document.createElement('input')
   cascadeCheck.type = 'checkbox'
   cascadeCheck.dataset.forgetCascade = n.id
-  const cascadeText = document.createTextNode(' anche messaggi e telemetria')
-  cascadeLabel.append(cascadeCheck, cascadeText)
-  forgetRow.append(forgetBtn, cascadeLabel)
-  detail.appendChild(forgetRow)
+  cascadeLabel.append(cascadeCheck, document.createTextNode(' anche messaggi e telemetria'))
+  deleteRow.append(forgetBtn, cascadeLabel)
+  actions.appendChild(deleteRow)
 
+  detail.appendChild(actions)
   row.append(header, detail)
 
   if (existing) {
@@ -184,10 +248,13 @@ document.getElementById('node-list').addEventListener('click', e => {
       })
     return
   }
-  const item = e.target.closest('[data-node-id]')
-  if (item) {
-    const el = document.getElementById('detail-' + item.dataset.nodeId)
+  const menuBtn = e.target.closest('[data-menu-btn]')
+  if (menuBtn) {
+    e.stopPropagation()
+    const nodeId = menuBtn.dataset.menuBtn
+    const el = document.getElementById('detail-' + nodeId)
     if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'
+    return
   }
 })
 </script>
