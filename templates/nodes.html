@@ -30,6 +30,7 @@
       {% if n.snr is not none %}<span style="color:var(--muted)">SNR</span><span>{{ n.snr }} dB</span>{% endif %}
       {% if n.rssi is not none %}<span style="color:var(--muted)">RSSI</span><span>{{ n.rssi }} dBm</span>{% endif %}
       {% if n.latitude %}<span style="color:var(--muted)">Posizione</span><span>{{ '%.4f'|format(n.latitude) }}° {{ '%.4f'|format(n.longitude) }}°</span>{% endif %}
+      <span style="color:var(--muted)">Chiave pubblica</span><span id="pubkey-{{ n.id }}" style="font-family:monospace; font-size:10px; word-break:break-all;">—</span>
     </div>
     <div style="display:flex; flex-direction:column; gap:4px; border-top:1px solid var(--border); padding-top:6px;">
       <a href="/messages?open_dm={{ n.id | urlencode }}" style="display:flex; align-items:center; gap:6px; color:var(--text,#ccc); font-size:12px; text-decoration:none;">
@@ -152,12 +153,17 @@ function renderNodeRow(n) {
     fields.push(['Ultimo visto', new Date(n.last_heard * 1000).toLocaleTimeString('it', { hour:'2-digit', minute:'2-digit', second:'2-digit' })])
   }
   if (n.latitude != null) fields.push(['Posizione', n.latitude.toFixed(4) + '° ' + n.longitude.toFixed(4) + '°'])
+  fields.push(['Chiave pubblica', '—'])
   fields.forEach(([label, value]) => {
     const lEl = document.createElement('span')
     lEl.style.color = 'var(--muted)'
     lEl.textContent = label
     const vEl = document.createElement('span')
     vEl.textContent = value
+    if (label === 'Chiave pubblica') {
+      vEl.id = 'pubkey-' + n.id
+      vEl.style.cssText = 'font-family:monospace; font-size:10px; word-break:break-all;'
+    }
     grid.append(lEl, vEl)
   })
   detail.appendChild(grid)
@@ -274,6 +280,16 @@ updateBadge('{{ n.id }}', {{ n.last_heard or 0 }})
 // Aggiorna in tempo reale via WebSocket
 window.addEventListener('node-update', e => renderNodeRow(e.detail))
 
+function loadNodePubKey(nodeId) {
+  const el = document.getElementById('pubkey-' + nodeId)
+  if (!el || (el.textContent !== '—' && el.textContent !== '')) return
+  el.textContent = '...'
+  fetch('/api/keys/' + encodeURIComponent(nodeId))
+    .then(r => r.json())
+    .then(d => { el.textContent = d.public_key || '—' })
+    .catch(() => { el.textContent = '—' })
+}
+
 // Toggle dettaglio e richiesta posizione
 document.getElementById('node-list').addEventListener('click', e => {
   const reqBtn = e.target.closest('[data-req-pos]')
@@ -315,7 +331,11 @@ document.getElementById('node-list').addEventListener('click', e => {
     e.stopPropagation()
     const nodeId = menuBtn.dataset.menuBtn
     const el = document.getElementById('detail-' + nodeId)
-    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'
+    if (el) {
+      const opening = el.style.display === 'none'
+      el.style.display = opening ? 'block' : 'none'
+      if (opening) loadNodePubKey(nodeId)
+    }
     return
   }
 })

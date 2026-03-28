@@ -55,6 +55,16 @@
     <div id="ch-status" style="font-size:11px; color:var(--muted); margin-top:4px;"></div>
   </div>
 
+  <!-- CHIAVI -->
+  <div class="settings-section" style="border-top:1px solid var(--border);">
+    <div class="settings-label" style="display:flex; align-items:center; justify-content:space-between;">
+      Chiavi
+      <button onclick="loadKeys()" style="width:auto; padding:0 8px; min-height:28px; font-size:11px;">Carica</button>
+    </div>
+    <div id="keys-info" style="font-size:12px; color:var(--muted);">— premi Carica —</div>
+    <div id="keys-status" style="font-size:11px; color:var(--muted); margin-top:4px;"></div>
+  </div>
+
   <!-- TEMA -->
   <div class="settings-section" style="border-top:1px solid var(--border);">
     <div class="settings-label">Tema UI</div>
@@ -539,6 +549,42 @@ async function saveConfig() {
     const d = await r.json()
     st.textContent = d.ok ? 'Salvato' : ('Errore: ' + d.error)
   } catch (_) { st.textContent = 'Errore di connessione' }
+}
+
+async function loadKeys() {
+  const container = document.getElementById('keys-info')
+  container.textContent = 'Caricamento...'
+  try {
+    const r = await fetch('/api/keys')
+    const data = await r.json()
+    container.textContent = ''
+    if (!data.public_key && !data.has_private_key) {
+      container.textContent = 'Nessuna informazione chiave disponibile (board non connessa?)'
+      return
+    }
+    // Public key row
+    const pubLabel = document.createElement('div')
+    pubLabel.style.cssText = 'font-size:11px; color:var(--muted); margin-bottom:2px;'
+    pubLabel.textContent = 'Chiave pubblica'
+    const pubInput = document.createElement('input')
+    pubInput.type = 'text'
+    pubInput.readOnly = true
+    pubInput.value = data.public_key || '—'
+    pubInput.style.cssText = 'width:100%; min-height:28px; font-size:10px; font-family:monospace; margin-bottom:6px;'
+    container.append(pubLabel, pubInput)
+    // Private key button (only if available)
+    if (data.has_private_key) {
+      const privBtn = document.createElement('button')
+      privBtn.textContent = 'Mostra chiave privata'
+      privBtn.style.cssText = 'min-height:32px; font-size:11px; margin-top:2px;'
+      privBtn.onclick = () => {
+        if (!confirm('Attenzione: la chiave privata deve rimanere segreta. Non condividerla mai con nessuno. Vuoi comunque visualizzarla?')) return
+        const st = document.getElementById('keys-status')
+        st.textContent = 'Funzione non supportata via API remota — controlla il dispositivo direttamente.'
+      }
+      container.appendChild(privBtn)
+    }
+  } catch (_) { container.textContent = 'Errore caricamento chiavi' }
 }
 
 async function saveBotConfig() {

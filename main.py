@@ -643,6 +643,17 @@ async def wifi_networks_delete(network_id: int):
     await database.delete_wifi_network(_conn, network_id)
     return JSONResponse({"ok": True})
 
+@app.get("/api/keys")
+async def api_keys():
+    """Return local node key info."""
+    return meshtastic_client.get_keys_info()
+
+@app.get("/api/keys/{node_id}")
+async def api_node_key(node_id: str):
+    """Return public key of a specific node."""
+    key = meshtastic_client.get_node_public_key(node_id)
+    return {"node_id": node_id, "public_key": key}
+
 @app.get("/api/channels")
 async def get_channels():
     import base64

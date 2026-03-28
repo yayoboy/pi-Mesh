@@ -345,6 +345,37 @@ def _parse_message(packet) -> dict | None:
         return None
 
 
+def get_keys_info() -> dict:
+    """Return local node keys info."""
+    iface = _interface
+    if not iface:
+        return {}
+    try:
+        my_info = iface.getMyNodeInfo()
+        user = my_info.get("user", {})
+        return {
+            "public_key": user.get("publicKey", ""),
+            "has_private_key": bool(user.get("privateKey")),
+        }
+    except Exception:
+        return {}
+
+def get_node_public_key(node_id: str) -> str:
+    """Return public key for a specific node."""
+    iface = _interface
+    if not iface:
+        return ""
+    try:
+        nodes = iface.nodes or {}
+        for nid, info in nodes.items():
+            uid = info.get("user", {}).get("id", "")
+            if uid == node_id:
+                return info.get("user", {}).get("publicKey", "")
+        return ""
+    except Exception:
+        return ""
+
+
 def _on_receive_routing(packet, interface):
     _bridge(_handle_routing(packet))
 
