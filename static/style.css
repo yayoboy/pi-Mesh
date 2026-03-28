@@ -141,6 +141,8 @@ button {
   border: none;
   cursor: pointer;
 }
+.theme-hc button { color: #000; }
+.theme-hc .msg-row.outgoing .msg-bubble { color: #000; }
 button:active { opacity: 0.8; }
 input:focus, select:focus, textarea:focus, button:focus {
   outline: 2px solid var(--accent);

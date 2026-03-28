@@ -59,6 +59,12 @@ function handleInit(data) {
   data.nodes.forEach(n => nodeCache.set(n.id, n))
   if (activeTab.name === 'messages') renderMessages(data.messages)
   if (data.theme) applyTheme(data.theme)
+  // Mostra nome nodo locale nella status bar
+  const local = data.nodes.find(n => n.is_local)
+  if (local) {
+    const el = document.getElementById('node-name')
+    if (el) el.textContent = local.short_name || local.id
+  }
 }
 
 function handleMessage(data) {
@@ -71,6 +77,10 @@ function handleNode(data) {
   nodeCache.set(data.id, data)
   if (activeTab.name === 'nodes') updateNodeRow(data)
   if (activeTab.name === 'map' && mapReady) updateMapMarker(data)
+  if (data.is_local) {
+    const el = document.getElementById('node-name')
+    if (el) el.textContent = data.short_name || data.id
+  }
 }
 
 function handlePosition(data) {
