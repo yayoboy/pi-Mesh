@@ -197,21 +197,21 @@ Press `Ctrl+C` to stop the server.
 
 ```bash
 cd ~/pi-Mesh
-sudo cp meshtastic-pi.service /etc/systemd/system/
+sudo cp meshtastic-pi@.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now meshtastic-pi
+sudo systemctl enable --now meshtastic-pi@$(whoami)
 ```
 
-The app will now start automatically every time the Pi boots. To check its status:
+The `$(whoami)` part automatically fills in your username (e.g. `pi`, `pimesh`). The app will start automatically every time the Pi boots. To check its status:
 
 ```bash
-sudo systemctl status meshtastic-pi
+sudo systemctl status meshtastic-pi@$(whoami)
 ```
 
 To view live logs:
 
 ```bash
-journalctl -u meshtastic-pi -f
+journalctl -u meshtastic-pi@$(whoami) -f
 ```
 
 ---

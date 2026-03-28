@@ -1,27 +1,27 @@
 [Unit]
 Description=Meshtastic Pi Backend
-After=network.target pigpiod.service
+After=network.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Service]
-User=pi
-Group=pi
-WorkingDirectory=/home/pi/meshtastic-pi
-ExecStart=/home/pi/meshtastic-pi/venv/bin/uvicorn main:app \
-    --host 127.0.0.1 \
+User=%i
+Group=%i
+WorkingDirectory=/home/%i/pi-Mesh
+ExecStart=/home/%i/pi-Mesh/venv/bin/uvicorn main:app \
+    --host 0.0.0.0 \
     --port 8080 \
     --workers 1 \
-    --log-level warning
+    --log-level info
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=10
-EnvironmentFile=/boot/firmware/config.env
+EnvironmentFile=/home/%i/pi-Mesh/config.env.local
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPYCACHEPREFIX=/tmp/pycache
 Environment=XDG_CACHE_HOME=/tmp/cache
-MemoryMax=200M
+MemoryMax=350M
 CPUQuota=80%
 
 [Install]
