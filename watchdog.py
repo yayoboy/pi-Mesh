@@ -37,8 +37,11 @@ async def memory_watchdog_task(broadcast_fn, interval: int = 60):
 async def meshtastic_telemetry_poll_task(conn, broadcast_fn, interval: int = 60):
     """Legge deviceMetrics dal nodo locale e telemetria Pi ogni `interval` secondi."""
     import time, database
+    first_run = True
     while True:
-        await asyncio.sleep(interval)
+        if not first_run:
+            await asyncio.sleep(interval)
+        first_run = False
         # --- Board Meshtastic ---
         try:
             iface = meshtastic_client._interface

@@ -182,16 +182,20 @@ window.addEventListener('sensor-update', e => {
   })
 })
 
-document.addEventListener('DOMContentLoaded', () => {
+function _initTelemetryPage() {
   initCharts()
-  // Carica sempre le metriche Pi in background
   loadPiMetrics().then(() => {
     const piRam = document.getElementById('pi-ram')
-    if (!piRam.textContent) piRam.textContent = 'Dati Pi non ancora disponibili'
+    if (piRam && !piRam.textContent) piRam.textContent = 'Dati Pi non ancora disponibili'
   })
-  // Carica telemetria del nodo selezionato
   const sel = document.getElementById('node-select')
   if (sel && sel.value) loadNodeTelemetry(sel.value)
-})
+}
+// Funziona sia su caricamento diretto che su navigazione SPA (DOMContentLoaded già scattato)
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _initTelemetryPage)
+} else {
+  _initTelemetryPage()
+}
 </script>
 {% endblock %}
