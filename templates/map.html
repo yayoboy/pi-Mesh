@@ -3,56 +3,50 @@
 <style>
   #content { overflow: hidden; }
 
-  /* Riga filtro — 30px, intera area tappable */
   .f-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 10px;
-    height: 30px;
-    border-bottom: 1px solid var(--border);
-    font-size: 11px;
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    user-select: none;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 10px; height: 28px; border-bottom: 1px solid var(--border);
+    font-size: 11px; cursor: pointer;
+    -webkit-tap-highlight-color: transparent; user-select: none;
   }
   .f-row:last-child { border-bottom: none; }
   .f-row:active { background: rgba(255,255,255,0.04); }
 
-  /* Toggle switch compatto */
-  .tog { position:relative; width:28px; height:16px; flex-shrink:0; pointer-events:none; }
+  .tog { position:relative; width:26px; height:15px; flex-shrink:0; pointer-events:none; }
   .tog input { opacity:0; width:0; height:0; position:absolute; }
   .tog-t { position:absolute; inset:0; border-radius:8px; background:var(--border,#2a3a4a); transition:background .12s; }
   .tog input:checked + .tog-t { background:var(--accent,#4a9eff); }
-  .tog-k { position:absolute; top:3px; left:3px; width:10px; height:10px; border-radius:50%; background:#eee; transition:transform .12s; }
-  .tog input:checked ~ .tog-k { transform:translateX(12px); }
+  .tog-k { position:absolute; top:2.5px; left:2.5px; width:10px; height:10px; border-radius:50%; background:#ddd; transition:transform .12s; }
+  .tog input:checked ~ .tog-k { transform:translateX(11px); }
+
+  .mk-row {
+    display: flex; align-items: center; gap: 5px;
+    height: 28px; padding: 0 8px; border-bottom: 1px solid var(--border);
+    font-size: 10px;
+  }
 </style>
 
 <div style="position:relative;width:100%;height:100%;">
 
-  <!-- Mappa Leaflet (piena) -->
+  <!-- Mappa Leaflet -->
   <div id="map-container"
        data-bounds='{{ bounds | tojson }}'
        data-zoom-min="{{ zoom_min }}"
        data-zoom-max="{{ zoom_max }}"
        style="position:absolute;inset:0;"></div>
 
-  <!-- Toggle sidebar — top-left 32×32 -->
-  <button id="sidebar-toggle"
-          style="position:absolute;top:6px;left:6px;z-index:1000;
-                 width:32px;height:32px;padding:0;
-                 display:flex;align-items:center;justify-content:center;
-                 background:rgba(10,12,20,0.92);border:1px solid var(--border);
-                 border-radius:4px;color:var(--text,#ccc);
-                 -webkit-tap-highlight-color:transparent;">
-    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round"
-            d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-    </svg>
-  </button>
+  <!-- Overlay "tocca per posizionare" (placement mode) -->
+  <div id="placement-hint"
+       style="display:none;position:absolute;inset:0;z-index:800;
+              align-items:center;justify-content:center;pointer-events:none;">
+    <div style="background:rgba(10,12,20,0.88);border:1px solid var(--accent);
+                border-radius:4px;padding:8px 14px;font-size:11px;color:var(--accent);">
+      Tocca la mappa per posizionare
+    </div>
+  </div>
 
-  <!-- Toggle filtri — top-right 32×32 -->
-  <button id="filter-toggle"
+  <!-- Bottone pannello (top-right, 32×32) -->
+  <button id="panel-toggle"
           style="position:absolute;top:6px;right:6px;z-index:1000;
                  width:32px;height:32px;padding:0;
                  display:flex;align-items:center;justify-content:center;
@@ -61,15 +55,15 @@
                  -webkit-tap-highlight-color:transparent;">
     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round"
-            d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+            d="M4 6h16M4 12h16M4 18h7"/>
     </svg>
   </button>
 
-  <!-- Badge traceroute -->
+  <!-- Badge traceroute (top-left) -->
   <div id="traceroute-badge"
-       style="display:none;position:absolute;top:6px;left:46px;right:46px;z-index:900;
+       style="display:none;position:absolute;top:6px;left:6px;right:46px;z-index:900;
               background:rgba(10,12,20,0.95);border:1px solid var(--accent);border-radius:3px;
-              padding:0 6px;height:32px;box-sizing:border-box;
+              padding:0 7px;height:32px;box-sizing:border-box;
               align-items:center;gap:4px;overflow:hidden;font-size:9px;color:var(--accent);">
     <svg width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0;">
       <path stroke-linecap="round" stroke-linejoin="round"
@@ -78,26 +72,13 @@
     <span id="traceroute-badge-text" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
   </div>
 
-  <!-- Sidebar marker -->
-  <div id="marker-sidebar"
-       style="display:none;position:absolute;top:44px;left:0;bottom:24px;width:120px;z-index:700;
-              flex-direction:column;overflow:hidden;
-              background:var(--bg,#0a0c14);border-right:1px solid var(--border);">
-    <div style="padding:5px 8px 3px;font-size:9px;color:var(--accent);
-                text-transform:uppercase;letter-spacing:.08em;flex-shrink:0;
-                border-bottom:1px solid var(--border);">Marker</div>
-    <div id="marker-list" style="flex:1;overflow-y:auto;"></div>
-    <div style="padding:5px 8px;border-top:1px solid var(--border);flex-shrink:0;
-                font-size:9px;color:var(--muted,#666);text-align:center;line-height:1.4;">
-      Tieni premuto sulla mappa per aggiungere
-    </div>
-  </div>
-
-  <!-- Pannello filtri -->
-  <div id="filter-panel"
-       style="display:none;position:absolute;top:44px;right:0;bottom:24px;width:140px;z-index:700;
+  <!-- Pannello unico (slide da destra) -->
+  <div id="right-panel"
+       style="display:none;position:absolute;top:0;right:0;bottom:24px;width:160px;z-index:700;
               flex-direction:column;overflow:hidden;
               background:var(--bg,#0a0c14);border-left:1px solid var(--border);">
+
+    <!-- Sezione filtri -->
     <div style="padding:5px 10px 3px;font-size:9px;color:var(--accent);
                 text-transform:uppercase;letter-spacing:.08em;flex-shrink:0;
                 border-bottom:1px solid var(--border);">Filtri</div>
@@ -117,18 +98,34 @@
     <label class="f-row" style="border-bottom:none;"><span>Nodo locale</span>
       <span class="tog"><input type="checkbox" id="filter-local"><span class="tog-t"></span><span class="tog-k"></span></span>
     </label>
-
-    <div style="padding:8px 10px;border-top:1px solid var(--border);">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:11px;">
+    <div style="padding:7px 10px 6px;border-bottom:1px solid var(--border);flex-shrink:0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;font-size:10px;">
         <span style="color:var(--muted,#666);">Hop max</span>
-        <span id="filter-maxhops-val" style="color:var(--accent);font-weight:600;font-size:12px;">7</span>
+        <span id="filter-maxhops-val" style="color:var(--accent);font-weight:600;">7</span>
       </div>
       <input type="range" id="filter-maxhops" min="1" max="7" value="7"
-             style="width:100%;height:20px;cursor:pointer;">
+             style="width:100%;height:18px;cursor:pointer;">
+    </div>
+
+    <!-- Sezione marker -->
+    <div style="padding:5px 10px 3px;font-size:9px;color:var(--accent);
+                text-transform:uppercase;letter-spacing:.08em;flex-shrink:0;
+                border-bottom:1px solid var(--border);">Marker</div>
+    <div id="marker-list" style="flex:1;overflow-y:auto;"></div>
+    <div style="padding:5px 8px;border-top:1px solid var(--border);flex-shrink:0;">
+      <button id="add-marker-btn"
+              style="width:100%;font-size:11px;padding:6px 0;
+                     display:flex;align-items:center;justify-content:center;gap:4px;
+                     -webkit-tap-highlight-color:transparent;">
+        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        Aggiungi
+      </button>
     </div>
   </div>
 
-  <!-- Legenda bottom -->
+  <!-- Legenda -->
   <div id="map-legend"
        style="position:absolute;bottom:0;left:0;right:0;height:24px;
               background:rgba(8,10,18,0.97);border-top:1px solid var(--border);
@@ -161,7 +158,7 @@
 
 </div>
 
-<!-- Modal aggiunta marker — appeso al body via JS per evitare clipping da overflow:hidden -->
+<!-- Modal marker — appeso al body per evitare clipping -->
 <div id="marker-modal"
      style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;
             background:rgba(0,0,0,.72);z-index:9999;
@@ -205,7 +202,6 @@
     </div>
     <div id="marker-coords-hint"
          style="font-size:10px;color:var(--muted,#666);margin-bottom:10px;text-align:center;">
-      Tocca la mappa per posizionare
     </div>
     <div style="display:flex;gap:7px;">
       <button id="marker-cancel"
@@ -224,11 +220,17 @@
 
 <script src="/static/map.js"></script>
 <script>
-// Sposta il modal come figlio diretto di body per evitare clipping da overflow:hidden
+// Sposta modal al body per evitare clipping da overflow:hidden
 document.body.appendChild(document.getElementById('marker-modal'))
 
 var _pendingMarkerLatLng = null
 var _selectedMarkerType = 'poi'
+
+// Toggle pannello unico
+document.getElementById('panel-toggle').onclick = function() {
+  var p = document.getElementById('right-panel')
+  p.style.display = p.style.display === 'flex' ? 'none' : 'flex'
+}
 
 // Selezione tipo marker
 document.getElementById('marker-type-btns').addEventListener('click', function(e) {
@@ -236,35 +238,33 @@ document.getElementById('marker-type-btns').addEventListener('click', function(e
   if (!btn) return
   _selectedMarkerType = btn.dataset.type
   document.querySelectorAll('.mtype-btn').forEach(function(b) {
-    var active = b === btn
-    b.style.background = active ? 'var(--accent)' : 'transparent'
-    b.style.color      = active ? '#fff' : 'var(--text,#ccc)'
-    b.style.border     = '1px solid ' + (active ? 'var(--accent)' : 'var(--border)')
+    var on = b === btn
+    b.style.background = on ? 'var(--accent)' : 'transparent'
+    b.style.color      = on ? '#fff' : 'var(--text,#ccc)'
+    b.style.border     = '1px solid ' + (on ? 'var(--accent)' : 'var(--border)')
   })
 })
 
-document.getElementById('sidebar-toggle').onclick = function() {
-  var s = document.getElementById('marker-sidebar')
-  var shown = s.style.display === 'flex'
-  s.style.display = shown ? 'none' : 'flex'
-  if (!shown) document.getElementById('filter-panel').style.display = 'none'
-}
-
-document.getElementById('filter-toggle').onclick = function() {
-  var p = document.getElementById('filter-panel')
-  var shown = p.style.display === 'flex'
-  p.style.display = shown ? 'none' : 'flex'
-  if (!shown) document.getElementById('marker-sidebar').style.display = 'none'
+// "Aggiungi" → chiude il pannello, attiva placement mode
+document.getElementById('add-marker-btn').onclick = function() {
+  document.getElementById('right-panel').style.display = 'none'
+  document.getElementById('placement-hint').style.display = 'flex'
+  if (typeof leafletMap !== 'undefined' && leafletMap) {
+    leafletMap.once('click', function(e) {
+      document.getElementById('placement-hint').style.display = 'none'
+      _openMarkerModal(e.latlng)
+    })
+  }
 }
 
 function _openMarkerModal(latlng) {
   _pendingMarkerLatLng = latlng
   _selectedMarkerType = 'poi'
   document.querySelectorAll('.mtype-btn').forEach(function(b) {
-    var active = b.dataset.type === 'poi'
-    b.style.background = active ? 'var(--accent)' : 'transparent'
-    b.style.color      = active ? '#fff' : 'var(--text,#ccc)'
-    b.style.border     = '1px solid ' + (active ? 'var(--accent)' : 'var(--border)')
+    var on = b.dataset.type === 'poi'
+    b.style.background = on ? 'var(--accent)' : 'transparent'
+    b.style.color      = on ? '#fff' : 'var(--text,#ccc)'
+    b.style.border     = '1px solid ' + (on ? 'var(--accent)' : 'var(--border)')
   })
   document.getElementById('marker-label').value = ''
   document.getElementById('marker-coords-hint').textContent =
@@ -273,39 +273,27 @@ function _openMarkerModal(latlng) {
   document.getElementById('marker-modal').style.display = 'flex'
 }
 
-// Usa leafletMap.on('contextmenu') — long-press nativo Leaflet, no interferenze DOM
-// Attende che la mappa sia pronta (mapReady settato da map.js)
-var _ctxPoll = setInterval(function() {
-  if (typeof mapReady === 'undefined' || !mapReady || !leafletMap) return
-  clearInterval(_ctxPoll)
-  leafletMap.on('contextmenu', function(e) {
-    if (document.getElementById('marker-sidebar').style.display !== 'flex') return
-    _openMarkerModal(e.latlng)
-  })
-}, 300)
-
 document.getElementById('marker-cancel').onclick = function() {
   document.getElementById('marker-modal').style.display = 'none'
+  document.getElementById('placement-hint').style.display = 'none'
+  if (typeof leafletMap !== 'undefined' && leafletMap) leafletMap.off('click')
   _pendingMarkerLatLng = null
 }
 
 document.getElementById('marker-save').onclick = async function() {
   var label = document.getElementById('marker-label').value.trim()
-  var type  = _selectedMarkerType
   if (!label) { document.getElementById('marker-label').focus(); return }
   if (!_pendingMarkerLatLng) {
-    var hint = document.getElementById('marker-coords-hint')
-    hint.textContent = 'Tocca prima la mappa!'
-    hint.style.color = 'var(--danger,#ef9a9a)'
+    document.getElementById('marker-coords-hint').textContent = 'Posizione non impostata'
+    document.getElementById('marker-coords-hint').style.color = 'var(--danger,#ef9a9a)'
     return
   }
   try {
-    await addCustomMarker(label, type, _pendingMarkerLatLng)
+    await addCustomMarker(label, _selectedMarkerType, _pendingMarkerLatLng)
     document.getElementById('marker-modal').style.display = 'none'
   } catch(e) {
-    var hint = document.getElementById('marker-coords-hint')
-    hint.textContent = 'Errore nel salvataggio'
-    hint.style.color = 'var(--danger,#ef9a9a)'
+    document.getElementById('marker-coords-hint').textContent = 'Errore nel salvataggio'
+    document.getElementById('marker-coords-hint').style.color = 'var(--danger,#ef9a9a)'
   }
 }
 </script>
