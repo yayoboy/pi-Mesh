@@ -208,6 +208,58 @@ async def api_dm_read(payload: dict):
     return JSONResponse({"ok": True})
 
 
+# --- YAY-114: Map markers ---
+
+@app.get("/api/map/markers")
+async def api_map_markers():
+    markers = await database.get_markers(_conn)
+    return JSONResponse({"markers": markers})
+
+@app.post("/api/map/markers")
+async def api_map_markers_create(payload: dict):
+    label     = payload.get("label", "").strip()
+    icon_type = payload.get("icon_type", "poi")
+    latitude  = payload.get("latitude")
+    longitude = payload.get("longitude")
+    if not label or latitude is None or longitude is None:
+        return JSONResponse(
+            {"ok": False, "error": "label, latitude e longitude obbligatori"},
+            status_code=400
+        )
+    if icon_type not in ("antenna", "base", "obstacle", "poi"):
+        icon_type = "poi"
+    marker_id = await database.save_marker(
+        _conn, label, icon_type, float(latitude), float(longitude)
+    )
+    return JSONResponse({"ok": True, "id": marker_id})
+
+@app.delete("/api/map/markers/{marker_id}")
+async def api_map_markers_delete(marker_id: int):
+    await database.delete_marker(_conn, marker_id)
+    return JSONResponse({"ok": True})
+
+# --- YAY-114: Traceroute ---
+
+@app.post("/api/traceroute")
+async def api_traceroute_start(payload: dict):
+    node_id = payload.get("node_id", "").strip()
+    if not node_id:
+        return JSONResponse(
+            {"ok": False, "error": "node_id obbligatorio"},
+            status_code=400
+        )
+    try:
+        await meshtastic_client.request_traceroute(node_id)
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+@app.get("/api/traceroute/{node_id}")
+async def api_traceroute_get(node_id: str):
+    results = await database.get_traceroutes(_conn, node_id, limit=10)
+    return JSONResponse({"results": results})
+
+
 @app.get("/api/telemetry/{node_id}/{type_}")
 async def api_telemetry(node_id: str, type_: str, limit: int = 100):
     return await database.get_telemetry(_conn, node_id, type_, limit)
