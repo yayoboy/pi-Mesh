@@ -99,6 +99,19 @@ async def _create_tables(conn):
             timestamp INTEGER NOT NULL
         )
     """)
+    # YAY-115: saved WiFi networks
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS wifi_networks (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            ssid       TEXT NOT NULL UNIQUE,
+            password   TEXT NOT NULL DEFAULT '',
+            use_dhcp   INTEGER DEFAULT 1,
+            ip_address TEXT,
+            gateway    TEXT,
+            dns        TEXT,
+            created_at INTEGER NOT NULL
+        )
+    """)
     await conn.commit()
 
 async def save_message(conn, node_id, channel, text, timestamp, is_outgoing, snr, rssi, destination='^all', hop_count=None):
@@ -302,6 +315,26 @@ async def get_traceroutes(conn, node_id: str, limit: int = 10) -> list:
     for r in rows:
         r["hops"] = json.loads(r["hops"])
     return rows
+
+# --- YAY-115: WiFi networks ---
+
+async def save_wifi_network(conn, ssid: str, password: str, use_dhcp: bool = True,
+                            ip_address: str = None, gateway: str = None, dns: str = None) -> int:
+    cur = await conn.execute(
+        "INSERT OR REPLACE INTO wifi_networks (ssid, password, use_dhcp, ip_address, gateway, dns, created_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (ssid, password, 1 if use_dhcp else 0, ip_address, gateway, dns, int(time.time()))
+    )
+    await conn.commit()
+    return cur.lastrowid
+
+async def get_wifi_networks(conn) -> list:
+    cur = await conn.execute("SELECT * FROM wifi_networks ORDER BY created_at DESC")
+    return [dict(r) for r in await cur.fetchall()]
+
+async def delete_wifi_network(conn, network_id: int):
+    await conn.execute("DELETE FROM wifi_networks WHERE id = ?", (network_id,))
+    await conn.commit()
 
 async def sync_to_sd(conn, runtime_path: str = None, persistent_path: str = None):
     runtime    = runtime_path    or cfg.DB_RUNTIME

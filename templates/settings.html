@@ -91,8 +91,26 @@
     <div id="wifi-networks" style="max-height:80px; overflow-y:auto; margin-bottom:4px;"></div>
     <div class="settings-row"><label>SSID</label><input type="text" id="wifi-ssid" autocomplete="off"></div>
     <div class="settings-row"><label>Password</label><input type="password" id="wifi-password" autocomplete="new-password"></div>
-    <button onclick="connectWifi()" style="margin-top:4px; min-height:36px;">Connetti</button>
+    <div class="settings-row">
+      <label>DHCP</label>
+      <input type="checkbox" id="wifi-dhcp" checked onchange="toggleStaticIP()"
+             style="width:auto; min-height:auto; height:24px; width:24px;">
+    </div>
+    <div id="wifi-static-fields" style="display:none;">
+      <div class="settings-row"><label>IP</label><input type="text" id="wifi-ip" placeholder="192.168.1.100" autocomplete="off"></div>
+      <div class="settings-row"><label>Gateway</label><input type="text" id="wifi-gateway" placeholder="192.168.1.1" autocomplete="off"></div>
+      <div class="settings-row"><label>DNS</label><input type="text" id="wifi-dns" placeholder="8.8.8.8" autocomplete="off"></div>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:4px;">
+      <button onclick="connectWifi()" style="flex:1; min-height:36px;">Connetti</button>
+      <button onclick="saveWifiNetwork()" style="flex:1; min-height:36px;">Salva rete</button>
+    </div>
     <div id="wifi-connect-status" style="font-size:11px; color:var(--muted); margin-top:4px;"></div>
+    <!-- Reti salvate -->
+    <div style="margin-top:8px; border-top:1px solid var(--border); padding-top:6px;">
+      <div class="settings-label">Reti salvate</div>
+      <div id="wifi-saved-networks" style="font-size:12px; color:var(--muted);">— nessuna rete salvata —</div>
+    </div>
   </div>
 
   <!-- ADMIN REMOTO -->
@@ -256,16 +274,33 @@ async function scanWifi() {
   } catch (_) { container.textContent = 'Errore scansione' }
 }
 
-async function connectWifi() {
+function toggleStaticIP() {
+  const dhcp = document.getElementById('wifi-dhcp').checked
+  document.getElementById('wifi-static-fields').style.display = dhcp ? 'none' : 'block'
+}
+
+function _getWifiPayload() {
   const ssid     = document.getElementById('wifi-ssid').value.trim()
   const password = document.getElementById('wifi-password').value
-  const status   = document.getElementById('wifi-connect-status')
-  if (!ssid) { status.textContent = 'Inserisci SSID'; return }
+  const use_dhcp = document.getElementById('wifi-dhcp').checked
+  const payload  = { ssid, password, use_dhcp }
+  if (!use_dhcp) {
+    payload.ip_address = document.getElementById('wifi-ip').value.trim()
+    payload.gateway    = document.getElementById('wifi-gateway').value.trim()
+    payload.dns        = document.getElementById('wifi-dns').value.trim()
+  }
+  return payload
+}
+
+async function connectWifi() {
+  const payload = _getWifiPayload()
+  const status  = document.getElementById('wifi-connect-status')
+  if (!payload.ssid) { status.textContent = 'Inserisci SSID'; return }
   status.textContent = 'Connessione...'
   try {
     const r = await fetch('/api/wifi/connect', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ ssid, password })
+      body: JSON.stringify(payload)
     })
     const d = await r.json()
     status.textContent = d.ok ? 'Connesso' : ('Errore: ' + d.error)
@@ -274,6 +309,67 @@ async function connectWifi() {
     })
   } catch (_) { status.textContent = 'Errore connessione' }
 }
+
+async function saveWifiNetwork() {
+  const payload = _getWifiPayload()
+  const status  = document.getElementById('wifi-connect-status')
+  if (!payload.ssid) { status.textContent = 'Inserisci SSID'; return }
+  try {
+    const r = await fetch('/api/wifi/networks', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    })
+    const d = await r.json()
+    status.textContent = d.ok ? 'Rete salvata' : ('Errore: ' + d.error)
+    if (d.ok) loadSavedNetworks()
+  } catch (_) { status.textContent = 'Errore salvataggio' }
+}
+
+async function loadSavedNetworks() {
+  const container = document.getElementById('wifi-saved-networks')
+  try {
+    const r = await fetch('/api/wifi/networks')
+    const d = await r.json()
+    container.textContent = ''
+    if (!d.networks || !d.networks.length) {
+      container.textContent = '— nessuna rete salvata —'
+      return
+    }
+    d.networks.forEach(n => {
+      const row = document.createElement('div')
+      row.style.cssText = 'display:flex; align-items:center; gap:4px; margin-bottom:3px;'
+      const info = document.createElement('span')
+      info.style.cssText = 'flex:1; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;'
+      info.textContent = n.ssid + ' (' + (n.use_dhcp ? 'DHCP' : n.ip_address || 'statico') + ')'
+      const btnConn = document.createElement('button')
+      btnConn.textContent = 'Connetti'
+      btnConn.style.cssText = 'width:auto; padding:0 6px; min-height:26px; font-size:10px; flex-shrink:0;'
+      btnConn.onclick = () => {
+        document.getElementById('wifi-ssid').value = n.ssid
+        document.getElementById('wifi-dhcp').checked = !!n.use_dhcp
+        toggleStaticIP()
+        if (!n.use_dhcp) {
+          document.getElementById('wifi-ip').value = n.ip_address || ''
+          document.getElementById('wifi-gateway').value = n.gateway || ''
+          document.getElementById('wifi-dns').value = n.dns || ''
+        }
+        connectWifi()
+      }
+      const btnDel = document.createElement('button')
+      btnDel.textContent = 'Elimina'
+      btnDel.style.cssText = 'width:auto; padding:0 6px; min-height:26px; font-size:10px; flex-shrink:0;'
+      btnDel.onclick = async () => {
+        await fetch('/api/wifi/networks/' + n.id, { method: 'DELETE' })
+        loadSavedNetworks()
+      }
+      row.append(info, btnConn, btnDel)
+      container.appendChild(row)
+    })
+  } catch (_) { container.textContent = 'Errore caricamento reti salvate' }
+}
+
+// Carica reti salvate all'avvio
+loadSavedNetworks()
 
 async function loadChannels() {
   const container = document.getElementById('channels-list')

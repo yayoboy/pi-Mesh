@@ -579,8 +579,12 @@ async def wifi_scan():
 
 @app.post("/api/wifi/connect")
 async def wifi_connect(payload: dict):
-    ssid     = str(payload.get("ssid",     "")).strip()
-    password = str(payload.get("password", "")).strip()
+    ssid       = str(payload.get("ssid",     "")).strip()
+    password   = str(payload.get("password", "")).strip()
+    use_dhcp   = payload.get("use_dhcp", True)
+    ip_address = str(payload.get("ip_address", "")).strip()
+    gateway    = str(payload.get("gateway", "")).strip()
+    dns        = str(payload.get("dns", "")).strip()
     if not ssid:
         return JSONResponse({"ok": False, "error": "SSID mancante"}, status_code=400)
     try:
@@ -588,11 +592,56 @@ async def wifi_connect(payload: dict):
         if password:
             cmd += ["password", password]
         r = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True, timeout=30)
-        if r.returncode == 0:
-            return {"ok": True}
-        return JSONResponse({"ok": False, "error": r.stderr.strip() or r.stdout.strip()}, status_code=500)
+        if r.returncode != 0:
+            return JSONResponse({"ok": False, "error": r.stderr.strip() or r.stdout.strip()}, status_code=500)
+        # Static IP configuration
+        if not use_dhcp and ip_address:
+            conn_name = ssid
+            cmds = [
+                ["nmcli", "con", "mod", conn_name, "ipv4.method", "manual",
+                 "ipv4.addresses", ip_address + "/24"],
+            ]
+            if gateway:
+                cmds.append(["nmcli", "con", "mod", conn_name, "ipv4.gateway", gateway])
+            if dns:
+                cmds.append(["nmcli", "con", "mod", conn_name, "ipv4.dns", dns])
+            cmds.append(["nmcli", "con", "up", conn_name])
+            for c in cmds:
+                await asyncio.to_thread(subprocess.run, c, capture_output=True, text=True, timeout=15)
+        return {"ok": True}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+# --- YAY-115: Saved WiFi networks ---
+
+@app.get("/api/wifi/networks")
+async def wifi_networks_list():
+    networks = await database.get_wifi_networks(_conn)
+    # Mask passwords: show only first 2 chars + ****
+    for n in networks:
+        pw = n.get("password", "")
+        n["password"] = pw[:2] + "****" if len(pw) >= 2 else "****"
+    return JSONResponse({"networks": networks})
+
+@app.post("/api/wifi/networks")
+async def wifi_networks_save(payload: dict):
+    ssid = str(payload.get("ssid", "")).strip()
+    if not ssid:
+        return JSONResponse({"ok": False, "error": "SSID mancante"}, status_code=400)
+    password   = str(payload.get("password", "")).strip()
+    use_dhcp   = payload.get("use_dhcp", True)
+    ip_address = str(payload.get("ip_address", "")).strip() or None
+    gateway    = str(payload.get("gateway", "")).strip() or None
+    dns        = str(payload.get("dns", "")).strip() or None
+    net_id = await database.save_wifi_network(
+        _conn, ssid, password, use_dhcp, ip_address, gateway, dns
+    )
+    return JSONResponse({"ok": True, "id": net_id})
+
+@app.delete("/api/wifi/networks/{network_id}")
+async def wifi_networks_delete(network_id: int):
+    await database.delete_wifi_network(_conn, network_id)
+    return JSONResponse({"ok": True})
 
 @app.get("/api/channels")
 async def get_channels():
