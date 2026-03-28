@@ -257,10 +257,6 @@ document.getElementById('filter-toggle').onclick = function() {
   if (!shown) document.getElementById('marker-sidebar').style.display = 'none'
 }
 
-// Long-press sulla mappa (2s) quando la sidebar marker è aperta → modal con coordinate
-var _mapLpTimer = null
-var _mapLpTouch = null
-
 function _openMarkerModal(latlng) {
   _pendingMarkerLatLng = latlng
   _selectedMarkerType = 'poi'
@@ -277,25 +273,16 @@ function _openMarkerModal(latlng) {
   document.getElementById('marker-modal').style.display = 'flex'
 }
 
-document.getElementById('map-container').addEventListener('touchstart', function(e) {
-  if (document.getElementById('marker-sidebar').style.display !== 'flex') return
-  if (e.touches.length !== 1) return
-  _mapLpTouch = e.touches[0]
-  _mapLpTimer = setTimeout(function() {
-    if (!_mapLpTouch || typeof leafletMap === 'undefined' || !leafletMap) return
-    var rect = document.getElementById('map-container').getBoundingClientRect()
-    var latlng = leafletMap.containerPointToLatLng([
-      _mapLpTouch.clientX - rect.left,
-      _mapLpTouch.clientY - rect.top
-    ])
-    _openMarkerModal(latlng)
-    _mapLpTouch = null
-  }, 2000)
-}, { passive: true })
-
-document.getElementById('map-container').addEventListener('touchend',    function() { clearTimeout(_mapLpTimer); _mapLpTouch = null }, { passive: true })
-document.getElementById('map-container').addEventListener('touchmove',   function() { clearTimeout(_mapLpTimer); _mapLpTouch = null }, { passive: true })
-document.getElementById('map-container').addEventListener('touchcancel', function() { clearTimeout(_mapLpTimer); _mapLpTouch = null }, { passive: true })
+// Usa leafletMap.on('contextmenu') — long-press nativo Leaflet, no interferenze DOM
+// Attende che la mappa sia pronta (mapReady settato da map.js)
+var _ctxPoll = setInterval(function() {
+  if (typeof mapReady === 'undefined' || !mapReady || !leafletMap) return
+  clearInterval(_ctxPoll)
+  leafletMap.on('contextmenu', function(e) {
+    if (document.getElementById('marker-sidebar').style.display !== 'flex') return
+    _openMarkerModal(e.latlng)
+  })
+}, 300)
 
 document.getElementById('marker-cancel').onclick = function() {
   document.getElementById('marker-modal').style.display = 'none'
