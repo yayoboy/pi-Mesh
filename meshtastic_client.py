@@ -308,6 +308,7 @@ def _parse_message(packet) -> dict | None:
             "snr":         packet.get("rxSnr"),
             "rssi":        packet.get("rxRssi"),
             "hop_count":   packet.get("hopStart", 0) - packet.get("hopLimit", 0) if packet.get("hopStart") else None,
+            "destination": packet.get("toId", "^all"),
         }
     except Exception as e:
         logging.error(f"Parsing messaggio fallito: {e}")

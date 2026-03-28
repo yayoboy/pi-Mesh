@@ -159,7 +159,7 @@ async def send_message(payload: dict):
         return JSONResponse({"ok": False, "error": "testo vuoto"}, status_code=400)
     try:
         await meshtastic_client.send_message(text, channel, destination)
-        await database.save_message(_conn, "local", channel, text, int(time.time()), 1, None, None)
+        await database.save_message(_conn, "local", channel, text, int(time.time()), 1, None, None, destination=destination)
         return {"ok": True}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -184,6 +184,24 @@ async def delete_node(node_id: str, cascade: bool = False):
 @app.get("/api/messages")
 async def api_messages(channel: int = 0, limit: int = 50, before_id: int = None):
     return await database.get_messages(_conn, channel, limit, before_id)
+
+@app.get("/api/dm/threads")
+async def api_dm_threads():
+    threads = await database.get_dm_threads(_conn)
+    return JSONResponse({"threads": threads})
+
+
+@app.get("/api/dm/messages")
+async def api_dm_messages(peer: str, limit: int = 50, before_id: int = None):
+    msgs = await database.get_dm_messages(_conn, peer, limit=limit, before_id=before_id)
+    return JSONResponse({"messages": msgs})
+
+
+@app.post("/api/dm/read")
+async def api_dm_read(peer: str):
+    await database.mark_dm_read(_conn, peer)
+    return JSONResponse({"ok": True})
+
 
 @app.get("/api/telemetry/{node_id}/{type_}")
 async def api_telemetry(node_id: str, type_: str, limit: int = 100):
