@@ -1,4 +1,4 @@
-import asyncio, os, shutil, logging, time
+import asyncio, json, os, shutil, logging, time
 import aiosqlite
 import config as cfg
 
@@ -78,6 +78,27 @@ async def _create_tables(conn):
             await conn.execute(f"ALTER TABLE messages ADD COLUMN {col_def}")
         except Exception:
             pass
+    await conn.commit()
+
+    # YAY-114: tabelle mappa e traceroute
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS map_markers (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            label      TEXT NOT NULL,
+            icon_type  TEXT NOT NULL DEFAULT 'poi',
+            latitude   REAL NOT NULL,
+            longitude  REAL NOT NULL,
+            created_at INTEGER NOT NULL
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS traceroute_results (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            node_id   TEXT NOT NULL,
+            hops      TEXT NOT NULL,
+            timestamp INTEGER NOT NULL
+        )
+    """)
     await conn.commit()
 
 async def save_message(conn, node_id, channel, text, timestamp, is_outgoing, snr, rssi, destination='^all', hop_count=None):
@@ -245,6 +266,42 @@ async def get_sensor_readings(conn, sensor_name: str, limit: int = 100) -> list:
         d["values"] = json.loads(d["value_json"])
         result.append(d)
     return result
+
+# --- YAY-114: Map markers ---
+
+async def save_marker(conn, label: str, icon_type: str, latitude: float, longitude: float) -> int:
+    cur = await conn.execute(
+        "INSERT INTO map_markers (label, icon_type, latitude, longitude, created_at) VALUES (?,?,?,?,?)",
+        (label, icon_type, latitude, longitude, int(time.time()))
+    )
+    await conn.commit()
+    return cur.lastrowid
+
+async def get_markers(conn) -> list:
+    cur = await conn.execute("SELECT * FROM map_markers ORDER BY created_at DESC")
+    return [dict(r) for r in await cur.fetchall()]
+
+async def delete_marker(conn, marker_id: int):
+    await conn.execute("DELETE FROM map_markers WHERE id = ?", (marker_id,))
+    await conn.commit()
+
+async def save_traceroute(conn, node_id: str, hops: list) -> int:
+    cur = await conn.execute(
+        "INSERT INTO traceroute_results (node_id, hops, timestamp) VALUES (?,?,?)",
+        (node_id, json.dumps(hops), int(time.time()))
+    )
+    await conn.commit()
+    return cur.lastrowid
+
+async def get_traceroutes(conn, node_id: str, limit: int = 10) -> list:
+    cur = await conn.execute(
+        "SELECT * FROM traceroute_results WHERE node_id=? ORDER BY timestamp DESC LIMIT ?",
+        (node_id, limit)
+    )
+    rows = [dict(r) for r in await cur.fetchall()]
+    for r in rows:
+        r["hops"] = json.loads(r["hops"])
+    return rows
 
 async def sync_to_sd(conn, runtime_path: str = None, persistent_path: str = None):
     runtime    = runtime_path    or cfg.DB_RUNTIME

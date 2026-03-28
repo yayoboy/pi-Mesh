@@ -135,3 +135,39 @@ async def test_mark_dm_read_clears_unread(tmp_db):
     threads_after = await database.get_dm_threads(conn)
     assert threads_after[0]["unread_count"] == 0
     await conn.close()
+
+@pytest.mark.asyncio
+async def test_save_and_get_marker(tmp_db):
+    import database
+    runtime, persistent = tmp_db
+    conn = await database.init_db(runtime_path=runtime, persistent_path=persistent)
+    marker_id = await database.save_marker(conn, "Test", "poi", 45.0, 9.0)
+    markers = await database.get_markers(conn)
+    assert len(markers) == 1
+    assert markers[0]["label"] == "Test"
+    assert markers[0]["id"] == marker_id
+    await conn.close()
+
+@pytest.mark.asyncio
+async def test_delete_marker(tmp_db):
+    import database
+    runtime, persistent = tmp_db
+    conn = await database.init_db(runtime_path=runtime, persistent_path=persistent)
+    mid = await database.save_marker(conn, "Del", "poi", 45.0, 9.0)
+    await database.delete_marker(conn, mid)
+    markers = await database.get_markers(conn)
+    assert len(markers) == 0
+    await conn.close()
+
+@pytest.mark.asyncio
+async def test_save_and_get_traceroute(tmp_db):
+    import database
+    runtime, persistent = tmp_db
+    conn = await database.init_db(runtime_path=runtime, persistent_path=persistent)
+    hops = ["!local", "!a1b2c3d4", "!dest0001"]
+    tid = await database.save_traceroute(conn, "!dest0001", hops)
+    results = await database.get_traceroutes(conn, "!dest0001")
+    assert len(results) == 1
+    assert results[0]["hops"] == hops
+    assert results[0]["id"] == tid
+    await conn.close()
