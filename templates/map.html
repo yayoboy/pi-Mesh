@@ -87,16 +87,9 @@
                 text-transform:uppercase;letter-spacing:.08em;flex-shrink:0;
                 border-bottom:1px solid var(--border);">Marker</div>
     <div id="marker-list" style="flex:1;overflow-y:auto;"></div>
-    <div style="padding:5px 6px;border-top:1px solid var(--border);flex-shrink:0;">
-      <button id="add-marker-btn"
-              style="width:100%;font-size:11px;padding:7px 0;
-                     display:flex;align-items:center;justify-content:center;gap:4px;
-                     -webkit-tap-highlight-color:transparent;">
-        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
-        </svg>
-        Aggiungi
-      </button>
+    <div style="padding:5px 8px;border-top:1px solid var(--border);flex-shrink:0;
+                font-size:9px;color:var(--muted,#666);text-align:center;line-height:1.4;">
+      Tieni premuto sulla mappa per aggiungere
     </div>
   </div>
 
@@ -264,8 +257,12 @@ document.getElementById('filter-toggle').onclick = function() {
   if (!shown) document.getElementById('marker-sidebar').style.display = 'none'
 }
 
-document.getElementById('add-marker-btn').onclick = function() {
-  _pendingMarkerLatLng = null
+// Long-press sulla mappa (2s) quando la sidebar marker è aperta → modal con coordinate
+var _mapLpTimer = null
+var _mapLpTouch = null
+
+function _openMarkerModal(latlng) {
+  _pendingMarkerLatLng = latlng
   _selectedMarkerType = 'poi'
   document.querySelectorAll('.mtype-btn').forEach(function(b) {
     var active = b.dataset.type === 'poi'
@@ -273,23 +270,35 @@ document.getElementById('add-marker-btn').onclick = function() {
     b.style.color      = active ? '#fff' : 'var(--text,#ccc)'
     b.style.border     = '1px solid ' + (active ? 'var(--accent)' : 'var(--border)')
   })
-  document.getElementById('marker-coords-hint').textContent = 'Tocca la mappa per posizionare'
-  document.getElementById('marker-coords-hint').style.color = ''
   document.getElementById('marker-label').value = ''
+  document.getElementById('marker-coords-hint').textContent =
+    latlng.lat.toFixed(4) + '\u00b0, ' + latlng.lng.toFixed(4) + '\u00b0'
+  document.getElementById('marker-coords-hint').style.color = 'var(--accent,#4a9eff)'
   document.getElementById('marker-modal').style.display = 'flex'
-  document.getElementById('marker-sidebar').style.display = 'none'
-  if (typeof leafletMap !== 'undefined' && leafletMap) {
-    leafletMap.once('click', function(e) {
-      _pendingMarkerLatLng = e.latlng
-      document.getElementById('marker-coords-hint').textContent =
-        e.latlng.lat.toFixed(4) + '\u00b0, ' + e.latlng.lng.toFixed(4) + '\u00b0'
-    })
-  }
 }
+
+document.getElementById('map-container').addEventListener('touchstart', function(e) {
+  if (document.getElementById('marker-sidebar').style.display !== 'flex') return
+  if (e.touches.length !== 1) return
+  _mapLpTouch = e.touches[0]
+  _mapLpTimer = setTimeout(function() {
+    if (!_mapLpTouch || typeof leafletMap === 'undefined' || !leafletMap) return
+    var rect = document.getElementById('map-container').getBoundingClientRect()
+    var latlng = leafletMap.containerPointToLatLng([
+      _mapLpTouch.clientX - rect.left,
+      _mapLpTouch.clientY - rect.top
+    ])
+    _openMarkerModal(latlng)
+    _mapLpTouch = null
+  }, 2000)
+}, { passive: true })
+
+document.getElementById('map-container').addEventListener('touchend',    function() { clearTimeout(_mapLpTimer); _mapLpTouch = null }, { passive: true })
+document.getElementById('map-container').addEventListener('touchmove',   function() { clearTimeout(_mapLpTimer); _mapLpTouch = null }, { passive: true })
+document.getElementById('map-container').addEventListener('touchcancel', function() { clearTimeout(_mapLpTimer); _mapLpTouch = null }, { passive: true })
 
 document.getElementById('marker-cancel').onclick = function() {
   document.getElementById('marker-modal').style.display = 'none'
-  if (typeof leafletMap !== 'undefined' && leafletMap) leafletMap.off('click')
   _pendingMarkerLatLng = null
 }
 
