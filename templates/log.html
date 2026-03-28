@@ -183,7 +183,8 @@
 
   // ── search input ──────────────────────────────────────────────────────────
 
-  document.getElementById('log-search').addEventListener('input', _applyFilters)
+  var _logSearch = document.getElementById('log-search')
+  if (_logSearch) _logSearch.addEventListener('input', _applyFilters)
 
   // ── existing public API ───────────────────────────────────────────────────
 

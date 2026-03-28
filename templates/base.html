@@ -14,8 +14,9 @@
     var cls = 'theme-' + (saved.theme || 'dark')
     document.documentElement.className = cls
     if (saved.vars) {
+      var allowed = ['--bg','--bg2','--text','--muted','--border','--accent','--ok','--warn','--danger']
       var s = document.documentElement.style
-      Object.keys(saved.vars).forEach(function(k) { s.setProperty(k, saved.vars[k]) })
+      Object.keys(saved.vars).forEach(function(k) { if (allowed.indexOf(k) >= 0) s.setProperty(k, saved.vars[k]) })
     }
   } catch(e){}
 })()

@@ -75,7 +75,9 @@ let mainChart = null
 const DS = { RAM: 0, BATT: 1, TEMP: 2, CHUTIL: 3, AIRTX: 4, DISK: 5 }
 
 function _initMainChart() {
-  const ctx = document.getElementById('chart-main').getContext('2d')
+  const el = document.getElementById('chart-main')
+  if (!el) return
+  const ctx = el.getContext('2d')
   mainChart = new Chart(ctx, {
     type: 'line',
     data: {
@@ -243,7 +245,9 @@ let _sensorPaletteIdx = 0
 
 function _ensureSensorChart() {
   if (sensorChart) return
-  const ctx = document.getElementById('chart-sensors').getContext('2d')
+  const el = document.getElementById('chart-sensors')
+  if (!el) return
+  const ctx = el.getContext('2d')
   sensorChart = new Chart(ctx, {
     type: 'line',
     data: { labels: [], datasets: [] },
@@ -286,6 +290,7 @@ function _getSensorDataset(key) {
 window.addEventListener('sensor-update', e => {
   const { sensor, values } = e.detail
   const section = document.getElementById('sensors-section')
+  if (!section) return
   section.style.display = ''
 
   _ensureSensorChart()
