@@ -148,7 +148,7 @@ async def set_config(config_dict: dict):
 async def request_position(node_id: str):
     iface = _interface
     if iface:
-        await asyncio.to_thread(iface.sendPosition, node_id)
+        await asyncio.to_thread(iface.sendPosition, destinationId=node_id)
 
 # --- Callback pubsub (thread separati) ---
 
