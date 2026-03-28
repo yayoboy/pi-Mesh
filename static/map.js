@@ -7,9 +7,9 @@
 let leafletMap = null
 let mapReady = false
 const markerCache = new Map()
-const hopLinesLayer = L.layerGroup()
-const tracerouteLayer = L.layerGroup()
-const customMarkersLayer = L.layerGroup()
+let hopLinesLayer
+let tracerouteLayer
+let customMarkersLayer
 let customMarkersData = []
 
 // --- Icone SVG Heroicons ---
@@ -217,7 +217,8 @@ async function addCustomMarker(label, iconType, latlng) {
 }
 
 async function removeCustomMarker(id) {
-  await fetch('/api/map/markers/' + id, { method: 'DELETE' })
+  var r = await fetch('/api/map/markers/' + id, { method: 'DELETE' })
+  if (!r.ok) return
   customMarkersData = customMarkersData.filter(function(m) { return m.id !== id })
   renderCustomMarkersOnMap()
   renderMarkerSidebar()
@@ -301,10 +302,10 @@ function initNodeContextMenu(marker, node) {
     }, 50)
   }
 
-  marker.on('mousedown touchstart', function() {
+  marker.on('touchstart', function() {
     _longPressTimer = setTimeout(showMenu, 300)
   })
-  marker.on('mouseup touchend mousemove touchmove', function() {
+  marker.on('touchend touchmove', function() {
     clearTimeout(_longPressTimer)
   })
 }
@@ -318,6 +319,9 @@ function closeContextMenu() {
 
 function initMapIfNeeded() {
   if (mapReady || typeof L === 'undefined') return
+  hopLinesLayer = L.layerGroup()
+  tracerouteLayer = L.layerGroup()
+  customMarkersLayer = L.layerGroup()
   var el = document.getElementById('map-container')
   if (!el) return
   var bounds = JSON.parse(el.dataset.bounds || 'null')
