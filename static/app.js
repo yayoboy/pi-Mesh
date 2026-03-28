@@ -60,16 +60,17 @@ function initWS() {
       return
     }
     const handlers = {
-      init:      handleInit,
-      message:   handleMessage,
-      node:      handleNode,
-      position:  handlePosition,
-      telemetry: handleTelemetry,
-      sensor:    handleSensor,
-      encoder:   handleEncoder,
-      status:    handleStatus,
-      log:       handleLog,
-      ack:       handleAck,
+      init:              handleInit,
+      message:           handleMessage,
+      node:              handleNode,
+      position:          handlePosition,
+      telemetry:         handleTelemetry,
+      sensor:            handleSensor,
+      encoder:           handleEncoder,
+      status:            handleStatus,
+      log:               handleLog,
+      ack:               handleAck,
+      traceroute_result: handleTracerouteResult,
     }
     handlers[msg.type]?.(msg.data)
   }
@@ -106,7 +107,7 @@ function handleNode(data) {
   nodeCache.set(data.id, data)
   if (isNew && !data.is_local) showToast('Nuovo nodo: ' + (data.short_name || data.id))
   if (activeTab.name === 'nodes') updateNodeRow(data)
-  if (activeTab.name === 'map' && mapReady) updateMapMarker(data)
+  if (activeTab.name === 'map' && typeof mapReady !== 'undefined' && mapReady) updateMapMarker(data)
   if (data.is_local) {
     const el = document.getElementById('node-name')
     if (el) el.textContent = data.short_name || data.id
@@ -119,7 +120,7 @@ function handlePosition(data) {
   if (node) {
     node.latitude  = data.latitude
     node.longitude = data.longitude
-    if (activeTab.name === 'map' && mapReady) updateMapMarker(node)
+    if (activeTab.name === 'map' && typeof mapReady !== 'undefined' && mapReady) updateMapMarker(node)
     if (node.is_local) updateGpsBadge(true)
   }
 }
@@ -145,6 +146,10 @@ function handleLog(data) {
 
 function handleAck(data) {
   window.dispatchEvent(new CustomEvent('msg-ack', { detail: data }))
+}
+
+function handleTracerouteResult(data) {
+  window.dispatchEvent(new CustomEvent('traceroute_result', { detail: data }))
 }
 
 function handleStatus(data) {
@@ -210,7 +215,7 @@ function enc2Nodes(action) {
   if (list) list.scrollTop += (action === 'cw' ? 48 : -48)
 }
 function enc2Map(action) {
-  if (!mapReady) return
+  if (typeof mapReady === 'undefined' || !mapReady) return
   if (action === 'cw') leafletMap.zoomIn()
   if (action === 'ccw') leafletMap.zoomOut()
 }
@@ -317,60 +322,6 @@ function escHtml(s) {
 function applyTheme(theme) {
   document.body.className = 'theme-' + theme
   document.documentElement.className = 'theme-' + theme
-}
-
-// ===== MAPPA =====
-let leafletMap = null
-let mapReady = false
-const markerCache = new Map()
-
-function initMapIfNeeded() {
-  if (mapReady || typeof L === 'undefined') return
-  const el = document.getElementById('map-container')
-  if (!el) return
-  const bounds = JSON.parse(el.dataset.bounds || 'null')
-  if (!bounds) return
-  const zoomMin = parseInt(el.dataset.zoomMin || '7')
-  const zoomMax = parseInt(el.dataset.zoomMax || '12')
-  const center = [(bounds.lat_min + bounds.lat_max) / 2, (bounds.lon_min + bounds.lon_max) / 2]
-
-  leafletMap = L.map('map-container', {
-    center, zoom: 10, zoomControl: false,
-    minZoom: zoomMin, maxZoom: zoomMax,
-    maxBounds: [[bounds.lat_min, bounds.lon_min], [bounds.lat_max, bounds.lon_max]],
-    maxBoundsViscosity: 1.0,
-  })
-
-  const tileOpts = { minZoom: zoomMin, maxZoom: zoomMax }
-  const osmLayer       = L.tileLayer('/tiles/osm/{z}/{x}/{y}',       tileOpts)
-  const topoLayer      = L.tileLayer('/tiles/topo/{z}/{x}/{y}',      tileOpts)
-  const satelliteLayer = L.tileLayer('/tiles/satellite/{z}/{x}/{y}', tileOpts)
-  osmLayer.addTo(leafletMap)
-  L.control.layers({ 'Stradale': osmLayer, 'Topo': topoLayer, 'Satellite': satelliteLayer }).addTo(leafletMap)
-
-  nodeCache.forEach(node => updateMapMarker(node))
-  mapReady = true
-}
-
-function updateMapMarker(node) {
-  if (!node.latitude || !node.longitude || !mapReady) return
-  const color = node.is_local ? '#4a9eff' : '#4caf50'
-  const existing = markerCache.get(node.id)
-  if (existing) {
-    existing.setLatLng([node.latitude, node.longitude])
-  } else {
-    const marker = L.circleMarker([node.latitude, node.longitude], {
-      radius: 8, color, fillColor: color, fillOpacity: 0.8
-    })
-    marker.bindPopup(
-      `<b>${escHtml(String(node.short_name || node.id))}</b><br>` +
-      `${escHtml(String(node.long_name || ''))}<br>` +
-      `SNR: ${escHtml(String(node.snr ?? '—'))} dB<br>` +
-      `Batt: ${escHtml(String(node.battery_level ?? '—'))}%`
-    )
-    marker.addTo(leafletMap)
-    markerCache.set(node.id, marker)
-  }
 }
 
 // ===== GRAFICI (stub, completato in Task telemetry) =====

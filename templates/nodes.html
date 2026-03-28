@@ -40,6 +40,21 @@
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
         Richiedi posizione
       </button>
+      <button
+        onclick="(function(btn){fetch('/api/traceroute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({node_id:'{{ n.id }}'})}).then(function(r){return r.json()}).then(function(d){if(d.ok){var a=btn.nextElementSibling;if(a)a.style.display='flex'}})})(this)"
+        style="display:flex;align-items:center;gap:6px;background:none;border:none;padding:4px 0;cursor:pointer;color:var(--text,#ccc);font-size:12px;text-align:left;">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+        </svg>
+        Traceroute
+      </button>
+      <a href="/map?traceroute={{ n.id | urlencode }}"
+         style="display:none;align-items:center;gap:4px;font-size:10px;color:var(--accent);text-decoration:none;margin-top:2px;">
+        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+        </svg>
+        Vedi sulla mappa
+      </a>
       <div style="border-top:1px solid var(--border); padding-top:4px; margin-top:2px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
         <button data-forget-node="{{ n.id }}" style="display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--danger,#ef9a9a); font-size:12px; text-align:left;">
           <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
@@ -166,6 +181,53 @@ function renderNodeRow(n) {
   posBtn.appendChild(makeSvgIcon('pin'))
   posBtn.appendChild(document.createTextNode('Richiedi posizione'))
   actions.appendChild(posBtn)
+
+  // Traceroute button
+  var trSvgNs = 'http://www.w3.org/2000/svg'
+  var trBtn = document.createElement('button')
+  trBtn.style.cssText = 'display:flex;align-items:center;gap:6px;background:none;border:none;padding:4px 0;cursor:pointer;color:var(--text,#ccc);font-size:12px;text-align:left;'
+  var trSvg = document.createElementNS(trSvgNs, 'svg')
+  trSvg.setAttribute('width', '13'); trSvg.setAttribute('height', '13')
+  trSvg.setAttribute('fill', 'none'); trSvg.setAttribute('stroke', 'currentColor')
+  trSvg.setAttribute('stroke-width', '2'); trSvg.setAttribute('viewBox', '0 0 24 24')
+  var trPath = document.createElementNS(trSvgNs, 'path')
+  trPath.setAttribute('stroke-linecap', 'round'); trPath.setAttribute('stroke-linejoin', 'round')
+  trPath.setAttribute('d', 'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7')
+  trSvg.appendChild(trPath)
+  trBtn.appendChild(trSvg)
+  trBtn.appendChild(document.createTextNode('Traceroute'))
+
+  var trLink = document.createElement('a')
+  trLink.href = '/map?traceroute=' + encodeURIComponent(n.id)
+  trLink.style.cssText = 'display:none;align-items:center;gap:4px;font-size:10px;color:var(--accent);text-decoration:none;margin-top:2px;'
+  var trLinkSvg = document.createElementNS(trSvgNs, 'svg')
+  trLinkSvg.setAttribute('width', '10'); trLinkSvg.setAttribute('height', '10')
+  trLinkSvg.setAttribute('fill', 'none'); trLinkSvg.setAttribute('stroke', 'currentColor')
+  trLinkSvg.setAttribute('stroke-width', '2'); trLinkSvg.setAttribute('viewBox', '0 0 24 24')
+  var trLinkPath = document.createElementNS(trSvgNs, 'path')
+  trLinkPath.setAttribute('stroke-linecap', 'round'); trLinkPath.setAttribute('stroke-linejoin', 'round')
+  trLinkPath.setAttribute('d', 'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7')
+  trLinkSvg.appendChild(trLinkPath)
+  trLink.appendChild(trLinkSvg)
+  trLink.appendChild(document.createTextNode(' Vedi sulla mappa'))
+
+  trBtn.onclick = function() {
+    fetch('/api/traceroute', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ node_id: n.id }),
+    })
+      .then(function(r) { return r.json() })
+      .then(function(data) {
+        if (data.ok) {
+          trLink.style.display = 'flex'
+          setTimeout(function() { trLink.style.display = 'none' }, 15000)
+        }
+      })
+  }
+
+  actions.appendChild(trBtn)
+  actions.appendChild(trLink)
 
   // Delete button + cascade
   const deleteRow = document.createElement('div')

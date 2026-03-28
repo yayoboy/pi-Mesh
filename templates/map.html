@@ -1,8 +1,176 @@
 {% extends "base.html" %}
 {% block content %}
-<div id="map-container"
-     data-bounds='{{ bounds | tojson }}'
-     data-zoom-min="{{ zoom_min }}"
-     data-zoom-max="{{ zoom_max }}"
-     style="width:100%; height:100%;"></div>
+<div id="map-wrapper" style="display:flex;height:100%;position:relative;overflow:hidden;">
+
+  <!-- Sidebar sinistra: marker personalizzati -->
+  <div id="marker-sidebar"
+       style="width:110px;border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;background:var(--bg);">
+    <div style="padding:6px 8px 3px;font-size:9px;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;">
+      Marker
+    </div>
+    <div id="marker-list" style="flex:1;overflow-y:auto;padding:0 6px;"></div>
+    <div style="padding:5px 6px;border-top:1px solid var(--border);">
+      <button id="add-marker-btn"
+              style="width:100%;font-size:10px;padding:4px 0;display:flex;align-items:center;justify-content:center;gap:4px;">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        Aggiungi
+      </button>
+    </div>
+  </div>
+
+  <!-- Area mappa principale -->
+  <div style="flex:1;display:flex;flex-direction:column;position:relative;overflow:hidden;">
+
+    <!-- Pannello filtri (assoluto in alto a destra) -->
+    <div id="filter-panel"
+         style="position:absolute;top:8px;right:8px;z-index:500;background:rgba(15,15,25,0.93);border:1px solid var(--border);border-radius:5px;padding:7px 10px;min-width:140px;font-size:11px;">
+      <div style="color:var(--accent);font-size:9px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Filtri</div>
+      <label style="display:flex;align-items:center;gap:5px;margin-bottom:3px;cursor:pointer;">
+        <input type="checkbox" id="filter-online"> Online
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;margin-bottom:3px;cursor:pointer;">
+        <input type="checkbox" id="filter-offline"> Offline
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;margin-bottom:3px;cursor:pointer;">
+        <input type="checkbox" id="filter-hoplines"> Linee hop
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;margin-bottom:3px;cursor:pointer;">
+        <input type="checkbox" id="filter-markers"> Marker
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;margin-bottom:5px;cursor:pointer;">
+        <input type="checkbox" id="filter-local"> Nodo locale
+      </label>
+      <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);">
+        <span>hop &le;</span>
+        <input type="range" id="filter-maxhops" min="1" max="7" style="flex:1;">
+        <span id="filter-maxhops-val" style="color:var(--accent);min-width:10px;">7</span>
+      </div>
+    </div>
+
+    <!-- Badge traceroute result -->
+    <div id="traceroute-badge"
+         style="display:none;position:absolute;top:8px;left:120px;z-index:500;background:rgba(15,15,25,0.93);border:1px solid var(--accent);border-radius:4px;padding:4px 10px;font-size:10px;color:var(--accent);align-items:center;gap:5px;">
+      <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+      </svg>
+      <span id="traceroute-badge-text"></span>
+    </div>
+
+    <!-- Contenitore Leaflet -->
+    <div id="map-container"
+         data-bounds='{{ bounds | tojson }}'
+         data-zoom-min="{{ zoom_min }}"
+         data-zoom-max="{{ zoom_max }}"
+         style="flex:1;"></div>
+
+    <!-- Barra legenda fissa in fondo -->
+    <div id="map-legend"
+         style="height:34px;border-top:1px solid var(--border);background:rgba(12,12,22,0.95);display:flex;align-items:center;gap:12px;padding:0 10px;font-size:10px;flex-shrink:0;overflow-x:auto;white-space:nowrap;">
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div style="width:9px;height:9px;border-radius:50%;background:#4a9eff;box-shadow:0 0 4px #4a9eff;flex-shrink:0;"></div>Locale
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div style="width:9px;height:9px;border-radius:50%;background:#4caf50;flex-shrink:0;"></div>Online
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div style="width:9px;height:9px;border-radius:50%;background:#555;flex-shrink:0;"></div>Offline
+      </div>
+      <div style="width:1px;height:16px;background:var(--border);flex-shrink:0;"></div>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div style="width:22px;height:3px;background:#4caf50;border-radius:1px;flex-shrink:0;"></div>SNR buono
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div style="width:22px;height:3px;background:#fb8c00;border-radius:1px;flex-shrink:0;"></div>medio
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div style="width:22px;height:3px;background:#e53935;border-radius:1px;flex-shrink:0;"></div>scarso
+      </div>
+      <div style="width:1px;height:16px;background:var(--border);flex-shrink:0;"></div>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div style="width:22px;height:3px;background:#ffd54f;opacity:0.8;border-radius:1px;flex-shrink:0;"></div>traceroute
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Modal aggiunta marker -->
+<div id="marker-modal"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;align-items:center;justify-content:center;">
+  <div style="background:var(--panel,#1e2535);border:1px solid var(--border);border-radius:8px;padding:16px;min-width:220px;font-size:12px;">
+    <div style="font-weight:bold;margin-bottom:10px;color:var(--accent);">Nuovo marker</div>
+    <input id="marker-label" type="text" placeholder="Nome..."
+           style="width:100%;margin-bottom:8px;box-sizing:border-box;">
+    <select id="marker-type" style="width:100%;margin-bottom:10px;box-sizing:border-box;">
+      <option value="poi">Punto di interesse</option>
+      <option value="antenna">Antenna</option>
+      <option value="base">Base operativa</option>
+      <option value="obstacle">Ostacolo</option>
+    </select>
+    <div id="marker-coords-hint"
+         style="font-size:10px;color:var(--muted);margin-bottom:10px;">
+      Clicca sulla mappa per posizionare
+    </div>
+    <div style="display:flex;gap:6px;justify-content:flex-end;">
+      <button id="marker-cancel">Annulla</button>
+      <button id="marker-save"
+              style="background:var(--accent);color:#fff;border:none;border-radius:3px;padding:4px 10px;cursor:pointer;">
+        Salva
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/map.js"></script>
+<script>
+var _pendingMarkerLatLng = null
+
+document.getElementById('add-marker-btn').onclick = function() {
+  _pendingMarkerLatLng = null
+  document.getElementById('marker-coords-hint').textContent = 'Clicca sulla mappa per posizionare'
+  document.getElementById('marker-coords-hint').style.color = ''
+  document.getElementById('marker-label').value = ''
+  document.getElementById('marker-modal').style.display = 'flex'
+  if (typeof leafletMap !== 'undefined' && leafletMap) {
+    leafletMap.once('click', function(e) {
+      _pendingMarkerLatLng = e.latlng
+      document.getElementById('marker-coords-hint').textContent =
+        e.latlng.lat.toFixed(4) + '\u00b0, ' + e.latlng.lng.toFixed(4) + '\u00b0'
+    })
+  }
+}
+
+document.getElementById('marker-cancel').onclick = function() {
+  document.getElementById('marker-modal').style.display = 'none'
+  if (typeof leafletMap !== 'undefined' && leafletMap) {
+    leafletMap.off('click')
+  }
+  _pendingMarkerLatLng = null
+}
+
+document.getElementById('marker-save').onclick = async function() {
+  var label = document.getElementById('marker-label').value.trim()
+  var type  = document.getElementById('marker-type').value
+  if (!label) {
+    document.getElementById('marker-label').focus()
+    return
+  }
+  if (!_pendingMarkerLatLng) {
+    var hint = document.getElementById('marker-coords-hint')
+    hint.textContent = 'Clicca prima sulla mappa!'
+    hint.style.color = 'var(--danger,#ef9a9a)'
+    return
+  }
+  try {
+    await addCustomMarker(label, type, _pendingMarkerLatLng)
+    document.getElementById('marker-modal').style.display = 'none'
+  } catch(e) {
+    var hint = document.getElementById('marker-coords-hint')
+    hint.textContent = 'Errore nel salvataggio'
+    hint.style.color = 'var(--danger,#ef9a9a)'
+  }
+}
+</script>
 {% endblock %}

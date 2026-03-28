@@ -62,6 +62,7 @@ def init(loop, broadcast_fn, conn_getter=None):
     pub.subscribe(_on_connected,         "meshtastic.connection.established")
     pub.subscribe(_on_lost,              "meshtastic.connection.lost")
     pub.subscribe(_on_receive_routing,   "meshtastic.receive.routing")
+    pub.subscribe(_on_receive_traceroute,  "meshtastic.receive.traceroute")
 
 def _bridge(coro):
     if _loop and not _loop.is_closed():
@@ -153,6 +154,35 @@ async def request_position(node_id: str):
     iface = _interface
     if iface:
         await asyncio.to_thread(iface.sendPosition, destinationId=node_id)
+
+async def request_traceroute(node_id: str):
+    """Invia richiesta traceroute al nodo specificato."""
+    iface = _interface
+    if iface is None:
+        raise RuntimeError("Meshtastic non connesso")
+    await asyncio.to_thread(iface.sendTraceRoute, node_id, hopLimit=7)
+
+def _on_receive_traceroute(packet, interface):
+    _bridge(_handle_traceroute(packet))
+
+async def _handle_traceroute(packet):
+    import database
+    try:
+        node_id    = packet.get("toId", "unknown")
+        from_id    = packet.get("fromId", "unknown")
+        route_nums = packet.get("decoded", {}).get("traceroute", {}).get("route", [])
+        # Costruisci lista hop: mittente -> intermedi -> destinazione
+        hops = [from_id] + [f"!{num:08x}" for num in route_nums] + [node_id]
+        if _conn_getter:
+            await database.save_traceroute(_conn_getter(), node_id, hops)
+        await _broadcast({"type": "traceroute_result", "data": {
+            "node_id":   node_id,
+            "hops":      hops,
+            "timestamp": int(time.time()),
+        }})
+        _log_event("info", f"Traceroute verso {node_id}: {len(hops)-1} hop")
+    except Exception as e:
+        logging.error(f"Parsing traceroute fallito: {e}")
 
 # --- Callback pubsub (thread separati) ---
 
