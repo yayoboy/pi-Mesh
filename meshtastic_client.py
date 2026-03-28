@@ -125,7 +125,36 @@ async def request_position(node_id: str):
 def _on_connected(interface, topic=None):
     global _connected
     _connected = True
-    _bridge(_broadcast({"type": "status", "data": {"connected": True}}))
+    _bridge(_sync_nodes(interface))
+
+async def _sync_nodes(interface):
+    import database
+    await _broadcast({"type": "status", "data": {"connected": True}})
+    try:
+        nodes_dict = interface.nodes or {}
+        for node_id, info in nodes_dict.items():
+            user = info.get("user", {})
+            pos  = info.get("position", {})
+            met  = info.get("deviceMetrics", {})
+            node = {
+                "id":            info.get("num") and f"!{info['num']:08x}" or node_id,
+                "long_name":     user.get("longName", ""),
+                "short_name":    user.get("shortName", ""),
+                "hw_model":      user.get("hwModel", ""),
+                "battery_level": met.get("batteryLevel"),
+                "voltage":       met.get("voltage"),
+                "snr":           info.get("snr"),
+                "last_heard":    info.get("lastHeard", int(time.time())),
+                "latitude":      pos.get("latitudeI", 0) / 1e7 if pos.get("latitudeI") else None,
+                "longitude":     pos.get("longitudeI", 0) / 1e7 if pos.get("longitudeI") else None,
+                "altitude":      pos.get("altitude"),
+                "is_local":      1 if info.get("num") == interface.myInfo.get("myNodeNum") else 0,
+            }
+            if _conn_getter:
+                await database.save_node(_conn_getter(), node)
+            await _broadcast({"type": "node", "data": node})
+    except Exception as e:
+        logging.error(f"_sync_nodes fallito: {e}")
 
 def _on_lost(interface, topic=None):
     global _connected
