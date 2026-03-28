@@ -118,7 +118,7 @@ async def get_dm_threads(conn) -> list:
     cur = await conn.execute(
         "SELECT CASE WHEN is_outgoing=1 THEN destination ELSE node_id END AS peer,"
         " text, timestamp, is_outgoing, read_at, id"
-        " FROM messages WHERE destination != '^all' AND destination IS NOT NULL ORDER BY id DESC"
+        " FROM messages WHERE destination != '^all' AND destination IS NOT NULL ORDER BY id DESC LIMIT 500"
     )
     rows = [dict(r) for r in await cur.fetchall()]
     seen, unread = {}, {}
