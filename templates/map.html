@@ -144,6 +144,10 @@ document.getElementById('add-marker-btn').onclick = function() {
 
 document.getElementById('marker-cancel').onclick = function() {
   document.getElementById('marker-modal').style.display = 'none'
+  if (typeof leafletMap !== 'undefined' && leafletMap) {
+    leafletMap.off('click')
+  }
+  _pendingMarkerLatLng = null
 }
 
 document.getElementById('marker-save').onclick = async function() {
@@ -159,8 +163,14 @@ document.getElementById('marker-save').onclick = async function() {
     hint.style.color = 'var(--danger,#ef9a9a)'
     return
   }
-  await addCustomMarker(label, type, _pendingMarkerLatLng)
-  document.getElementById('marker-modal').style.display = 'none'
+  try {
+    await addCustomMarker(label, type, _pendingMarkerLatLng)
+    document.getElementById('marker-modal').style.display = 'none'
+  } catch(e) {
+    var hint = document.getElementById('marker-coords-hint')
+    hint.textContent = 'Errore nel salvataggio'
+    hint.style.color = 'var(--danger,#ef9a9a)'
+  }
 }
 </script>
 {% endblock %}
