@@ -6,6 +6,20 @@
   <title>Meshtastic</title>
   <link rel="stylesheet" href="/static/style.css">
   {% if accent_color %}<style>:root,.theme-dark,.theme-light,.theme-hc{--accent:{{ accent_color | e }}}</style>{% endif %}
+  <script>
+(function(){
+  try {
+    var saved = JSON.parse(localStorage.getItem('piMeshTheme'))
+    if (!saved) return
+    var cls = 'theme-' + (saved.theme || 'dark')
+    document.documentElement.className = cls
+    if (saved.vars) {
+      var s = document.documentElement.style
+      Object.keys(saved.vars).forEach(function(k) { s.setProperty(k, saved.vars[k]) })
+    }
+  } catch(e){}
+})()
+</script>
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#1a1a1a">
   <meta name="mobile-web-app-capable" content="yes">

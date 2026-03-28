@@ -32,6 +32,9 @@
   --warn:     #ff8800;
   --danger:   #ff0000;
 }
+.theme-custom {
+  /* All variables set dynamically via JS */
+}
 
 /* ===== RESET ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

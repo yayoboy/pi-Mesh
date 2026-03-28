@@ -323,6 +323,15 @@ function escHtml(s) {
 function applyTheme(theme) {
   document.body.className = 'theme-' + theme
   document.documentElement.className = 'theme-' + theme
+  try {
+    var saved = JSON.parse(localStorage.getItem('piMeshTheme') || '{}')
+    saved.theme = theme
+    if (theme !== 'custom') {
+      delete saved.vars
+      document.documentElement.removeAttribute('style')
+    }
+    localStorage.setItem('piMeshTheme', JSON.stringify(saved))
+  } catch(e){}
 }
 
 // ===== GRAFICI (stub, completato in Task telemetry) =====
