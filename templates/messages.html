@@ -1,39 +1,115 @@
 {% extends "base.html" %}
 {% block content %}
-<div id="msg-list" style="height: calc(100% - 52px); overflow-y:auto; padding: 4px 0;">
+<div id="msg-list" style="height: calc(100% - 84px); overflow-y:auto; padding: 4px 0;">
   {% for m in messages|reverse %}
   <div class="msg-row {% if m.is_outgoing %}outgoing{% endif %}" data-msg-id="{{ m.id }}">
-    <div class="msg-bubble">{{ m.text }}</div>
+    <div class="msg-bubble">{{ m.text | e }}</div>
     <div class="msg-meta">
-      {% if not m.is_outgoing %}{{ m.node_id }} · {% endif %}
-      {{ m.timestamp|int }}
+      {% if not m.is_outgoing %}{{ m.node_id | e }} · {% endif %}
+      <span data-ts="{{ m.timestamp }}"></span>
       {% if m.rx_snr is not none %} · {{ m.rx_snr }}dB{% endif %}
     </div>
   </div>
   {% endfor %}
   <div id="load-more"></div>
 </div>
-<form id="send-form" onsubmit="sendMsg(event)">
-  <select id="ch-select" style="width:48px; min-height:36px; font-size:13px; flex-shrink:0;">
-    <option value="0">0</option>
-    <option value="1">1</option>
-    <option value="2">2</option>
-  </select>
-  <input id="msg-input" type="text" placeholder="Messaggio..." autocomplete="off">
-  <button type="submit">▶</button>
-</form>
+
+<div id="send-bar" style="display:flex; flex-direction:column; gap:2px; padding:4px 8px; border-top:1px solid var(--border); background:var(--bg);">
+  <div style="display:flex; gap:4px;">
+    <select id="ch-select" style="width:52px; min-height:32px; font-size:12px; flex-shrink:0;" onchange="reloadChannel()">
+      <option value="0">CH 0</option>
+      <option value="1">CH 1</option>
+      <option value="2">CH 2</option>
+      <option value="3">CH 3</option>
+      <option value="4">CH 4</option>
+      <option value="5">CH 5</option>
+      <option value="6">CH 6</option>
+      <option value="7">CH 7</option>
+    </select>
+    <select id="dest-select" style="flex:1; min-height:32px; font-size:12px;">
+      <option value="^all">Tutti</option>
+    </select>
+  </div>
+  <form id="send-form" onsubmit="sendMsg(event)" style="display:flex; gap:4px;">
+    <input id="msg-input" type="text" placeholder="Messaggio..." autocomplete="off" style="flex:1;">
+    <button type="submit" style="width:40px; min-height:32px; padding:0; font-size:14px;">&#9654;</button>
+  </form>
+</div>
+
 <script>
+// Formatta timestamp iniziali
+document.querySelectorAll('[data-ts]').forEach(el => {
+  const ts = parseInt(el.dataset.ts)
+  if (ts) el.textContent = new Date(ts * 1000).toLocaleTimeString('it', { hour:'2-digit', minute:'2-digit' })
+})
+
+// Popola destinatari dal nodeCache
+function refreshDestSelect() {
+  const sel = document.getElementById('dest-select')
+  if (!sel) return
+  const current = sel.value
+  while (sel.options.length > 1) sel.remove(1)
+  nodeCache.forEach((node, id) => {
+    const opt = document.createElement('option')
+    opt.value = id
+    opt.textContent = node.short_name || id
+    sel.appendChild(opt)
+  })
+  if (current && current !== '^all') sel.value = current
+}
+
+function clearList(list) {
+  while (list.firstChild) list.removeChild(list.firstChild)
+}
+
+function makeRow(m) {
+  const row = document.createElement('div')
+  row.className = 'msg-row' + (m.is_outgoing ? ' outgoing' : '')
+  row.dataset.msgId = m.id
+
+  const bubble = document.createElement('div')
+  bubble.className = 'msg-bubble'
+  bubble.textContent = m.text
+
+  const meta = document.createElement('div')
+  meta.className = 'msg-meta'
+  const name = nodeCache.get(m.node_id)?.short_name || m.node_id
+  const ts = new Date(m.timestamp * 1000).toLocaleTimeString('it', { hour:'2-digit', minute:'2-digit' })
+  meta.textContent = (m.is_outgoing ? '' : name + ' \u00b7 ') + ts + (m.rx_snr != null ? ' \u00b7 ' + m.rx_snr + 'dB' : '')
+
+  row.append(bubble, meta)
+  return row
+}
+
+async function reloadChannel() {
+  const ch = parseInt(document.getElementById('ch-select').value)
+  try {
+    const r = await fetch(`/api/messages?channel=${ch}&limit=50`)
+    if (!r.ok) return
+    const msgs = await r.json()
+    const list = document.getElementById('msg-list')
+    clearList(list)
+    ;[...msgs].reverse().forEach(m => list.appendChild(makeRow(m)))
+    const sentinel = document.createElement('div')
+    sentinel.id = 'load-more'
+    list.appendChild(sentinel)
+    observeSentinel()
+    list.scrollTop = list.scrollHeight
+  } catch (_) {}
+}
+
 async function sendMsg(e) {
   e.preventDefault()
   const text  = document.getElementById('msg-input').value.trim()
   const ch    = parseInt(document.getElementById('ch-select').value)
+  const dest  = document.getElementById('dest-select').value
   const input = document.getElementById('msg-input')
   if (!text) return
   try {
     const r = await fetch('/send', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ text, channel: ch })
+      body: JSON.stringify({ text, channel: ch, destination: dest })
     })
     if (r.ok) {
       input.value = ''
@@ -41,37 +117,41 @@ async function sendMsg(e) {
       input.style.borderColor = 'var(--danger)'
       setTimeout(() => { input.style.borderColor = '' }, 1500)
     }
-  } catch (err) {
+  } catch (_) {
     input.style.borderColor = 'var(--danger)'
     setTimeout(() => { input.style.borderColor = '' }, 1500)
   }
 }
 
-// Scroll infinito verso il passato
-const sentinel = document.getElementById('load-more')
 let loadingMore = false
-let oldestId = null
 
-new IntersectionObserver(async ([entry]) => {
-  if (!entry.isIntersecting || loadingMore) return
-  const items = document.querySelectorAll('.msg-row')
-  if (items.length === 0) return
-  loadingMore = true
-  const firstId = items[0].dataset.msgId
-  if (!firstId) { loadingMore = false; return }
-  const resp = await fetch(`/api/messages?channel=0&limit=50&before_id=${firstId}`)
-  const msgs = await resp.json()
-  const list = document.getElementById('msg-list')
-  const prevH = list.scrollHeight
-  msgs.forEach(m => {
-    const div = document.createElement('div')
-    div.className = 'msg-row' + (m.is_outgoing ? ' outgoing' : '')
-    div.dataset.msgId = m.id
-    div.innerHTML = `<div class="msg-bubble">${escHtml(m.text)}</div><div class="msg-meta">${escHtml(m.node_id)} · ${new Date(m.timestamp*1000).toLocaleTimeString('it',{hour:'2-digit',minute:'2-digit'})}</div>`
-    list.insertBefore(div, list.firstChild)
-  })
-  list.scrollTop = list.scrollHeight - prevH
-  loadingMore = false
-}).observe(sentinel)
+function observeSentinel() {
+  const sentinel = document.getElementById('load-more')
+  if (!sentinel) return
+  new IntersectionObserver(async ([entry]) => {
+    if (!entry.isIntersecting || loadingMore) return
+    const items = document.querySelectorAll('.msg-row')
+    if (items.length === 0) return
+    loadingMore = true
+    const firstId = items[0].dataset.msgId
+    if (!firstId) { loadingMore = false; return }
+    const ch = parseInt(document.getElementById('ch-select').value)
+    try {
+      const resp = await fetch(`/api/messages?channel=${ch}&limit=50&before_id=${firstId}`)
+      const msgs = await resp.json()
+      const list = document.getElementById('msg-list')
+      const prevH = list.scrollHeight
+      ;[...msgs].reverse().forEach(m => list.insertBefore(makeRow(m), list.firstChild))
+      list.scrollTop = list.scrollHeight - prevH
+    } catch (_) {}
+    loadingMore = false
+  }).observe(sentinel)
+}
+
+window.addEventListener('node-update', refreshDestSelect)
+
+refreshDestSelect()
+observeSentinel()
+document.getElementById('msg-list').scrollTop = document.getElementById('msg-list').scrollHeight
 </script>
 {% endblock %}

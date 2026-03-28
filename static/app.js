@@ -203,16 +203,28 @@ function renderMessages(messages) {
 function appendMessage(m) {
   const list = document.getElementById('msg-list')
   if (!list) return
+  // Filtra per canale selezionato
+  const chSel = document.getElementById('ch-select')
+  if (chSel && parseInt(chSel.value) !== m.channel) return
+
   const div = document.createElement('div')
   div.className = 'msg-row' + (m.is_outgoing ? ' outgoing' : '')
   div.dataset.msgId = m.id
+
+  const bubble = document.createElement('div')
+  bubble.className = 'msg-bubble'
+  bubble.textContent = m.text
+
+  const meta = document.createElement('div')
+  meta.className = 'msg-meta'
   const name = nodeCache.get(m.node_id)?.short_name || m.node_id
   const ts   = new Date(m.timestamp * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
-  div.innerHTML = `
-    <div class="msg-bubble">${escHtml(m.text)}</div>
-    <div class="msg-meta">${m.is_outgoing ? '' : escHtml(name) + ' · '}${ts}${m.rx_snr != null ? ' · ' + m.rx_snr + 'dB' : ''}</div>
-  `
-  list.appendChild(div)
+  meta.textContent = (m.is_outgoing ? '' : name + ' \u00b7 ') + ts + (m.rx_snr != null ? ' \u00b7 ' + m.rx_snr + 'dB' : '')
+
+  div.append(bubble, meta)
+  // Inserisci prima del sentinel load-more se presente
+  const sentinel = document.getElementById('load-more')
+  list.insertBefore(div, sentinel || null)
   list.scrollTop = list.scrollHeight
 }
 
