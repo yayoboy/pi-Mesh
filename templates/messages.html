@@ -78,6 +78,7 @@
 let currentConv = 'broadcast'
 let currentChannel = 0
 let loadingMore = false
+let _sentinel_observer = null
 
 function selectConv(type, peerId) {
   currentConv = (type === 'broadcast') ? 'broadcast' : peerId
@@ -208,9 +209,10 @@ async function sendMsg(e) {
 }
 
 function observeSentinel() {
+  if (_sentinel_observer) { _sentinel_observer.disconnect(); _sentinel_observer = null }
   const sentinel = document.getElementById('load-more')
   if (!sentinel) return
-  new IntersectionObserver(async ([entry]) => {
+  _sentinel_observer = new IntersectionObserver(async ([entry]) => {
     if (!entry.isIntersecting || loadingMore) return
     const items = document.querySelectorAll('.msg-row')
     if (!items.length) return
