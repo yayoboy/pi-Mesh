@@ -45,6 +45,16 @@
     <button onclick="saveLoraConfig()" style="margin-top:4px; min-height:36px;">Salva LoRa</button>
   </div>
 
+  <!-- CANALI / PSK -->
+  <div class="settings-section" style="border-top:1px solid var(--border);">
+    <div class="settings-label" style="display:flex; align-items:center; justify-content:space-between;">
+      Canali / Chiavi
+      <button onclick="loadChannels()" style="width:auto; padding:0 8px; min-height:28px; font-size:11px;">Carica</button>
+    </div>
+    <div id="channels-list" style="font-size:12px; color:var(--muted);">— premi Carica —</div>
+    <div id="ch-status" style="font-size:11px; color:var(--muted); margin-top:4px;"></div>
+  </div>
+
   <!-- TEMA -->
   <div class="settings-section" style="border-top:1px solid var(--border);">
     <div class="settings-label">Tema UI</div>
@@ -55,17 +65,30 @@
     </div>
   </div>
 
+  <!-- WIFI -->
+  <div class="settings-section" style="border-top:1px solid var(--border);">
+    <div class="settings-label" style="display:flex; align-items:center; justify-content:space-between;">
+      WiFi
+      <button onclick="scanWifi()" style="width:auto; padding:0 8px; min-height:28px; font-size:11px;">Scan</button>
+    </div>
+    <div id="wifi-status" style="font-size:11px; color:var(--muted); margin-bottom:4px;"></div>
+    <div id="wifi-networks" style="max-height:80px; overflow-y:auto; margin-bottom:4px;"></div>
+    <div class="settings-row"><label>SSID</label><input type="text" id="wifi-ssid" autocomplete="off"></div>
+    <div class="settings-row"><label>Password</label><input type="password" id="wifi-password" autocomplete="new-password"></div>
+    <button onclick="connectWifi()" style="margin-top:4px; min-height:36px;">Connetti</button>
+    <div id="wifi-connect-status" style="font-size:11px; color:var(--muted); margin-top:4px;"></div>
+  </div>
+
   <!-- ADMIN REMOTO -->
   <div class="settings-section" style="border-top:1px solid var(--border);">
     <div class="settings-label">Admin nodo remoto</div>
     <div class="settings-row">
-      <label>Nodo target</label>
+      <label>Nodo</label>
       <select id="remote-node-select">
         <option value="">— seleziona —</option>
-        <!-- popolato via JS -->
       </select>
     </div>
-    <div class="settings-row"><label>Nuovo nome</label><input type="text" id="remote-long-name" maxlength="36"></div>
+    <div class="settings-row"><label>Nome lungo</label><input type="text" id="remote-long-name" maxlength="36"></div>
     <div class="settings-row">
       <label>Ruolo</label>
       <select id="remote-role">
@@ -87,22 +110,35 @@
     <div class="settings-row"><label>ENC2 A/B/SW</label>
       <input type="text" id="enc2-pins" value="{{ enc2[0] }},{{ enc2[1] }},{{ enc2[2] }}" style="width:80px; flex:unset;">
     </div>
-    <div class="settings-label" style="margin-top:8px;">Sensori I2C</div>
-    <div class="settings-row"><label>Config (es: bme280:0x76)</label>
-      <input type="text" id="i2c-sensors" value="{{ i2c_sensors | map(attribute='name') | zip(i2c_sensors | map(attribute='address') | map('hex')) | map('join', ':') | join(',') if i2c_sensors else '' }}">
+    <div class="settings-row"><label>Buzzer pin (0=off)</label>
+      <input type="number" id="buzzer-pin" value="{{ buzzer_pin }}" min="0" max="27" style="width:60px; flex:unset;">
     </div>
     <div class="settings-label" style="margin-top:8px;">Display</div>
     <div class="settings-row">
       <label>Rotazione</label>
       <select id="display-rotation">
-        <option value="0"  {% if display_rotation==0  %}selected{% endif %}>Landscape (0°)</option>
-        <option value="1"  {% if display_rotation==1  %}selected{% endif %}>Portrait (90°)</option>
-        <option value="2"  {% if display_rotation==2  %}selected{% endif %}>Landscape inv (180°)</option>
-        <option value="3"  {% if display_rotation==3  %}selected{% endif %}>Portrait inv (270°)</option>
+        <option value="0"  {% if display_rotation==0  %}selected{% endif %}>0°</option>
+        <option value="1"  {% if display_rotation==1  %}selected{% endif %}>90°</option>
+        <option value="2"  {% if display_rotation==2  %}selected{% endif %}>180°</option>
+        <option value="3"  {% if display_rotation==3  %}selected{% endif %}>270°</option>
       </select>
     </div>
     <button onclick="saveHardwareConfig()" style="margin-top:4px; min-height:36px;">Salva hardware</button>
-    <div id="hw-status" style="font-size:11px; color:var(--muted); margin-top:4px;">Richiede riavvio display per rotazione</div>
+    <div id="hw-status" style="font-size:11px; color:var(--muted); margin-top:4px;"></div>
+  </div>
+
+  <!-- SENSORI I2C -->
+  <div class="settings-section" style="border-top:1px solid var(--border);">
+    <div class="settings-label" style="display:flex; align-items:center; justify-content:space-between;">
+      Sensori I2C
+      <button onclick="scanI2C()" style="width:auto; padding:0 8px; min-height:28px; font-size:11px;">Scan</button>
+    </div>
+    <div id="i2c-detected" style="font-size:12px; color:var(--muted); margin-bottom:4px;">— premi Scan —</div>
+    <div class="settings-row"><label>Config manuale</label>
+      <input type="text" id="i2c-sensors" value="{% for s in i2c_sensors %}{{ s.name }}:0x{{ '%02x' % s.address }}{% if not loop.last %},{% endif %}{% endfor %}" placeholder="bme280:0x76,...">
+    </div>
+    <button onclick="saveI2CConfig()" style="margin-top:4px; min-height:36px;">Salva sensori</button>
+    <div id="i2c-status" style="font-size:11px; color:var(--muted); margin-top:4px;"></div>
   </div>
 
   <!-- BOT -->
@@ -129,34 +165,150 @@ fetch('/api/nodes').then(r=>r.json()).then(nodes => {
   nodes.filter(n=>!n.is_local).forEach(n => {
     const opt = document.createElement('option')
     opt.value = n.id
-    opt.textContent = (n.short_name || n.id) + ' — ' + (n.long_name || '')
+    opt.textContent = (n.short_name || n.id) + ' \u2014 ' + (n.long_name || '')
     sel.appendChild(opt)
   })
 })
 
 // Info sistema
 fetch('/api/status').then(r=>r.json()).then(s => {
-  document.getElementById('sys-info').innerHTML =
-    `Connesso: ${s.connected ? '✓' : '✗'} | Nodi: ${s.node_count} | RAM: ${s.ram_mb}MB`
+  const el = document.getElementById('sys-info')
+  el.textContent = 'Connesso: ' + (s.connected ? 'Si' : 'No') + ' | Nodi: ' + s.node_count + ' | RAM: ' + s.ram_mb + 'MB'
 })
+
+// WiFi status iniziale
+fetch('/api/wifi/status').then(r=>r.json()).then(s => {
+  const el = document.getElementById('wifi-status')
+  if (s.error) { el.textContent = 'nmcli non disponibile'; return }
+  el.textContent = s.connection ? ('Connesso: ' + s.connection + ' (' + s.state + ')') : ('Stato: ' + s.state)
+}).catch(() => { document.getElementById('wifi-status').textContent = 'WiFi non disponibile' })
+
+async function scanWifi() {
+  const container = document.getElementById('wifi-networks')
+  container.textContent = 'Scansione...'
+  try {
+    const r = await fetch('/api/wifi/scan')
+    const nets = await r.json()
+    container.textContent = ''
+    if (!nets.length) { container.textContent = 'Nessuna rete trovata'; return }
+    nets.forEach(n => {
+      const btn = document.createElement('button')
+      btn.style.cssText = 'display:block; width:100%; text-align:left; min-height:28px; font-size:11px; margin-bottom:2px;'
+      btn.textContent = n.ssid + ' (' + n.signal + '%) ' + (n.security || 'Open')
+      btn.onclick = () => { document.getElementById('wifi-ssid').value = n.ssid }
+      container.appendChild(btn)
+    })
+  } catch (_) { container.textContent = 'Errore scansione' }
+}
+
+async function connectWifi() {
+  const ssid     = document.getElementById('wifi-ssid').value.trim()
+  const password = document.getElementById('wifi-password').value
+  const status   = document.getElementById('wifi-connect-status')
+  if (!ssid) { status.textContent = 'Inserisci SSID'; return }
+  status.textContent = 'Connessione...'
+  try {
+    const r = await fetch('/api/wifi/connect', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ ssid, password })
+    })
+    const d = await r.json()
+    status.textContent = d.ok ? 'Connesso' : ('Errore: ' + d.error)
+    if (d.ok) fetch('/api/wifi/status').then(r=>r.json()).then(s => {
+      document.getElementById('wifi-status').textContent = s.connection ? ('Connesso: ' + s.connection) : s.state
+    })
+  } catch (_) { status.textContent = 'Errore connessione' }
+}
+
+async function loadChannels() {
+  const container = document.getElementById('channels-list')
+  container.textContent = 'Caricamento...'
+  try {
+    const r = await fetch('/api/channels')
+    const chs = await r.json()
+    container.textContent = ''
+    if (!chs.length) { container.textContent = 'Nessun canale o board non connessa'; return }
+    chs.forEach(ch => {
+      const row = document.createElement('div')
+      row.style.cssText = 'display:flex; gap:4px; align-items:center; margin-bottom:4px;'
+      const label = document.createElement('span')
+      label.style.cssText = 'flex-shrink:0; font-size:11px; min-width:60px;'
+      label.textContent = 'CH' + ch.index + ' ' + (ch.name || '(default)')
+      const inp = document.createElement('input')
+      inp.type = 'text'
+      inp.value = ch.psk
+      inp.placeholder = 'PSK base64'
+      inp.style.cssText = 'flex:1; min-height:28px; font-size:10px; font-family:monospace;'
+      inp.dataset.chIndex = ch.index
+      const btn = document.createElement('button')
+      btn.textContent = 'Salva'
+      btn.style.cssText = 'width:auto; padding:0 6px; min-height:28px; font-size:11px; flex-shrink:0;'
+      btn.onclick = async () => {
+        const res = await fetch('/api/channels/' + ch.index, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ psk: inp.value })
+        })
+        const d = await res.json()
+        document.getElementById('ch-status').textContent = d.ok ? 'Salvato CH' + ch.index : ('Errore: ' + d.error)
+      }
+      row.append(label, inp, btn)
+      container.appendChild(row)
+    })
+  } catch (_) { container.textContent = 'Errore caricamento canali' }
+}
+
+async function scanI2C() {
+  const container = document.getElementById('i2c-detected')
+  container.textContent = 'Scansione bus I2C...'
+  try {
+    const r = await fetch('/api/i2c/scan?live=true')
+    const d = await r.json()
+    container.textContent = ''
+    if (!d.sensors || !d.sensors.length) { container.textContent = 'Nessun sensore rilevato'; return }
+    d.sensors.forEach(s => {
+      const row = document.createElement('div')
+      row.style.cssText = 'display:flex; align-items:center; gap:6px; padding:2px 0;'
+      const cb = document.createElement('input')
+      cb.type = 'checkbox'
+      cb.style.cssText = 'width:18px; min-height:18px; height:18px; flex-shrink:0;'
+      cb.dataset.sensor = s.name + ':0x' + (s.address || s.addr || 0).toString(16)
+      // Check se già presente nel config manuale
+      const current = document.getElementById('i2c-sensors').value
+      cb.checked = current.includes(s.name)
+      cb.onchange = updateI2CManual
+      const lbl = document.createElement('label')
+      lbl.textContent = s.name + ' @ 0x' + (s.address || s.addr || 0).toString(16)
+      lbl.style.fontSize = '12px'
+      row.append(cb, lbl)
+      container.appendChild(row)
+    })
+  } catch (_) { container.textContent = 'Errore scansione I2C' }
+}
+
+function updateI2CManual() {
+  const checkboxes = document.querySelectorAll('#i2c-detected input[type=checkbox]:checked')
+  const values = Array.from(checkboxes).map(cb => cb.dataset.sensor)
+  document.getElementById('i2c-sensors').value = values.join(',')
+}
+
+async function saveI2CConfig() {
+  const payload = { i2c_sensors: document.getElementById('i2c-sensors').value }
+  const r = await fetch('/api/hardware-config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+  document.getElementById('i2c-status').textContent = r.ok ? 'Salvato' : 'Errore'
+}
 
 async function saveNodeConfig() {
   const payload = {
-    device: {
-      role: document.getElementById('node-role').value
-    },
-    owner: {
-      longName:  document.getElementById('long-name').value,
-      shortName: document.getElementById('short-name').value,
-    }
+    device: { role: document.getElementById('node-role').value },
+    owner:  { longName: document.getElementById('long-name').value, shortName: document.getElementById('short-name').value }
   }
   const r = await fetch('/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
-  document.getElementById('node-status').textContent = r.ok ? '✓ Salvato' : '✗ Errore'
+  document.getElementById('node-status').textContent = r.ok ? 'Salvato' : 'Errore'
 }
 
 async function saveLoraConfig() {
   const payload = { lora: { region: document.getElementById('lora-region').value, modemPreset: document.getElementById('lora-preset').value } }
-  const r = await fetch('/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+  await fetch('/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
 }
 
 async function setTheme(theme) {
@@ -170,22 +322,22 @@ async function sendRemoteConfig() {
   if (!nodeId) return
   const payload = {
     remote_node_id: nodeId,
-    owner: { longName: document.getElementById('remote-long-name').value },
+    owner:  { longName: document.getElementById('remote-long-name').value },
     device: { role: document.getElementById('remote-role').value }
   }
   const r = await fetch('/api/remote-config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
-  document.getElementById('remote-status').textContent = r.ok ? '✓ Inviato' : '✗ Errore'
+  document.getElementById('remote-status').textContent = r.ok ? 'Inviato' : 'Errore'
 }
 
 async function saveHardwareConfig() {
   const payload = {
     enc1_pins:        document.getElementById('enc1-pins').value,
     enc2_pins:        document.getElementById('enc2-pins').value,
-    i2c_sensors:      document.getElementById('i2c-sensors').value,
+    buzzer_pin:       document.getElementById('buzzer-pin').value,
     display_rotation: document.getElementById('display-rotation').value,
   }
   const r = await fetch('/api/hardware-config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
-  document.getElementById('hw-status').textContent = r.ok ? '✓ Salvato (riavvia display per rotazione)' : '✗ Errore'
+  document.getElementById('hw-status').textContent = r.ok ? 'Salvato (riavvia per rotazione)' : 'Errore'
 }
 
 async function saveBotConfig() {

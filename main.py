@@ -138,6 +138,7 @@ async def settings_page(request: Request):
         "enc2":             (cfg.ENC2_A, cfg.ENC2_B, cfg.ENC2_SW),
         "i2c_sensors":      cfg.I2C_SENSORS,
         "display_rotation": cfg.DISPLAY_ROTATION,
+        "buzzer_pin":       cfg.BUZZER_PIN,
     })
 
 # --- Route API JSON ---
@@ -298,6 +299,8 @@ async def hardware_config(payload: dict):
             _update_config_env("I2C_SENSORS", payload["i2c_sensors"])
         if "display_rotation" in payload:
             _update_config_env("DISPLAY_ROTATION", str(payload["display_rotation"]))
+        if "buzzer_pin" in payload:
+            _update_config_env("BUZZER_PIN", str(int(payload["buzzer_pin"])))
         return {"ok": True}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -328,6 +331,99 @@ def _update_config_env(key: str, value: str):
             f.write(content)
     except Exception as e:
         logging.error(f"_update_config_env fallito: {e}")
+
+@app.get("/api/wifi/status")
+async def wifi_status():
+    try:
+        r = await asyncio.to_thread(
+            subprocess.run,
+            ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device"],
+            capture_output=True, text=True, timeout=10
+        )
+        for line in r.stdout.strip().split('\n'):
+            if ':wifi:' in line:
+                parts = line.split(':')
+                return {"device": parts[0], "state": parts[2], "connection": parts[3] if len(parts) > 3 else ""}
+        return {"device": None, "state": "unavailable", "connection": ""}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/api/wifi/scan")
+async def wifi_scan():
+    try:
+        r = await asyncio.to_thread(
+            subprocess.run,
+            ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list"],
+            capture_output=True, text=True, timeout=15
+        )
+        networks, seen = [], set()
+        for line in r.stdout.strip().split('\n'):
+            if not line: continue
+            parts = line.split(':')
+            ssid = parts[0]
+            if ssid and ssid not in seen:
+                seen.add(ssid)
+                networks.append({
+                    "ssid": ssid,
+                    "signal": parts[1] if len(parts) > 1 else "",
+                    "security": parts[2] if len(parts) > 2 else ""
+                })
+        return networks
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/wifi/connect")
+async def wifi_connect(payload: dict):
+    ssid     = str(payload.get("ssid",     "")).strip()
+    password = str(payload.get("password", "")).strip()
+    if not ssid:
+        return JSONResponse({"ok": False, "error": "SSID mancante"}, status_code=400)
+    try:
+        cmd = ["nmcli", "dev", "wifi", "connect", ssid]
+        if password:
+            cmd += ["password", password]
+        r = await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True, timeout=30)
+        if r.returncode == 0:
+            return {"ok": True}
+        return JSONResponse({"ok": False, "error": r.stderr.strip() or r.stdout.strip()}, status_code=500)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+@app.get("/api/channels")
+async def get_channels():
+    import base64
+    iface = meshtastic_client._interface
+    if not iface:
+        return []
+    try:
+        channels = await asyncio.to_thread(iface.localNode.getChannels)
+        result = []
+        for ch in channels:
+            psk_b64 = base64.b64encode(bytes(ch.settings.psk)).decode() if ch.settings.psk else ""
+            result.append({"index": ch.index, "name": ch.settings.name or "", "psk": psk_b64, "role": ch.role})
+        return result
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/channels/{index}")
+async def set_channel_psk(index: int, payload: dict):
+    import base64
+    iface = meshtastic_client._interface
+    if not iface:
+        return JSONResponse({"ok": False, "error": "Non connesso"}, status_code=503)
+    try:
+        psk_b64 = payload.get("psk", "").strip()
+        psk     = base64.b64decode(psk_b64) if psk_b64 else None
+        channels = await asyncio.to_thread(iface.localNode.getChannels)
+        ch = next((c for c in channels if c.index == index), None)
+        if ch is None:
+            return JSONResponse({"ok": False, "error": "Canale non trovato"}, status_code=404)
+        if psk is not None:
+            ch.settings.psk = psk
+            await asyncio.to_thread(iface.localNode.writeChannel, index)
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 # --- WebSocket ---
 
