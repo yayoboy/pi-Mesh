@@ -47,6 +47,7 @@ function initWS() {
       sensor:    handleSensor,
       encoder:   handleEncoder,
       status:    handleStatus,
+      log:       handleLog,
     }
     handlers[msg.type]?.(msg.data)
   }
@@ -110,6 +111,10 @@ function handleTelemetry(data) {
 
 function handleSensor(data) {
   if (activeTab.name === 'telemetry') updateSensorDisplay(data)
+}
+
+function handleLog(data) {
+  window.dispatchEvent(new CustomEvent('log-entry', { detail: data }))
 }
 
 function handleStatus(data) {

@@ -28,7 +28,10 @@ _shutdown      = False
 _board_log: deque = deque(maxlen=300)
 
 def _log_event(level: str, msg: str):
-    _board_log.append({"ts": int(time.time()), "level": level, "msg": msg})
+    entry = {"ts": int(time.time()), "level": level, "msg": msg}
+    _board_log.append(entry)
+    if _broadcast and _loop and not _loop.is_closed():
+        _bridge(_broadcast({"type": "log", "data": {**entry, "source": "board"}}))
 
 def get_board_log() -> list:
     return list(_board_log)

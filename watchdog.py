@@ -4,9 +4,17 @@ import database, meshtastic_client
 import config as cfg
 
 _pi_log: deque = deque(maxlen=300)
+_broadcast_fn = None
 
 def _pi_log_event(level: str, msg: str):
-    _pi_log.append({"ts": int(time.time()), "level": level, "msg": msg})
+    entry = {"ts": int(time.time()), "level": level, "msg": msg}
+    _pi_log.append(entry)
+    if _broadcast_fn:
+        asyncio.get_event_loop().call_soon_threadsafe(
+            lambda e=entry: asyncio.ensure_future(
+                _broadcast_fn({"type": "log", "data": {**e, "source": "pi"}})
+            )
+        )
 
 def get_pi_log() -> list:
     return list(_pi_log)
@@ -16,6 +24,7 @@ async def db_sync_task(conn, interval: int = None):
     while True:
         await asyncio.sleep(interval)
         await database.sync_to_sd(conn)
+        _pi_log_event("info", "DB sincronizzato su SD")
         logging.debug("DB sincronizzato su SD")
 
 async def connection_watchdog_task(broadcast_fn, interval: int = 30):
@@ -23,6 +32,7 @@ async def connection_watchdog_task(broadcast_fn, interval: int = 30):
         await asyncio.sleep(interval)
         if not meshtastic_client.is_connected():
             logging.warning("Connessione persa, tentativo reconnect...")
+            _pi_log_event("warn", "Connessione Meshtastic persa — tentativo reconnect")
             await meshtastic_client.connect()
             await broadcast_fn({"type": "status", "data": {
                 "connected": meshtastic_client.is_connected()
@@ -131,6 +141,9 @@ async def db_maintenance_task(conn, interval: int = 3600):
         logging.debug("Manutenzione DB completata")
 
 def start_all(conn, broadcast_fn):
+    global _broadcast_fn
+    _broadcast_fn = broadcast_fn
+    _pi_log_event("info", "Sistema avviato")
     loop = asyncio.get_event_loop()
     loop.create_task(db_sync_task(conn))
     loop.create_task(connection_watchdog_task(broadcast_fn))
