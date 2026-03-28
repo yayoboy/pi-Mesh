@@ -69,6 +69,7 @@ function initWS() {
       encoder:   handleEncoder,
       status:    handleStatus,
       log:       handleLog,
+      ack:       handleAck,
     }
     handlers[msg.type]?.(msg.data)
   }
@@ -139,6 +140,18 @@ function handleSensor(data) {
 
 function handleLog(data) {
   window.dispatchEvent(new CustomEvent('log-entry', { detail: data }))
+}
+
+function handleAck(data) {
+  // Marca come consegnato l'ultimo messaggio outgoing verso quel nodo
+  const rows = document.querySelectorAll('.msg-row.outgoing')
+  rows.forEach(row => {
+    const ackEl = row.querySelector('.msg-ack')
+    if (ackEl && !ackEl.classList.contains('delivered')) {
+      ackEl.classList.add('delivered')
+      ackEl.title = 'Consegnato'
+    }
+  })
 }
 
 function handleStatus(data) {
@@ -286,7 +299,15 @@ function appendMessage(m) {
   meta.className = 'msg-meta'
   const name = nodeCache.get(m.node_id)?.short_name || m.node_id
   const ts   = new Date(m.timestamp * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
-  meta.textContent = (m.is_outgoing ? '' : name + ' \u00b7 ') + ts + (m.rx_snr != null ? ' \u00b7 ' + m.rx_snr + 'dB' : '')
+  meta.textContent = (m.is_outgoing ? '' : name + ' \u00b7 ') + ts + (m.rx_snr != null ? ' \u00b7 ' + m.rx_snr + 'dB' : '') + (m.hop_count != null && m.hop_count > 0 ? ' \u00b7 ' + m.hop_count + 'hop' : '')
+
+  if (m.is_outgoing) {
+    const ackEl = document.createElement('span')
+    ackEl.className = 'msg-ack' + (m.ack ? ' delivered' : '')
+    ackEl.textContent = m.ack ? ' \u2713\u2713' : ' \u2713'
+    ackEl.title = m.ack ? 'Consegnato' : 'Inviato'
+    meta.appendChild(ackEl)
+  }
 
   div.append(bubble, meta)
   // Inserisci prima del sentinel load-more se presente

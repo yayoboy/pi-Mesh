@@ -63,10 +63,30 @@ async def _create_tables(conn):
     """)
     await conn.commit()
 
-async def save_message(conn, node_id, channel, text, timestamp, is_outgoing, snr, rssi):
+    # Migration: aggiungi colonne se non esistono
+    for col_def in ["rssi INTEGER", "firmware_version TEXT", "role TEXT"]:
+        try:
+            await conn.execute(f"ALTER TABLE nodes ADD COLUMN {col_def}")
+        except Exception:
+            pass  # colonna già presente
+    try:
+        await conn.execute("ALTER TABLE messages ADD COLUMN hop_count INTEGER")
+    except Exception:
+        pass
+    await conn.commit()
+
+async def save_message(conn, node_id, channel, text, timestamp, is_outgoing, snr, rssi, hop_count=None):
     await conn.execute(
-        "INSERT INTO messages (node_id,channel,text,timestamp,is_outgoing,rx_snr,rx_rssi) VALUES (?,?,?,?,?,?,?)",
-        (node_id, channel, text, timestamp, is_outgoing, snr, rssi)
+        "INSERT INTO messages (node_id,channel,text,timestamp,is_outgoing,rx_snr,rx_rssi,hop_count) VALUES (?,?,?,?,?,?,?,?)",
+        (node_id, channel, text, timestamp, is_outgoing, snr, rssi, hop_count)
+    )
+    await conn.commit()
+
+async def update_message_ack(conn, node_id: str, timestamp: int):
+    """Marca come consegnato il messaggio outgoing più recente per quel destinatario."""
+    await conn.execute(
+        "UPDATE messages SET ack=1 WHERE is_outgoing=1 AND ack=0 AND node_id=? ORDER BY id DESC LIMIT 1",
+        (node_id,)
     )
     await conn.commit()
 
@@ -92,8 +112,8 @@ async def get_message_count(conn, channel: int) -> int:
 async def save_node(conn, node: dict):
     await conn.execute("""
         INSERT OR REPLACE INTO nodes
-        (id,long_name,short_name,hw_model,battery_level,voltage,snr,last_heard,latitude,longitude,altitude,is_local)
-        VALUES (:id,:long_name,:short_name,:hw_model,:battery_level,:voltage,:snr,:last_heard,:latitude,:longitude,:altitude,:is_local)
+        (id,long_name,short_name,hw_model,battery_level,voltage,snr,last_heard,latitude,longitude,altitude,is_local,rssi,firmware_version,role)
+        VALUES (:id,:long_name,:short_name,:hw_model,:battery_level,:voltage,:snr,:last_heard,:latitude,:longitude,:altitude,:is_local,:rssi,:firmware_version,:role)
     """, node)
     await conn.commit()
 

@@ -21,6 +21,9 @@
   </div>
   <div id="detail-{{ n.id }}" style="display:none; padding-top:8px; font-size:12px; color:var(--muted); border-top:1px solid var(--border); margin-top:8px;">
     HW: {{ n.hw_model or '—' }}<br>
+    {% if n.firmware_version %}Firmware: {{ n.firmware_version | e }}<br>{% endif %}
+    {% if n.role %}Ruolo: {{ n.role | e }}<br>{% endif %}
+    {% if n.rssi is not none %}RSSI: {{ n.rssi }}dBm<br>{% endif %}
     {% if n.latitude %}Pos: {{ '%.4f'|format(n.latitude) }}, {{ '%.4f'|format(n.longitude) }}<br>{% endif %}
     <button data-req-pos="{{ n.id }}" style="min-height:32px; margin-top:4px; width:auto; padding:0 12px; font-size:12px;">Richiedi pos</button>
     <div style="margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -75,6 +78,21 @@ function renderNodeRow(n) {
   const hw = document.createElement('span')
   hw.textContent = 'HW: ' + (n.hw_model || '—')
   detail.appendChild(hw)
+  if (n.firmware_version) {
+    const fw = document.createElement('div')
+    fw.textContent = 'Firmware: ' + n.firmware_version
+    detail.appendChild(fw)
+  }
+  if (n.role) {
+    const roleEl = document.createElement('div')
+    roleEl.textContent = 'Ruolo: ' + n.role
+    detail.appendChild(roleEl)
+  }
+  if (n.rssi != null) {
+    const rssiEl = document.createElement('div')
+    rssiEl.textContent = 'RSSI: ' + n.rssi + ' dBm'
+    detail.appendChild(rssiEl)
+  }
   if (n.latitude != null) {
     const pos = document.createElement('div')
     pos.textContent = 'Pos: ' + n.latitude.toFixed(4) + ', ' + n.longitude.toFixed(4)

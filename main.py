@@ -193,6 +193,63 @@ async def api_telemetry(node_id: str, type_: str, limit: int = 100):
 async def api_sensor(sensor_name: str, limit: int = 100):
     return await database.get_sensor_readings(_conn, sensor_name, limit)
 
+@app.get("/api/export/telemetry")
+async def export_telemetry(
+    node_id: str,
+    type: str,
+    format: str = "json",
+    limit: int = 1000
+):
+    import csv, io
+    from fastapi.responses import StreamingResponse
+    rows = await database.get_telemetry(_conn, node_id, type, limit)
+    if format == "csv":
+        output = io.StringIO()
+        if rows:
+            # Flatten: timestamp + tutti i campi di values
+            fieldnames = ["node_id", "type", "timestamp"] + list(rows[0]["values"].keys())
+            writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+            writer.writeheader()
+            for r in rows:
+                row_flat = {"node_id": r["node_id"], "type": r["type"], "timestamp": r["timestamp"]}
+                row_flat.update(r.get("values", {}))
+                writer.writerow(row_flat)
+        filename = f"telemetry-{node_id}-{type}.csv"
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    # default: JSON
+    return rows
+
+@app.get("/api/export/sensors")
+async def export_sensors(
+    name: str,
+    format: str = "json",
+    limit: int = 1000
+):
+    import csv, io
+    from fastapi.responses import StreamingResponse
+    rows = await database.get_sensor_readings(_conn, name, limit)
+    if format == "csv":
+        output = io.StringIO()
+        if rows:
+            fieldnames = ["sensor_name", "timestamp"] + list(rows[0]["values"].keys())
+            writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+            writer.writeheader()
+            for r in rows:
+                row_flat = {"sensor_name": r["sensor_name"], "timestamp": r["timestamp"]}
+                row_flat.update(r.get("values", {}))
+                writer.writerow(row_flat)
+        filename = f"sensors-{name}.csv"
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    return rows
+
 @app.get("/api/i2c/scan")
 async def api_i2c_scan(live: bool = False):
     """

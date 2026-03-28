@@ -234,3 +234,7 @@ canvas { max-width: 100%; }
 .toast.toast-ok{border-color:var(--ok)}
 .toast.toast-warn{border-color:#f0a030;color:#f0a030}
 .toast.toast-error{border-color:#e05050;color:#e05050}
+
+/* ===== ACK MESSAGGI ===== */
+.msg-ack { color: var(--muted); font-size: 10px; }
+.msg-ack.delivered { color: var(--ok); }

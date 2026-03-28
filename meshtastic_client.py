@@ -61,6 +61,7 @@ def init(loop, broadcast_fn, conn_getter=None):
     pub.subscribe(_on_receive_user,      "meshtastic.receive.user")
     pub.subscribe(_on_connected,         "meshtastic.connection.established")
     pub.subscribe(_on_lost,              "meshtastic.connection.lost")
+    pub.subscribe(_on_receive_routing,   "meshtastic.receive.routing")
 
 def _bridge(coro):
     if _loop and not _loop.is_closed():
@@ -192,6 +193,9 @@ async def _sync_nodes(interface):
                 "longitude":     pos.get("longitudeI", 0) / 1e7 if pos.get("longitudeI") else None,
                 "altitude":      pos.get("altitude"),
                 "is_local":      1 if local_id and nid == local_id else 0,
+                "rssi":             info.get("rxRssi"),
+                "firmware_version": user.get("firmwareVersion", ""),
+                "role":             str(user.get("role", "")),
             }
             conn = _conn_getter() if _conn_getter else None
             if conn:
@@ -243,6 +247,9 @@ async def _handle_user(packet):
             "longitude":     None,
             "altitude":      None,
             "is_local":      0,
+            "rssi":             packet.get("rxRssi"),
+            "firmware_version": user.get("firmwareVersion", ""),
+            "role":             str(user.get("role", "")),
         }
         if _conn_getter:
             await database.save_node(_conn_getter(), node)
@@ -300,7 +307,30 @@ def _parse_message(packet) -> dict | None:
             "is_outgoing": 0,
             "snr":         packet.get("rxSnr"),
             "rssi":        packet.get("rxRssi"),
+            "hop_count":   packet.get("hopStart", 0) - packet.get("hopLimit", 0) if packet.get("hopStart") else None,
         }
     except Exception as e:
         logging.error(f"Parsing messaggio fallito: {e}")
         return None
+
+
+def _on_receive_routing(packet, interface):
+    _bridge(_handle_routing(packet))
+
+
+async def _handle_routing(packet):
+    import database
+    try:
+        decoded = packet.get("decoded", {})
+        routing = decoded.get("routing", {})
+        # errorReason == NONE significa ACK positivo
+        if routing.get("errorReason", "NONE") != "NONE":
+            return
+        # Il fromId è chi ha ACKato (il destinatario del messaggio originale)
+        from_id = packet.get("fromId")
+        rx_time = packet.get("rxTime", int(time.time()))
+        if from_id and _conn_getter:
+            await database.update_message_ack(_conn_getter(), from_id, rx_time)
+        await _broadcast({"type": "ack", "data": {"node_id": from_id}})
+    except Exception as e:
+        logging.debug(f"Routing ACK handling: {e}")
