@@ -74,3 +74,53 @@ async def test_prune_sensor_readings():
     rows = await database.get_sensor_readings(conn, "bme280", limit=100)
     assert len(rows) == 5
     await conn.close()
+
+@pytest.mark.asyncio
+async def test_save_message_stores_destination(tmp_db):
+    import database
+    conn = await database.init_db(runtime_path=tmp_db, persistent_path="/nonexistent")
+    ts = int(time.time())
+    await database.save_message(conn, "node1", 0, "ciao", ts, 0, None, None, destination="!abc123")
+    msgs = await database.get_messages(conn, 0, limit=10)
+    assert msgs[0]["destination"] == "!abc123"
+    await conn.close()
+
+@pytest.mark.asyncio
+async def test_get_dm_threads_returns_threads_with_unread(tmp_db):
+    import database
+    conn = await database.init_db(runtime_path=tmp_db, persistent_path="/nonexistent")
+    ts = int(time.time())
+    await database.save_message(conn, "!node1", 0, "ciao", ts,   0, None, None, destination="!local")
+    await database.save_message(conn, "!node1", 0, "ok?",  ts+1, 0, None, None, destination="!local")
+    await database.save_message(conn, "local",  0, "si!",  ts+2, 1, None, None, destination="!node1")
+    threads = await database.get_dm_threads(conn)
+    assert len(threads) == 1
+    assert threads[0]["peer"] == "!node1"
+    assert threads[0]["unread_count"] == 2
+    await conn.close()
+
+@pytest.mark.asyncio
+async def test_get_dm_messages_returns_thread(tmp_db):
+    import database
+    conn = await database.init_db(runtime_path=tmp_db, persistent_path="/nonexistent")
+    ts = int(time.time())
+    await database.save_message(conn, "!peer1", 0, "dm in",  ts,   0, None, None, destination="!local")
+    await database.save_message(conn, "local",  0, "dm out", ts+1, 1, None, None, destination="!peer1")
+    await database.save_message(conn, "!other", 0, "other",  ts+2, 0, None, None, destination="!local")
+    msgs = await database.get_dm_messages(conn, "!peer1")
+    assert len(msgs) == 2
+    assert all(m["text"] in ("dm in", "dm out") for m in msgs)
+
+@pytest.mark.asyncio
+async def test_mark_dm_read_clears_unread(tmp_db):
+    import database
+    conn = await database.init_db(runtime_path=tmp_db, persistent_path="/nonexistent")
+    ts = int(time.time())
+    await database.save_message(conn, "!peer1", 0, "msg1", ts,   0, None, None, destination="!local")
+    await database.save_message(conn, "!peer1", 0, "msg2", ts+1, 0, None, None, destination="!local")
+    threads_before = await database.get_dm_threads(conn)
+    assert threads_before[0]["unread_count"] == 2
+    await database.mark_dm_read(conn, "!peer1")
+    threads_after = await database.get_dm_threads(conn)
+    assert threads_after[0]["unread_count"] == 0
+    await conn.close()

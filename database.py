@@ -73,12 +73,17 @@ async def _create_tables(conn):
         await conn.execute("ALTER TABLE messages ADD COLUMN hop_count INTEGER")
     except Exception:
         pass
+    for col_def in ["destination TEXT DEFAULT '^all'", "read_at INTEGER DEFAULT NULL"]:
+        try:
+            await conn.execute(f"ALTER TABLE messages ADD COLUMN {col_def}")
+        except Exception:
+            pass
     await conn.commit()
 
-async def save_message(conn, node_id, channel, text, timestamp, is_outgoing, snr, rssi, hop_count=None):
+async def save_message(conn, node_id, channel, text, timestamp, is_outgoing, snr, rssi, destination='^all', hop_count=None):
     await conn.execute(
-        "INSERT INTO messages (node_id,channel,text,timestamp,is_outgoing,rx_snr,rx_rssi,hop_count) VALUES (?,?,?,?,?,?,?,?)",
-        (node_id, channel, text, timestamp, is_outgoing, snr, rssi, hop_count)
+        "INSERT INTO messages (node_id,channel,text,timestamp,is_outgoing,rx_snr,rx_rssi,destination,hop_count) VALUES (?,?,?,?,?,?,?,?,?)",
+        (node_id, channel, text, timestamp, is_outgoing, snr, rssi, destination, hop_count)
     )
     await conn.commit()
 
@@ -108,6 +113,45 @@ async def get_message_count(conn, channel: int) -> int:
     cur = await conn.execute("SELECT COUNT(*) FROM messages WHERE channel=?", (channel,))
     row = await cur.fetchone()
     return row[0]
+
+async def get_dm_threads(conn) -> list:
+    cur = await conn.execute(
+        "SELECT CASE WHEN is_outgoing=1 THEN destination ELSE node_id END AS peer,"
+        " text, timestamp, is_outgoing, read_at, id"
+        " FROM messages WHERE destination != '^all' AND destination IS NOT NULL ORDER BY id DESC"
+    )
+    rows = [dict(r) for r in await cur.fetchall()]
+    seen, unread = {}, {}
+    for r in rows:
+        peer = r["peer"]
+        if peer not in seen:
+            seen[peer] = r
+        if not r["is_outgoing"] and r["read_at"] is None:
+            unread[peer] = unread.get(peer, 0) + 1
+    result = []
+    for peer, msg in seen.items():
+        msg["unread_count"] = unread.get(peer, 0)
+        result.append(msg)
+    return sorted(result, key=lambda x: x["timestamp"], reverse=True)
+
+async def get_dm_messages(conn, peer_id: str, limit: int = 50, before_id: int = None) -> list:
+    base = ("SELECT * FROM messages WHERE"
+            " ((node_id = ? AND is_outgoing = 0 AND destination != '^all')"
+            "  OR (destination = ? AND is_outgoing = 1))")
+    if before_id:
+        cur = await conn.execute(base + " AND id < ? ORDER BY id DESC LIMIT ?",
+                                 (peer_id, peer_id, before_id, limit))
+    else:
+        cur = await conn.execute(base + " ORDER BY id DESC LIMIT ?", (peer_id, peer_id, limit))
+    return [dict(r) for r in await cur.fetchall()]
+
+async def mark_dm_read(conn, peer_id: str):
+    await conn.execute(
+        "UPDATE messages SET read_at = ? WHERE node_id = ? AND is_outgoing = 0"
+        " AND read_at IS NULL AND destination != '^all'",
+        (int(time.time()), peer_id)
+    )
+    await conn.commit()
 
 async def save_node(conn, node: dict):
     await conn.execute("""
