@@ -11,6 +11,10 @@ let hopLinesLayer
 let tracerouteLayer
 let customMarkersLayer
 let customMarkersData = []
+let osmLayer = null
+let topoLayer = null
+let satelliteLayer = null
+let activeLayer = null
 
 // --- Icone SVG Heroicons ---
 
@@ -334,19 +338,29 @@ function initMapIfNeeded() {
   var zoomMin = parseInt(el.dataset.zoomMin || '7')
   var zoomMax = parseInt(el.dataset.zoomMax || '12')
 
-  // Restore saved view or use default center
+  // Restore saved view, or center on board node, or fall back to bounds center
   var savedView = null
   try { savedView = JSON.parse(localStorage.getItem('mapView')) } catch(e) {}
-  var center = savedView
-    ? [savedView.lat, savedView.lng]
-    : [(bounds.lat_min + bounds.lat_max) / 2, (bounds.lon_min + bounds.lon_max) / 2]
-  var zoom = savedView ? savedView.zoom : 10
+  var center, zoom
+  if (savedView) {
+    center = [savedView.lat, savedView.lng]
+    zoom = savedView.zoom
+  } else {
+    // Try to center on local board node
+    var localNode = null
+    nodeCache.forEach(function(n) { if (n.is_local && n.latitude && n.longitude) localNode = n })
+    if (localNode) {
+      center = [localNode.latitude, localNode.longitude]
+      zoom = 11
+    } else {
+      center = [(bounds.lat_min + bounds.lat_max) / 2, (bounds.lon_min + bounds.lon_max) / 2]
+      zoom = 10
+    }
+  }
 
   leafletMap = L.map('map-container', {
     center: center, zoom: zoom, zoomControl: false,
-    minZoom: zoomMin, maxZoom: zoomMax,
-    maxBounds: [[bounds.lat_min, bounds.lon_min], [bounds.lat_max, bounds.lon_max]],
-    maxBoundsViscosity: 1.0,
+    maxZoom: zoomMax,
     tap: true,
   })
 
@@ -356,12 +370,12 @@ function initMapIfNeeded() {
     localStorage.setItem('mapView', JSON.stringify({ lat: c.lat, lng: c.lng, zoom: leafletMap.getZoom() }))
   })
 
-  var tileOpts       = { minZoom: zoomMin, maxZoom: zoomMax }
-  var osmLayer       = L.tileLayer('/tiles/osm/{z}/{x}/{y}',       tileOpts)
-  var topoLayer      = L.tileLayer('/tiles/topo/{z}/{x}/{y}',      tileOpts)
-  var satelliteLayer = L.tileLayer('/tiles/satellite/{z}/{x}/{y}', tileOpts)
+  var tileOpts       = { maxZoom: zoomMax }
+  osmLayer       = L.tileLayer('/tiles/osm/{z}/{x}/{y}',       tileOpts)
+  topoLayer      = L.tileLayer('/tiles/topo/{z}/{x}/{y}',      tileOpts)
+  satelliteLayer = L.tileLayer('/tiles/satellite/{z}/{x}/{y}', tileOpts)
+  activeLayer    = osmLayer
   osmLayer.addTo(leafletMap)
-  L.control.layers({ 'Stradale': osmLayer, 'Topo': topoLayer, 'Satellite': satelliteLayer }).addTo(leafletMap)
   L.control.zoom({ position: 'bottomright' }).addTo(leafletMap)
 
   hopLinesLayer.addTo(leafletMap)
@@ -397,6 +411,21 @@ function centerOnBoard() {
   if (local) {
     leafletMap.setView([local.latitude, local.longitude], leafletMap.getZoom())
   }
+}
+
+function switchLayer(name) {
+  if (!mapReady) return
+  var layers = { osm: osmLayer, topo: topoLayer, satellite: satelliteLayer }
+  var next = layers[name]
+  if (!next || next === activeLayer) return
+  leafletMap.removeLayer(activeLayer)
+  next.addTo(leafletMap)
+  activeLayer = next
+  document.querySelectorAll('.layer-btn').forEach(function(btn) {
+    var on = btn.dataset.layer === name
+    btn.style.borderColor = on ? 'var(--accent,#4a9eff)' : 'rgba(42,58,74,0.5)'
+    btn.style.color = on ? 'var(--accent,#4a9eff)' : 'var(--text,#ccc)'
+  })
 }
 
 function updateMapMarker(node) {
