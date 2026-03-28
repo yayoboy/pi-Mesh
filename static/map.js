@@ -430,14 +430,25 @@ function switchLayer(name) {
 
 function updateMapMarker(node) {
   if (!node.latitude || !node.longitude || !mapReady) return
-  var color    = node.is_local ? '#4a9eff' : '#4caf50'
   var existing = markerCache.get(node.id)
   if (existing) {
     existing.setLatLng([node.latitude, node.longitude])
   } else {
-    var marker = L.circleMarker([node.latitude, node.longitude], {
-      radius: 8, color: color, fillColor: color, fillOpacity: 0.8,
+    var online  = (Date.now() / 1000 - (node.last_heard || 0)) < 1800
+    var bgColor = node.is_local ? '#4a9eff' : (online ? '#4caf50' : '#555')
+    var glow    = node.is_local ? 'box-shadow:0 0 8px #4a9eff;' : ''
+    var label   = escHtml(String(node.short_name || node.id).slice(0, 6))
+    var icon = L.divIcon({
+      html: '<div style="width:34px;height:34px;background:' + bgColor +
+            ';border-radius:50%;border:2px solid #fff;' + glow +
+            'display:flex;align-items:center;justify-content:center;' +
+            'font-size:9px;font-weight:700;color:#fff;font-family:monospace;' +
+            'box-sizing:border-box;">' + label + '</div>',
+      className: '',
+      iconSize:   [34, 34],
+      iconAnchor: [17, 17],
     })
+    var marker = L.marker([node.latitude, node.longitude], { icon: icon })
     marker.bindPopup(
       '<b>' + escHtml(String(node.short_name || node.id)) + '</b><br>' +
       escHtml(String(node.long_name || '')) + '<br>' +
