@@ -22,6 +22,7 @@ _traceroute_cache: dict[str, dict] = {}
 _command_queue: asyncio.Queue = asyncio.Queue()
 
 import config as cfg
+import database
 
 NODE_CACHE_TTL = cfg.NODE_CACHE_TTL
 
@@ -241,6 +242,37 @@ def _on_receive(packet, interface) -> None:
         _refresh_node_cache()
 
 
+async def _flush_dirty(db_path: str) -> None:
+    """Write all dirty nodes to SQLite and clear the dirty set."""
+    if not _dirty_nodes:
+        return
+    nodes_to_flush = [_node_cache[nid] for nid in list(_dirty_nodes) if nid in _node_cache]
+    for node in nodes_to_flush:
+        await database.upsert_node(db_path, node)
+    _dirty_nodes.clear()
+    logger.debug(f'Flushed {len(nodes_to_flush)} dirty nodes to DB')
+
+
+async def _flush_task() -> None:
+    """Background task: persist dirty nodes to SQLite every 60 seconds."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            await _flush_dirty(cfg.DB_PATH)
+        except Exception as e:
+            logger.warning(f'Flush task error: {e}')
+
+
+async def load_nodes_from_db(db_path: str | None = None) -> None:
+    """Populate _node_cache from SQLite at startup before board connects."""
+    global _node_cache
+    path = db_path or cfg.DB_PATH
+    rows = await database.get_all_nodes(path)
+    for row in rows:
+        _node_cache[row['id']] = row
+    logger.info(f'Loaded {len(rows)} nodes from DB into cache')
+
+
 async def _command_worker() -> None:
     """Consume commands from _command_queue and execute them serially via executor."""
     loop = asyncio.get_running_loop()
@@ -260,6 +292,7 @@ async def connect() -> None:
     from pubsub import pub
     _loop = asyncio.get_event_loop()    # capture event loop for threadsafe callbacks
     asyncio.create_task(_command_worker())
+    asyncio.create_task(_flush_task())
     backoff = 15
     while True:
         try:

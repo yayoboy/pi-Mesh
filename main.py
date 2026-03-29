@@ -20,6 +20,7 @@ from routers import nodes, map_router, log_router, placeholders
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await database.init(cfg.DB_PATH)
+    await meshtasticd_client.load_nodes_from_db()    # populate cache from DB before board connects
     asyncio.create_task(meshtasticd_client.connect())
     yield
     await meshtasticd_client.disconnect()

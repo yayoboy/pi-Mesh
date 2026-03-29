@@ -218,3 +218,69 @@ def test_get_traceroute_result_returns_cached_entry():
     result = mc.get_traceroute_result('!aabbccdd')
     assert result is not None
     assert result['hops'] == ['!00000001', '!00000002']
+
+
+@pytest.mark.asyncio
+async def test_load_nodes_from_db_populates_cache(tmp_path):
+    import meshtasticd_client as mc
+    import database
+
+    db_path = str(tmp_path / 'test.db')
+    await database.init(db_path)
+
+    node = {
+        'id': '!aabbccdd',
+        'short_name': 'PERSIST',
+        'long_name': 'Persisted Node',
+        'latitude': 41.9,
+        'longitude': 12.5,
+        'last_heard': 1700000000,
+        'snr': 7.0,
+        'battery_level': 90,
+        'hop_count': 1,
+        'hw_model': 'HELTEC_V3',
+        'is_local': 0,
+        'distance_km': 3.5,
+        'raw_json': '{}',
+    }
+    await database.upsert_node(db_path, node)
+
+    mc._node_cache = {}
+    await mc.load_nodes_from_db(db_path)
+
+    assert '!aabbccdd' in mc._node_cache
+    assert mc._node_cache['!aabbccdd']['short_name'] == 'PERSIST'
+
+
+@pytest.mark.asyncio
+async def test_flush_dirty_writes_nodes_to_db(tmp_path):
+    import meshtasticd_client as mc
+    import database
+
+    db_path = str(tmp_path / 'test.db')
+    await database.init(db_path)
+
+    mc._node_cache = {
+        '!aabbccdd': {
+            'id': '!aabbccdd',
+            'short_name': 'DIRTY',
+            'long_name': 'Dirty Node',
+            'latitude': 41.9,
+            'longitude': 12.5,
+            'last_heard': 1700000000,
+            'snr': 6.0,
+            'battery_level': 75,
+            'hop_count': 2,
+            'hw_model': 'HELTEC_V3',
+            'is_local': 0,
+            'distance_km': 5.0,
+            'raw_json': '{}',
+        }
+    }
+    mc._dirty_nodes = {'!aabbccdd'}
+
+    await mc._flush_dirty(db_path)
+
+    assert len(mc._dirty_nodes) == 0
+    nodes = await database.get_all_nodes(db_path)
+    assert any(n['id'] == '!aabbccdd' for n in nodes)
