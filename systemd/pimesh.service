@@ -1,7 +1,7 @@
 [Unit]
 Description=pi-Mesh FastAPI App
-After=network.target meshtasticd.service
-Requires=meshtasticd.service
+After=network.target
+Wants=meshtasticd.service
 
 [Service]
 Type=simple
