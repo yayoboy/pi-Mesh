@@ -9,8 +9,16 @@ HOME_DIR="/home/$USER"
 echo "==> Installing system packages..."
 apt-get update -qq
 apt-get install -y --no-install-recommends \
-    python3-venv python3-pip git meshtasticd \
-    epiphany-browser xorg openbox
+    python3-venv python3-pip git \
+    zram-tools
+
+echo "==> Configuring zram swap (lz4, 50% RAM)..."
+cat > /etc/default/zramswap <<'EOF'
+ALGO=lz4
+PERCENT=50
+EOF
+systemctl restart zramswap
+echo "zram swap active: $(zramctl)"
 
 echo "==> Setting up Python venv..."
 sudo -u "$USER" python3 -m venv "$REPO_DIR/venv"
