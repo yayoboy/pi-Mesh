@@ -253,21 +253,32 @@ def _on_receive(packet, interface) -> None:
             _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
 
     elif portnum == 'TEXT_MESSAGE_APP':
-        text   = decoded.get('text', '')
-        to_num = packet.get('to', 0xFFFFFFFF)
-        dest   = '^all' if to_num == 0xFFFFFFFF else f'!{to_num:08x}'
+        text    = decoded.get('text', '')
+        channel = int(packet.get('channel', 0))
+        try:
+            to_num = int(packet.get('to', 0xFFFFFFFF))
+        except (TypeError, ValueError):
+            to_num = 0xFFFFFFFF
+        dest = '^all' if to_num == 0xFFFFFFFF else f'!{to_num:08x}'
         if _loop is not None:
-            asyncio.run_coroutine_threadsafe(
-                _save_incoming_message(from_id, decoded.get('channel', 0),
-                                       text, snr, hop_limit, dest),
+            fut = asyncio.run_coroutine_threadsafe(
+                _save_incoming_message(from_id, channel, text, snr, hop_limit, dest),
                 _loop
+            )
+            fut.add_done_callback(
+                lambda f: logger.error('save_incoming_message failed: %s', f.exception())
+                if f.exception() else None
             )
 
     elif portnum == 'ROUTING_APP':
         error_reason = decoded.get('routing', {}).get('errorReason', 'NONE')
         if error_reason == 'NONE' and _loop is not None:
-            asyncio.run_coroutine_threadsafe(
+            fut = asyncio.run_coroutine_threadsafe(
                 database.update_message_ack(cfg.DB_PATH, from_id), _loop
+            )
+            fut.add_done_callback(
+                lambda f: logger.error('update_message_ack failed: %s', f.exception())
+                if f.exception() else None
             )
             ack_event = {'type': 'ack', 'node_id': from_id}
             _loop.call_soon_threadsafe(_event_queue.put_nowait, ack_event)
