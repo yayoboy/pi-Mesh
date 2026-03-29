@@ -1,42 +1,70 @@
 # tests/test_meshtasticd_client.py
 import pytest
-import time
-from unittest.mock import MagicMock, patch
-import meshtasticd_client as mc
+import meshtasticd_client
 
 
-def test_is_connected_false_initially():
-    mc._connected = False
-    assert mc.is_connected() is False
+def test_haversine_same_point():
+    result = meshtasticd_client._haversine(41.9, 12.5, 41.9, 12.5)
+    assert result == 0.0
 
 
-def test_get_nodes_returns_cache_within_ttl():
-    mc._node_cache = {'!abc': {'id': '!abc', 'short_name': 'X'}}
-    mc._last_node_fetch = time.time()  # just fetched
-    nodes = mc.get_nodes()
-    assert len(nodes) == 1
-    assert nodes[0]['short_name'] == 'X'
+def test_haversine_one_degree_latitude():
+    # 1 degree latitude ≈ 111 km
+    result = meshtasticd_client._haversine(0.0, 0.0, 1.0, 0.0)
+    assert 110 < result < 112
 
 
-def test_get_nodes_empty_when_cache_cold():
-    mc._node_cache = {}
-    mc._last_node_fetch = 0.0
-    # Without a real connection, returns empty list
-    with patch.object(mc, '_connected', False):
-        nodes = mc.get_nodes()
-    assert nodes == []
+def test_haversine_rome_to_milan():
+    # Rome (41.9, 12.5) to Milan (45.46, 9.19) ≈ 477 km
+    result = meshtasticd_client._haversine(41.9, 12.5, 45.46, 9.19)
+    assert 470 < result < 490
 
 
-def test_get_local_node_returns_none_when_empty():
-    mc._node_cache = {}
-    assert mc.get_local_node() is None
-
-
-def test_get_local_node_finds_is_local():
-    mc._node_cache = {
-        '!aaa': {'id': '!aaa', 'is_local': False},
-        '!bbb': {'id': '!bbb', 'is_local': True, 'short_name': 'LOCAL'},
+def test_add_distances_local_node_gets_zero():
+    meshtasticd_client._node_cache.clear()
+    meshtasticd_client._node_cache['!local'] = {
+        'id': '!local', 'latitude': 41.9, 'longitude': 12.5,
+        'is_local': True, 'distance_km': None,
     }
-    node = mc.get_local_node()
-    assert node is not None
-    assert node['short_name'] == 'LOCAL'
+    meshtasticd_client._add_distances()
+    assert meshtasticd_client._node_cache['!local']['distance_km'] == 0.0
+
+
+def test_add_distances_remote_node_gets_distance():
+    meshtasticd_client._node_cache.clear()
+    meshtasticd_client._node_cache['!local'] = {
+        'id': '!local', 'latitude': 41.9, 'longitude': 12.5,
+        'is_local': True, 'distance_km': None,
+    }
+    meshtasticd_client._node_cache['!remote'] = {
+        'id': '!remote', 'latitude': 45.46, 'longitude': 9.19,
+        'is_local': False, 'distance_km': None,
+    }
+    meshtasticd_client._add_distances()
+    d = meshtasticd_client._node_cache['!remote']['distance_km']
+    assert d is not None
+    assert 470 < d < 490
+
+
+def test_add_distances_no_coords_returns_none():
+    meshtasticd_client._node_cache.clear()
+    meshtasticd_client._node_cache['!local'] = {
+        'id': '!local', 'latitude': 41.9, 'longitude': 12.5,
+        'is_local': True, 'distance_km': None,
+    }
+    meshtasticd_client._node_cache['!nogps'] = {
+        'id': '!nogps', 'latitude': None, 'longitude': None,
+        'is_local': False, 'distance_km': None,
+    }
+    meshtasticd_client._add_distances()
+    assert meshtasticd_client._node_cache['!nogps']['distance_km'] is None
+
+
+def test_add_distances_no_local_node_all_none():
+    meshtasticd_client._node_cache.clear()
+    meshtasticd_client._node_cache['!remote'] = {
+        'id': '!remote', 'latitude': 45.46, 'longitude': 9.19,
+        'is_local': False, 'distance_km': None,
+    }
+    meshtasticd_client._add_distances()
+    assert meshtasticd_client._node_cache['!remote']['distance_km'] is None

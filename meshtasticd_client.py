@@ -1,6 +1,7 @@
 # meshtasticd_client.py
 import asyncio
 import logging
+import math
 import time
 from collections import deque
 
@@ -11,6 +12,7 @@ _interface      = None
 _connected      = False
 _local_id: str  = ''
 _node_cache: dict[str, dict] = {}
+_dirty_nodes: set[str] = set()
 _last_node_fetch: float = 0.0
 _log_queue: deque = deque(maxlen=500)
 _subscribers: list = []
@@ -56,6 +58,30 @@ def unsubscribe_log(callback) -> None:
 
 # --- Internal ---
 
+def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    return R * 2 * math.asin(math.sqrt(a))
+
+
+def _add_distances() -> None:
+    local_lat = local_lon = None
+    for node in _node_cache.values():
+        if node.get('is_local') and node.get('latitude') and node.get('longitude'):
+            local_lat = node['latitude']
+            local_lon = node['longitude']
+            break
+    for node in _node_cache.values():
+        if node.get('is_local'):
+            node['distance_km'] = 0.0
+        elif local_lat is not None and node.get('latitude') and node.get('longitude'):
+            node['distance_km'] = round(_haversine(local_lat, local_lon, node['latitude'], node['longitude']), 2)
+        else:
+            node['distance_km'] = None
+
+
 def _refresh_node_cache() -> None:
     global _node_cache, _last_node_fetch
     try:
@@ -78,7 +104,10 @@ def _refresh_node_cache() -> None:
                 'battery_level': metrics.get('batteryLevel'),
                 'is_local':      node_id == _local_id,
                 'raw_json':      str(info),
+                'distance_km':   None,
             }
+        _dirty_nodes.update(_node_cache.keys())
+        _add_distances()
         _last_node_fetch = time.time()
     except Exception as e:
         logger.warning(f'Node cache refresh failed: {e}')
