@@ -19,6 +19,7 @@ _subscribers: list = []
 _event_queue: asyncio.Queue = asyncio.Queue()
 _loop: asyncio.AbstractEventLoop | None = None
 _traceroute_cache: dict[str, dict] = {}
+_command_queue: asyncio.Queue = asyncio.Queue()
 
 import config as cfg
 
@@ -61,6 +62,28 @@ def unsubscribe_log(callback) -> None:
 
 def get_event_queue() -> asyncio.Queue:
     return _event_queue
+
+
+async def request_traceroute(node_id: str) -> None:
+    """Queue a traceroute request to the given node."""
+    await _command_queue.put(lambda: _interface.sendTraceRoute(dest=node_id, hopLimit=3))
+
+
+async def request_position(node_id: str) -> None:
+    """Queue a position request to the given node."""
+    await _command_queue.put(lambda: _interface.requestPosition(node_id))
+
+
+async def send_text(text: str, destination_id: str, channel: int = 0) -> None:
+    """Queue a text message to the given destination."""
+    await _command_queue.put(
+        lambda: _interface.sendText(text, destinationId=destination_id, channelIndex=channel)
+    )
+
+
+def get_traceroute_result(node_id: str) -> dict | None:
+    """Return cached traceroute result for a node, or None if not available."""
+    return _traceroute_cache.get(node_id)
 
 
 # --- Internal ---
@@ -218,11 +241,25 @@ def _on_receive(packet, interface) -> None:
         _refresh_node_cache()
 
 
+async def _command_worker() -> None:
+    """Consume commands from _command_queue and execute them serially via executor."""
+    loop = asyncio.get_event_loop()
+    while True:
+        cmd_fn = await _command_queue.get()
+        try:
+            await loop.run_in_executor(None, cmd_fn)
+        except Exception as e:
+            logger.warning(f'Command execution failed: {e}')
+        finally:
+            _command_queue.task_done()
+
+
 async def connect() -> None:
     global _interface, _connected, _local_id, _loop
     import meshtastic.serial_interface
     from pubsub import pub
     _loop = asyncio.get_event_loop()    # capture event loop for threadsafe callbacks
+    asyncio.create_task(_command_worker())
     backoff = 15
     while True:
         try:

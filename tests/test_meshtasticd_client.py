@@ -161,3 +161,60 @@ async def test_on_receive_telemetry_emits_typed_event():
     assert tel_event is not None
     assert tel_event['battery_level'] == 78
     mc._loop = None
+
+
+@pytest.mark.asyncio
+async def test_request_traceroute_enqueues_callable():
+    import meshtasticd_client as mc
+    while not mc._command_queue.empty():
+        mc._command_queue.get_nowait()
+
+    mc._connected = True
+    await mc.request_traceroute('!aabbccdd')
+    assert not mc._command_queue.empty()
+    cmd = mc._command_queue.get_nowait()
+    assert callable(cmd)
+
+
+@pytest.mark.asyncio
+async def test_send_text_enqueues_callable():
+    import meshtasticd_client as mc
+    while not mc._command_queue.empty():
+        mc._command_queue.get_nowait()
+
+    mc._connected = True
+    await mc.send_text('Hello', '!aabbccdd', channel=0)
+    assert not mc._command_queue.empty()
+    cmd = mc._command_queue.get_nowait()
+    assert callable(cmd)
+
+
+@pytest.mark.asyncio
+async def test_request_position_enqueues_callable():
+    import meshtasticd_client as mc
+    while not mc._command_queue.empty():
+        mc._command_queue.get_nowait()
+
+    mc._connected = True
+    await mc.request_position('!aabbccdd')
+    assert not mc._command_queue.empty()
+    cmd = mc._command_queue.get_nowait()
+    assert callable(cmd)
+
+
+def test_get_traceroute_result_returns_none_when_missing():
+    import meshtasticd_client as mc
+    result = mc.get_traceroute_result('!nonexistent')
+    assert result is None
+
+
+def test_get_traceroute_result_returns_cached_entry():
+    import meshtasticd_client as mc
+    mc._traceroute_cache['!aabbccdd'] = {
+        'node_id': '!aabbccdd',
+        'hops': ['!00000001', '!00000002'],
+        'ts': 1700000000,
+    }
+    result = mc.get_traceroute_result('!aabbccdd')
+    assert result is not None
+    assert result['hops'] == ['!00000001', '!00000002']
