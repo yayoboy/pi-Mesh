@@ -1,5 +1,4 @@
 # routers/map_router.py
-import json
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -17,13 +16,12 @@ DEFAULT_BOUNDS = {
 @router.get('/map', response_class=HTMLResponse)
 async def map_page(request: Request):
     nodes = meshtasticd_client.get_nodes()
-    return templates.TemplateResponse('map.html', {
-        'request':    request,
+    return templates.TemplateResponse(request, 'map.html', {
         'active_tab': 'map',
         'bounds':     DEFAULT_BOUNDS,
         'zoom_min':   7,
         'zoom_max':   16,
-        'nodes_json': json.dumps(nodes),
+        'nodes_data': nodes,
     })
 
 

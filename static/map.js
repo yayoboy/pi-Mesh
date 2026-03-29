@@ -4,6 +4,7 @@
 
 // --- Stato globale ---
 
+const nodeCache = new Map()
 let leafletMap = null
 let mapReady = false
 const markerCache = new Map()

@@ -4,6 +4,7 @@ import logging
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -32,3 +33,8 @@ app.include_router(nodes.router)
 app.include_router(map_router.router)
 app.include_router(log_router.router)
 app.include_router(placeholders.router)
+
+
+@app.get('/')
+async def root():
+    return RedirectResponse(url='/nodes')

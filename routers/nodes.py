@@ -10,8 +10,8 @@ templates = Jinja2Templates(directory='templates')
 
 @router.get('/nodes', response_class=HTMLResponse)
 async def nodes_page(request: Request):
-    return templates.TemplateResponse('nodes.html', {
-        'request': request, 'active_tab': 'nodes'
+    return templates.TemplateResponse(request, 'nodes.html', {
+        'active_tab': 'nodes'
     })
 
 

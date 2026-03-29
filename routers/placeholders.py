@@ -9,20 +9,20 @@ templates = Jinja2Templates(directory='templates')
 
 @router.get('/messages', response_class=HTMLResponse)
 async def messages_page(request: Request):
-    return templates.TemplateResponse('placeholder.html', {
-        'request': request, 'active_tab': 'messages', 'page_title': 'Messaggi'
+    return templates.TemplateResponse(request, 'placeholder.html', {
+        'active_tab': 'messages', 'page_title': 'Messaggi'
     })
 
 
 @router.get('/config', response_class=HTMLResponse)
 async def config_page(request: Request):
-    return templates.TemplateResponse('placeholder.html', {
-        'request': request, 'active_tab': 'config', 'page_title': 'Configurazione'
+    return templates.TemplateResponse(request, 'placeholder.html', {
+        'active_tab': 'config', 'page_title': 'Configurazione'
     })
 
 
 @router.get('/metrics', response_class=HTMLResponse)
 async def metrics_page(request: Request):
-    return templates.TemplateResponse('placeholder.html', {
-        'request': request, 'active_tab': 'metrics', 'page_title': 'Metriche'
+    return templates.TemplateResponse(request, 'placeholder.html', {
+        'active_tab': 'metrics', 'page_title': 'Metriche'
     })

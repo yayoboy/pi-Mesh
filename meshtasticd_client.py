@@ -75,7 +75,7 @@ def _refresh_node_cache() -> None:
                 'snr':           info.get('snr'),
                 'hop_count':     info.get('hopsAway'),
                 'battery_level': metrics.get('batteryLevel'),
-                'is_local':      info.get('isFavorite', False) and node_id == _get_local_id(),
+                'is_local':      node_id == _get_local_id(),
                 'raw_json':      str(info),
             }
         _last_node_fetch = time.time()
@@ -85,7 +85,8 @@ def _refresh_node_cache() -> None:
 
 def _get_local_id() -> str:
     try:
-        return _interface.localNode.nodeNum
+        num = _interface.myInfo.myNodeNum
+        return f'!{num:08x}'
     except Exception:
         return ''
 

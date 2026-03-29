@@ -12,8 +12,8 @@ templates = Jinja2Templates(directory='templates')
 
 @router.get('/log', response_class=HTMLResponse)
 async def log_page(request: Request):
-    return templates.TemplateResponse('log.html', {
-        'request': request, 'active_tab': 'log'
+    return templates.TemplateResponse(request, 'log.html', {
+        'active_tab': 'log'
     })
 
 
