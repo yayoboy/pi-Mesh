@@ -1,400 +1,74 @@
 {% extends "base.html" %}
 {% block content %}
-<div id="node-list">
-{% if not nodes %}
-<div id="no-nodes" style="padding:24px; text-align:center; color:var(--muted); font-size:13px;">
-  Nessun nodo rilevato
-</div>
-{% endif %}
-{% for n in nodes %}
-<div class="list-item" data-node-id="{{ n.id }}" style="flex-direction:column; align-items:stretch;">
-  <div style="display:flex; align-items:center; gap:8px;">
-    <div class="node-badge" id="badge-{{ n.id }}"></div>
-    <div style="flex:1">
-      <div style="font-weight:bold;">{{ n.short_name or n.id }}</div>
-      <div style="font-size:11px; color:var(--muted);">{{ n.long_name or '' }}</div>
-    </div>
-    <button data-menu-btn="{{ n.id }}" style="background:none; border:none; padding:4px; cursor:pointer; color:var(--muted); flex-shrink:0;">
-      <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24">
-        <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
-      </svg>
-    </button>
+<div x-data="nodesPage()" x-init="init()" class="h-full flex flex-col overflow-hidden">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between px-3 py-2 shrink-0"
+       style="border-bottom:1px solid var(--border);font-size:11px;">
+    <span style="color:var(--accent);font-weight:600;">Nodi</span>
+    <span x-text="nodes.length + ' trovati'" style="color:var(--muted);"></span>
   </div>
-  <div id="detail-{{ n.id }}" style="display:none; padding-top:8px; border-top:1px solid var(--border); margin-top:8px;">
-    <div style="display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:11px; margin-bottom:8px;">
-      <span style="color:var(--muted)">ID</span><span>{{ n.id }}</span>
-      <span style="color:var(--muted)">Nome</span><span>{{ n.long_name or n.short_name or '—' }}</span>
-      <span style="color:var(--muted)">Hardware</span><span>{{ n.hw_model or '—' }}</span>
-      <span style="color:var(--muted)">Firmware</span><span>{{ n.firmware_version or '—' }}</span>
-      {% if n.role %}<span style="color:var(--muted)">Ruolo</span><span>{{ n.role }}</span>{% endif %}
-      {% if n.battery_level is not none %}<span style="color:var(--muted)">Batteria</span><span>{{ n.battery_level }}%</span>{% endif %}
-      {% if n.voltage is not none %}<span style="color:var(--muted)">Voltaggio</span><span>{{ '%.2f'|format(n.voltage) }}V</span>{% endif %}
-      {% if n.snr is not none %}<span style="color:var(--muted)">SNR</span><span>{{ n.snr }} dB</span>{% endif %}
-      {% if n.rssi is not none %}<span style="color:var(--muted)">RSSI</span><span>{{ n.rssi }} dBm</span>{% endif %}
-      {% if n.latitude %}<span style="color:var(--muted)">Posizione</span><span>{{ '%.4f'|format(n.latitude) }}° {{ '%.4f'|format(n.longitude) }}°</span>{% endif %}
-      {% if n.altitude is not none %}<span style="color:var(--muted)">Altitudine</span><span>{{ n.altitude }}m</span>{% endif %}
-      {% if n.last_heard %}<span style="color:var(--muted)">Ultimo contatto</span><span class="rel-time" data-ts="{{ n.last_heard }}"></span>{% endif %}
-      {% if n.hop_count is not none %}<span style="color:var(--muted)">Hop</span><span>{{ n.hop_count }}</span>{% endif %}
-      <span style="color:var(--muted)">Chiave pubblica</span><span id="pubkey-{{ n.id }}" style="font-family:monospace; font-size:10px; word-break:break-all;">—</span>
-    </div>
-    <div style="display:flex; flex-direction:column; gap:4px; border-top:1px solid var(--border); padding-top:6px;">
-      <a href="/messages?open_dm={{ n.id | urlencode }}" style="display:flex; align-items:center; gap:6px; color:var(--text,#ccc); font-size:12px; text-decoration:none;">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
-        Invia DM
-      </a>
-      <button data-req-pos="{{ n.id }}" style="display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--text,#ccc); font-size:12px; text-align:left;">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-        Richiedi posizione
-      </button>
-      <button
-        onclick="(function(btn){fetch('/api/traceroute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({node_id:'{{ n.id }}'})}).then(function(r){return r.json()}).then(function(d){if(d.ok){var a=btn.nextElementSibling;if(a)a.style.display='flex'}})})(this)"
-        style="display:flex;align-items:center;gap:6px;background:none;border:none;padding:4px 0;cursor:pointer;color:var(--text,#ccc);font-size:12px;text-align:left;">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-        </svg>
-        Traceroute
-      </button>
-      <a href="/map?traceroute={{ n.id | urlencode }}"
-         style="display:none;align-items:center;gap:4px;font-size:10px;color:var(--accent);text-decoration:none;margin-top:2px;">
-        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-        </svg>
-        Vedi sulla mappa
-      </a>
-      <div style="border-top:1px solid var(--border); padding-top:4px; margin-top:2px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-        <button data-forget-node="{{ n.id }}" style="display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--danger,#ef9a9a); font-size:12px; text-align:left;">
-          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-          Elimina nodo
-        </button>
-        <label style="display:flex; align-items:center; gap:4px; font-size:11px; cursor:pointer; color:var(--muted);">
-          <input type="checkbox" data-forget-cascade="{{ n.id }}"> anche messaggi e telemetria
-        </label>
+
+  <!-- Node list -->
+  <div class="flex-1 overflow-y-auto">
+    <template x-if="nodes.length === 0">
+      <div class="flex items-center justify-center h-32" style="color:var(--muted);font-size:12px;">
+        Nessun nodo rilevato
       </div>
-    </div>
+    </template>
+
+    <template x-for="node in nodes" :key="node.id">
+      <div class="flex items-center gap-3 px-3 py-2"
+           style="border-bottom:1px solid var(--border);min-height:52px;">
+
+        <!-- Avatar -->
+        <div class="shrink-0 flex items-center justify-center rounded-full text-white font-bold"
+             :style="`width:34px;height:34px;font-size:9px;font-family:monospace;
+                      background:${node.is_local ? '#4a9eff' : (isOnline(node) ? '#4caf50' : '#374151')};
+                      ${node.is_local ? 'box-shadow:0 0 8px #4a9eff' : ''}`"
+             x-text="(node.short_name || node.id).slice(0,6)">
+        </div>
+
+        <!-- Info -->
+        <div class="flex-1 min-w-0">
+          <div class="font-semibold truncate" style="font-size:12px;"
+               x-text="node.long_name || node.short_name || node.id"></div>
+          <div style="font-size:10px;color:var(--muted);"
+               x-text="node.hw_model || ''"></div>
+          <div class="flex gap-3 mt-0.5" style="font-size:10px;color:var(--muted);">
+            <span x-text="node.snr != null ? node.snr + ' dB' : ''"></span>
+            <span x-text="node.battery_level != null ? node.battery_level + '%' : ''"></span>
+            <span x-text="node.hop_count != null ? node.hop_count + ' hop' : ''"></span>
+          </div>
+        </div>
+
+        <!-- Online dot -->
+        <div class="shrink-0 w-2 h-2 rounded-full"
+             :style="`background:${isOnline(node) ? '#4caf50' : '#374151'}`"></div>
+      </div>
+    </template>
   </div>
 </div>
-{% endfor %}
-</div>
+
 <script>
-var _localNodeCoords = null
-
-function _haversineKm(lat1, lon1, lat2, lon2) {
-  var R = 6371
-  var dLat = (lat2 - lat1) * Math.PI / 180
-  var dLon = (lon2 - lon1) * Math.PI / 180
-  var a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
-}
-
-function _relativeTime(ts) {
-  if (!ts) return '—'
-  var now = Date.now() / 1000
-  var diff = now - ts
-  if (diff < 60) return 'adesso'
-  if (diff < 3600) return Math.floor(diff / 60) + ' min fa'
-  if (diff < 86400) return Math.floor(diff / 3600) + ' ore fa'
-  return Math.floor(diff / 86400) + ' giorni fa'
-}
-
-function _formatDistance(km) {
-  if (km < 1) return Math.round(km * 1000) + 'm'
-  return km.toFixed(1) + 'km'
-}
-
-function makeSvgIcon(type) {
-  const ns = 'http://www.w3.org/2000/svg'
-  const svg = document.createElementNS(ns, 'svg')
-  svg.setAttribute('width', '13'); svg.setAttribute('height', '13')
-  svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor')
-  svg.setAttribute('stroke-width', '2'); svg.setAttribute('viewBox', '0 0 24 24')
-  if (type === 'menu') {
-    svg.setAttribute('fill', 'currentColor'); svg.setAttribute('stroke', 'none')
-    ;[['5','12'],['12','12'],['19','12']].forEach(([cx, cy]) => {
-      const c = document.createElementNS(ns, 'circle')
-      c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', '2')
-      svg.appendChild(c)
-    })
-  } else {
-    const paths = {
-      chat:  'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z',
-      pin:   'M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z',
-      trash: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
+function nodesPage() {
+  return {
+    nodes: [],
+    async init() {
+      await this.fetch()
+      setInterval(() => this.fetch(), 10000)
+    },
+    async fetch() {
+      try {
+        const r = await window.fetch('/api/nodes')
+        this.nodes = await r.json()
+      } catch(e) {}
+    },
+    isOnline(node) {
+      if (!node.last_heard) return false
+      return (Date.now() / 1000 - node.last_heard) < 1800
     }
-    const p = document.createElementNS(ns, 'path')
-    p.setAttribute('stroke-linecap', 'round'); p.setAttribute('stroke-linejoin', 'round')
-    p.setAttribute('d', paths[type])
-    svg.appendChild(p)
   }
-  return svg
 }
-
-function renderNodeRow(n) {
-  const existing = document.querySelector('[data-node-id="' + escHtml(n.id) + '"]')
-  const detailWasOpen = existing && document.getElementById('detail-' + n.id)?.style.display === 'block'
-
-  const row = document.createElement('div')
-  row.className = 'list-item'
-  row.dataset.nodeId = n.id
-  row.style.cssText = 'flex-direction:column; align-items:stretch;'
-
-  // Header
-  const header = document.createElement('div')
-  header.style.cssText = 'display:flex; align-items:center; gap:8px;'
-
-  const badge = document.createElement('div')
-  badge.className = 'node-badge'
-  badge.id = 'badge-' + n.id
-
-  const info = document.createElement('div')
-  info.style.flex = '1'
-  const nameEl = document.createElement('div')
-  nameEl.style.fontWeight = 'bold'
-  nameEl.textContent = n.short_name || n.id
-  const longEl = document.createElement('div')
-  longEl.style.cssText = 'font-size:11px; color:var(--muted);'
-  longEl.textContent = n.long_name || ''
-  info.append(nameEl, longEl)
-
-  const menuBtn = document.createElement('button')
-  menuBtn.dataset.menuBtn = n.id
-  menuBtn.style.cssText = 'background:none; border:none; padding:4px; cursor:pointer; color:var(--muted); flex-shrink:0;'
-  menuBtn.appendChild(makeSvgIcon('menu'))
-
-  header.append(badge, info, menuBtn)
-
-  // Detail panel
-  const detail = document.createElement('div')
-  detail.id = 'detail-' + n.id
-  detail.style.cssText = 'display:none; padding-top:8px; border-top:1px solid var(--border); margin-top:8px;'
-
-  // Info grid
-  const grid = document.createElement('div')
-  grid.style.cssText = 'display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:11px; margin-bottom:8px;'
-  const fields = [
-    ['ID', n.id],
-    ['Nome', n.long_name || n.short_name || '—'],
-    ['Hardware', n.hw_model || '—'],
-    ['Firmware', n.firmware_version || '—'],
-  ]
-  if (n.role) fields.push(['Ruolo', n.role])
-  if (n.battery_level != null) fields.push(['Batteria', n.battery_level + '%'])
-  if (n.voltage != null) fields.push(['Voltaggio', n.voltage.toFixed(2) + 'V'])
-  if (n.snr != null) fields.push(['SNR', n.snr + ' dB'])
-  if (n.rssi != null) fields.push(['RSSI', n.rssi + ' dBm'])
-  if (n.latitude != null) fields.push(['Posizione', n.latitude.toFixed(4) + '° ' + n.longitude.toFixed(4) + '°'])
-  if (n.altitude != null) fields.push(['Altitudine', n.altitude + 'm'])
-  if (n.last_heard) {
-    fields.push(['Ultimo contatto', _relativeTime(n.last_heard)])
-  }
-  if (_localNodeCoords && n.latitude != null && n.longitude != null && !n.is_local) {
-    var dist = _haversineKm(_localNodeCoords.lat, _localNodeCoords.lon, n.latitude, n.longitude)
-    fields.push(['Distanza', _formatDistance(dist)])
-  }
-  if (n.hop_count != null) fields.push(['Hop', n.hop_count])
-  fields.push(['Chiave pubblica', '—'])
-  fields.forEach(([label, value]) => {
-    const lEl = document.createElement('span')
-    lEl.style.color = 'var(--muted)'
-    lEl.textContent = label
-    const vEl = document.createElement('span')
-    vEl.textContent = value
-    if (label === 'Chiave pubblica') {
-      vEl.id = 'pubkey-' + n.id
-      vEl.style.cssText = 'font-family:monospace; font-size:10px; word-break:break-all;'
-    }
-    grid.append(lEl, vEl)
-  })
-  detail.appendChild(grid)
-
-  // Actions
-  const actions = document.createElement('div')
-  actions.style.cssText = 'display:flex; flex-direction:column; gap:4px; border-top:1px solid var(--border); padding-top:6px;'
-
-  // DM button
-  const dmBtn = document.createElement('button')
-  dmBtn.style.cssText = 'display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--text,#ccc); font-size:12px; text-align:left;'
-  dmBtn.appendChild(makeSvgIcon('chat'))
-  dmBtn.appendChild(document.createTextNode('Invia DM'))
-  dmBtn.onclick = () => { window.location.href = '/messages?open_dm=' + encodeURIComponent(n.id) }
-  actions.appendChild(dmBtn)
-
-  // Position button
-  const posBtn = document.createElement('button')
-  posBtn.dataset.reqPos = n.id
-  posBtn.style.cssText = 'display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--text,#ccc); font-size:12px; text-align:left;'
-  posBtn.appendChild(makeSvgIcon('pin'))
-  posBtn.appendChild(document.createTextNode('Richiedi posizione'))
-  actions.appendChild(posBtn)
-
-  // Traceroute button
-  var trSvgNs = 'http://www.w3.org/2000/svg'
-  var trBtn = document.createElement('button')
-  trBtn.style.cssText = 'display:flex;align-items:center;gap:6px;background:none;border:none;padding:4px 0;cursor:pointer;color:var(--text,#ccc);font-size:12px;text-align:left;'
-  var trSvg = document.createElementNS(trSvgNs, 'svg')
-  trSvg.setAttribute('width', '13'); trSvg.setAttribute('height', '13')
-  trSvg.setAttribute('fill', 'none'); trSvg.setAttribute('stroke', 'currentColor')
-  trSvg.setAttribute('stroke-width', '2'); trSvg.setAttribute('viewBox', '0 0 24 24')
-  var trPath = document.createElementNS(trSvgNs, 'path')
-  trPath.setAttribute('stroke-linecap', 'round'); trPath.setAttribute('stroke-linejoin', 'round')
-  trPath.setAttribute('d', 'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7')
-  trSvg.appendChild(trPath)
-  trBtn.appendChild(trSvg)
-  trBtn.appendChild(document.createTextNode('Traceroute'))
-
-  var trLink = document.createElement('a')
-  trLink.href = '/map?traceroute=' + encodeURIComponent(n.id)
-  trLink.style.cssText = 'display:none;align-items:center;gap:4px;font-size:10px;color:var(--accent);text-decoration:none;margin-top:2px;'
-  var trLinkSvg = document.createElementNS(trSvgNs, 'svg')
-  trLinkSvg.setAttribute('width', '10'); trLinkSvg.setAttribute('height', '10')
-  trLinkSvg.setAttribute('fill', 'none'); trLinkSvg.setAttribute('stroke', 'currentColor')
-  trLinkSvg.setAttribute('stroke-width', '2'); trLinkSvg.setAttribute('viewBox', '0 0 24 24')
-  var trLinkPath = document.createElementNS(trSvgNs, 'path')
-  trLinkPath.setAttribute('stroke-linecap', 'round'); trLinkPath.setAttribute('stroke-linejoin', 'round')
-  trLinkPath.setAttribute('d', 'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7')
-  trLinkSvg.appendChild(trLinkPath)
-  trLink.appendChild(trLinkSvg)
-  trLink.appendChild(document.createTextNode(' Vedi sulla mappa'))
-
-  trBtn.onclick = function() {
-    fetch('/api/traceroute', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ node_id: n.id }),
-    })
-      .then(function(r) { return r.json() })
-      .then(function(data) {
-        if (data.ok) {
-          trLink.style.display = 'flex'
-          setTimeout(function() { trLink.style.display = 'none' }, 15000)
-        }
-      })
-  }
-
-  actions.appendChild(trBtn)
-  actions.appendChild(trLink)
-
-  // Delete button + cascade
-  const deleteRow = document.createElement('div')
-  deleteRow.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-top:1px solid var(--border); padding-top:4px; margin-top:2px;'
-  const forgetBtn = document.createElement('button')
-  forgetBtn.dataset.forgetNode = n.id
-  forgetBtn.style.cssText = 'display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--danger,#ef9a9a); font-size:12px; text-align:left;'
-  forgetBtn.appendChild(makeSvgIcon('trash'))
-  forgetBtn.appendChild(document.createTextNode('Elimina nodo'))
-  const cascadeLabel = document.createElement('label')
-  cascadeLabel.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:11px; cursor:pointer; color:var(--muted);'
-  const cascadeCheck = document.createElement('input')
-  cascadeCheck.type = 'checkbox'
-  cascadeCheck.dataset.forgetCascade = n.id
-  cascadeLabel.append(cascadeCheck, document.createTextNode(' anche messaggi e telemetria'))
-  deleteRow.append(forgetBtn, cascadeLabel)
-  actions.appendChild(deleteRow)
-
-  detail.appendChild(actions)
-  row.append(header, detail)
-
-  if (existing) {
-    existing.replaceWith(row)
-    if (detailWasOpen) detail.style.display = 'block'
-  } else {
-    document.getElementById('no-nodes')?.remove()
-    document.getElementById('node-list').appendChild(row)
-  }
-  updateBadge(n.id, n.last_heard)
-}
-
-function updateBadge(id, lastHeard) {
-  const badge = document.getElementById('badge-' + id)
-  if (!badge) return
-  const ago = Date.now()/1000 - lastHeard
-  badge.className = 'node-badge ' + (ago < 300 ? 'online' : ago < 1800 ? 'recent' : 'offline')
-}
-
-// Inizializza badge per nodi server-rendered
-{% for n in nodes %}
-updateBadge('{{ n.id }}', {{ n.last_heard or 0 }})
-{% endfor %}
-
-// Imposta coordinate nodo locale dalle righe server-rendered
-{% for n in nodes %}
-{% if n.is_local and n.latitude %}
-_localNodeCoords = { lat: {{ n.latitude }}, lon: {{ n.longitude }} }
-{% endif %}
-{% endfor %}
-
-// Formatta timestamp relativi nelle righe server-rendered
-document.querySelectorAll('.rel-time[data-ts]').forEach(function(el) {
-  el.textContent = _relativeTime(parseInt(el.dataset.ts))
-})
-
-// Aggiorna in tempo reale via WebSocket
-window.addEventListener('node-update', e => renderNodeRow(e.detail))
-window.addEventListener('ws-init', function(e) {
-  var data = e.detail
-  if (data && data.nodes) {
-    var local = data.nodes.find(function(n) { return n.is_local && n.latitude != null })
-    if (local) _localNodeCoords = { lat: local.latitude, lon: local.longitude }
-  }
-})
-
-function loadNodePubKey(nodeId) {
-  const el = document.getElementById('pubkey-' + nodeId)
-  if (!el || (el.textContent !== '—' && el.textContent !== '')) return
-  el.textContent = '...'
-  fetch('/api/keys/' + encodeURIComponent(nodeId))
-    .then(r => r.json())
-    .then(d => { el.textContent = d.public_key || '—' })
-    .catch(() => { el.textContent = '—' })
-}
-
-// Toggle dettaglio e richiesta posizione
-document.getElementById('node-list').addEventListener('click', e => {
-  const reqBtn = e.target.closest('[data-req-pos]')
-  if (reqBtn) {
-    e.stopPropagation()
-    fetch('/send', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ text: '', destination: reqBtn.dataset.reqPos, type: 'position_request' })
-    })
-    return
-  }
-  const forgetBtn = e.target.closest('[data-forget-node]')
-  if (forgetBtn) {
-    e.stopPropagation()
-    const nodeId = forgetBtn.dataset.forgetNode
-    if (!confirm('Dimentica il nodo ' + nodeId + '?')) return
-    const cascadeCheck = document.querySelector('[data-forget-cascade="' + nodeId + '"]')
-    const cascade = cascadeCheck ? cascadeCheck.checked : false
-    fetch('/api/nodes/' + encodeURIComponent(nodeId) + (cascade ? '?cascade=true' : ''), {method: 'DELETE'})
-      .then(r => r.json())
-      .then(data => {
-        if (data.ok) {
-          const row = document.querySelector('[data-node-id="' + nodeId + '"]')
-          if (row) row.remove()
-          if (!document.querySelector('[data-node-id]')) {
-            const msg = document.createElement('div')
-            msg.id = 'no-nodes'
-            msg.style.cssText = 'padding:24px; text-align:center; color:var(--muted); font-size:13px;'
-            msg.textContent = 'Nessun nodo rilevato'
-            document.getElementById('node-list').appendChild(msg)
-          }
-        }
-      })
-    return
-  }
-  const menuBtn = e.target.closest('[data-menu-btn]')
-  if (menuBtn) {
-    e.stopPropagation()
-    const nodeId = menuBtn.dataset.menuBtn
-    const el = document.getElementById('detail-' + nodeId)
-    if (el) {
-      const opening = el.style.display === 'none'
-      el.style.display = opening ? 'block' : 'none'
-      if (opening) loadNodePubKey(nodeId)
-    }
-    return
-  }
-})
 </script>
 {% endblock %}
