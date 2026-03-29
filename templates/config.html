@@ -1,2 +1,260 @@
 {% extends "base.html" %}
-{% block content %}<p>config</p>{% endblock %}
+{% block content %}
+<div x-data="configPage()" style="display:flex;height:100%;overflow:hidden;">
+
+  <!-- SIDEBAR 80px -->
+  <div style="width:80px;border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;background:#0a0d14;">
+    <div style="padding:8px 8px 4px;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Config</div>
+    <template x-for="s in sections" :key="s.id">
+      <div @click="selectSection(s.id)"
+           style="padding:7px 8px;cursor:pointer;font-size:11px;border-left:2px solid transparent;"
+           :style="section === s.id
+             ? 'border-left-color:var(--accent);background:var(--panel);color:var(--accent);font-weight:600;'
+             : 'color:var(--muted);'">
+        <span x-text="s.label"></span>
+      </div>
+    </template>
+  </div>
+
+  <!-- CONTENT AREA -->
+  <div style="flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;">
+
+    <!-- NODO -->
+    <template x-if="section === 'node'">
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);">Nodo locale</span>
+          <span style="font-size:9px;" :style="node.cached ? 'color:var(--muted)' : 'color:#4caf50'"
+                x-text="node.cached ? '◌ dalla cache' : '● board online'"></span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Long name</label>
+            <input x-model="node.long_name" maxlength="36"
+                   style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Short name (max 4)</label>
+            <input x-model="node.short_name" maxlength="4"
+                   style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:80px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Ruolo</label>
+            <select x-model="node.role"
+                    style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+              <option value="CLIENT">Client</option>
+              <option value="CLIENT_MUTE">Client (muto)</option>
+              <option value="ROUTER">Router</option>
+              <option value="ROUTER_CLIENT">Router+Client</option>
+              <option value="REPEATER">Repeater</option>
+              <option value="TRACKER">Tracker</option>
+            </select>
+          </div>
+          <button @click="saveNode()"
+                  :disabled="node.cached || saving.node"
+                  style="padding:10px;font-size:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;"
+                  :style="node.cached ? 'background:var(--border);color:var(--muted);cursor:not-allowed;' : 'background:var(--accent);color:#fff;'"
+                  x-text="saving.node ? 'Salvataggio...' : (node.cached ? 'Board non connessa' : 'Salva nodo')">
+          </button>
+          <div x-show="status.node" x-text="status.node" style="font-size:10px;"
+               :style="status.node && status.node.startsWith('✓') ? 'color:#4caf50' : 'color:#ef4444'"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- LORA -->
+    <template x-if="section === 'lora'">
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);">LoRa</span>
+          <span style="font-size:9px;" :style="lora.cached ? 'color:var(--muted)' : 'color:#4caf50'"
+                x-text="lora.cached ? '◌ dalla cache' : '● board online'"></span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Regione</label>
+            <select x-model="lora.region"
+                    style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+              <option value="EU_868">EU 868MHz</option>
+              <option value="US">US 915MHz</option>
+              <option value="EU_433">EU 433MHz</option>
+              <option value="CN">CN 470MHz</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Preset modem</label>
+            <select x-model="lora.modem_preset"
+                    style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+              <option value="LONG_FAST">Long Fast</option>
+              <option value="LONG_SLOW">Long Slow</option>
+              <option value="MEDIUM_FAST">Medium Fast</option>
+              <option value="SHORT_FAST">Short Fast</option>
+            </select>
+          </div>
+          <button @click="saveLora()"
+                  :disabled="lora.cached || saving.lora"
+                  style="padding:10px;font-size:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;"
+                  :style="lora.cached ? 'background:var(--border);color:var(--muted);cursor:not-allowed;' : 'background:var(--accent);color:#fff;'"
+                  x-text="saving.lora ? 'Salvataggio...' : (lora.cached ? 'Board non connessa' : 'Salva LoRa')">
+          </button>
+          <div x-show="status.lora" x-text="status.lora" style="font-size:10px;"
+               :style="status.lora && status.lora.startsWith('✓') ? 'color:#4caf50' : 'color:#ef4444'"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- CANALI -->
+    <template x-if="section === 'channels'">
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);">Canali</span>
+          <span style="font-size:9px;" :style="channelsCached ? 'color:var(--muted)' : 'color:#4caf50'"
+                x-text="channelsCached ? '◌ dalla cache' : '● board online'"></span>
+        </div>
+        <template x-if="channels.length === 0">
+          <p style="font-size:11px;color:var(--muted);">Nessun canale — board offline o non configurata.</p>
+        </template>
+        <template x-for="ch in channels" :key="ch.index">
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:6px;" x-text="'CH ' + ch.index + ' — ' + ch.role"></div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <label style="font-size:10px;color:var(--muted);">Nome</label>
+                <input x-model="ch.name" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:12px;">
+              </div>
+              <div style="display:flex;flex-direction:column;gap:2px;">
+                <label style="font-size:10px;color:var(--muted);">PSK (base64, lascia vuoto per invariato)</label>
+                <input x-model="ch.psk_b64" placeholder="lascia vuoto = non cambiare"
+                       style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:11px;">
+              </div>
+              <button @click="saveChannel(ch.index)"
+                      :disabled="channelsCached"
+                      style="padding:8px;font-size:11px;border:none;border-radius:4px;cursor:pointer;"
+                      :style="channelsCached ? 'background:var(--border);color:var(--muted);' : 'background:var(--accent);color:#fff;'"
+                      x-text="'Salva CH ' + ch.index">
+              </button>
+            </div>
+          </div>
+        </template>
+        <div x-show="status.channels" x-text="status.channels" style="font-size:10px;"
+             :style="status.channels && status.channels.startsWith('✓') ? 'color:#4caf50' : 'color:#ef4444'"></div>
+      </div>
+    </template>
+
+    <!-- GPIO (placeholder — Task 5) -->
+    <template x-if="section === 'gpio'">
+      <div><p style="font-size:11px;color:var(--muted);">GPIO — in arrivo</p></div>
+    </template>
+
+    <!-- TEMA (placeholder — Task 5) -->
+    <template x-if="section === 'theme'">
+      <div><p style="font-size:11px;color:var(--muted);">Tema — in arrivo</p></div>
+    </template>
+
+    <!-- WIFI (placeholder — Task 5) -->
+    <template x-if="section === 'wifi'">
+      <div><p style="font-size:11px;color:var(--muted);">WiFi — in arrivo</p></div>
+    </template>
+
+  </div><!-- /CONTENT -->
+
+</div><!-- /x-data -->
+
+<script>
+function configPage() {
+  return {
+    section: 'node',
+    sections: [
+      { id: 'node',     label: 'Nodo' },
+      { id: 'lora',     label: 'LoRa' },
+      { id: 'channels', label: 'Canali' },
+      { id: 'gpio',     label: 'GPIO' },
+      { id: 'theme',    label: 'Tema' },
+      { id: 'wifi',     label: 'WiFi' },
+    ],
+
+    node: { long_name: '', short_name: '', role: 'CLIENT', cached: true },
+    lora: { region: 'EU_868', modem_preset: 'LONG_FAST', cached: true },
+    channels: [],
+    channelsCached: true,
+
+    saving: { node: false, lora: false, channels: false },
+    status: { node: '', lora: '', channels: '' },
+
+    async init() {
+      await this.loadNode()
+    },
+
+    async selectSection(s) {
+      this.section = s
+      if (s === 'node' && !this.node.long_name) await this.loadNode()
+      if (s === 'lora' && !this.lora.region)    await this.loadLora()
+      if (s === 'channels' && this.channels.length === 0) await this.loadChannels()
+    },
+
+    async loadNode() {
+      const r = await fetch('/api/config/node')
+      if (r.ok) this.node = await r.json()
+    },
+
+    async loadLora() {
+      const r = await fetch('/api/config/lora')
+      if (r.ok) this.lora = await r.json()
+    },
+
+    async loadChannels() {
+      const r = await fetch('/api/config/channels')
+      if (r.ok) {
+        const data = await r.json()
+        this.channels = data.channels ?? data
+        this.channelsCached = data.cached ?? false
+      }
+    },
+
+    async saveNode() {
+      this.saving.node = true
+      this.status.node = ''
+      try {
+        const r = await fetch('/api/config/node', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ long_name: this.node.long_name, short_name: this.node.short_name, role: this.node.role })
+        })
+        const data = await r.json()
+        this.status.node = r.ok ? '✓ Salvato' : '✗ ' + (data.error || 'Errore')
+      } finally {
+        this.saving.node = false
+      }
+    },
+
+    async saveLora() {
+      this.saving.lora = true
+      this.status.lora = ''
+      try {
+        const r = await fetch('/api/config/lora', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ region: this.lora.region, modem_preset: this.lora.modem_preset })
+        })
+        const data = await r.json()
+        this.status.lora = r.ok ? '✓ Salvato' : '✗ ' + (data.error || 'Errore')
+      } finally {
+        this.saving.lora = false
+      }
+    },
+
+    async saveChannel(idx) {
+      const ch = this.channels.find(c => c.index === idx)
+      if (!ch) return
+      const r = await fetch(`/api/config/channels/${idx}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: ch.name, psk_b64: ch.psk_b64 || '' })
+      })
+      const data = await r.json()
+      this.status.channels = r.ok ? `✓ CH${idx} salvato` : '✗ ' + (data.error || 'Errore')
+    },
+  }
+}
+</script>
+{% endblock %}
