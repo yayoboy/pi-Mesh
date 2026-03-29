@@ -243,7 +243,7 @@ def _on_receive(packet, interface) -> None:
 
 async def _command_worker() -> None:
     """Consume commands from _command_queue and execute them serially via executor."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     while True:
         cmd_fn = await _command_queue.get()
         try:
