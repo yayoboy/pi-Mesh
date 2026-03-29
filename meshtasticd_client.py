@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 # --- State ---
 _interface      = None
 _connected      = False
+_local_id: str  = ''
 _node_cache: dict[str, dict] = {}
 _last_node_fetch: float = 0.0
 _log_queue: deque = deque(maxlen=500)
@@ -75,20 +76,12 @@ def _refresh_node_cache() -> None:
                 'snr':           info.get('snr'),
                 'hop_count':     info.get('hopsAway'),
                 'battery_level': metrics.get('batteryLevel'),
-                'is_local':      node_id == _get_local_id(),
+                'is_local':      node_id == _local_id,
                 'raw_json':      str(info),
             }
         _last_node_fetch = time.time()
     except Exception as e:
         logger.warning(f'Node cache refresh failed: {e}')
-
-
-def _get_local_id() -> str:
-    try:
-        num = _interface.myInfo.myNodeNum
-        return f'!{num:08x}'
-    except Exception:
-        return ''
 
 
 def _on_receive(packet, interface) -> None:
@@ -114,7 +107,7 @@ def _on_receive(packet, interface) -> None:
 
 
 async def connect() -> None:
-    global _interface, _connected
+    global _interface, _connected, _local_id
     import meshtastic.serial_interface
     from pubsub import pub
     backoff = 15
@@ -126,8 +119,10 @@ async def connect() -> None:
             _connected = True
             backoff = 15
             logger.warning(f'Connected to board at {cfg.SERIAL_PATH}')
-            # Wait for myInfo to be populated before first cache refresh
+            # Wait for myInfo to be populated before reading local ID
             await asyncio.sleep(3)
+            _local_id = f'!{_interface.localNode.nodeNum:08x}'
+            logger.warning(f'Local node ID: {_local_id}')
             # Keep alive — poll every 30s
             while _connected:
                 _refresh_node_cache()
