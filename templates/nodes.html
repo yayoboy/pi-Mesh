@@ -123,7 +123,7 @@
             <!-- Online dot + chevron -->
             <div class="shrink-0 flex flex-col items-center gap-1">
               <div class="w-2 h-2 rounded-full"
-                   :style="`background:${isOnline(node) ? '#4caf50' : '#374151'}`"></div>
+                   :style="`background:${node.is_local ? '#4a9eff' : (isOnline(node) ? '#4caf50' : '#374151')}`"></div>
               <svg :style="`transform:${selectedNodeId === node.id ? 'rotate(180deg)' : 'none'};transition:transform 0.2s;`"
                    width="12" height="12" fill="none" stroke="var(--muted)" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -307,8 +307,8 @@ function nodesPage() {
 
     async init() {
       await this.fetchNodes()
-      setInterval(() => this.fetchNodes(), 10000)
-      window.addEventListener('node-update', (e) => {
+      this._interval = setInterval(() => this.fetchNodes(), 10000)
+      this._nodeUpdateHandler = (e) => {
         const updated = e.detail
         const idx = this.nodes.findIndex(n => n.id === updated.id)
         if (idx >= 0) {
@@ -316,7 +316,13 @@ function nodesPage() {
         } else {
           this.nodes.push(updated)
         }
-      })
+      }
+      window.addEventListener('node-update', this._nodeUpdateHandler)
+    },
+
+    destroy() {
+      clearInterval(this._interval)
+      window.removeEventListener('node-update', this._nodeUpdateHandler)
     },
 
     async fetchNodes() {
