@@ -275,3 +275,108 @@ async def test_get_dm_messages_endpoint(mock_client):
     data = r.json()
     assert isinstance(data, list)
     assert data[0]['text'] == 'hey'
+
+
+@pytest.mark.asyncio
+async def test_config_page_returns_200(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    with patch('database.get_gpio_devices', new_callable=AsyncMock, return_value=[]):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.get('/config')
+    assert r.status_code == 200
+    assert 'text/html' in r.headers['content-type']
+
+
+@pytest.mark.asyncio
+async def test_get_node_config_endpoint(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    with patch('meshtasticd_client.get_node_config', new_callable=AsyncMock,
+               return_value={'long_name': 'pi', 'short_name': 'PI', 'role': 'CLIENT', 'cached': False}):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.get('/api/config/node')
+    assert r.status_code == 200
+    assert r.json()['long_name'] == 'pi'
+
+
+@pytest.mark.asyncio
+async def test_get_lora_config_endpoint(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    with patch('meshtasticd_client.get_lora_config', new_callable=AsyncMock,
+               return_value={'region': 'EU_868', 'modem_preset': 'LONG_FAST', 'cached': False}):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.get('/api/config/lora')
+    assert r.status_code == 200
+    assert r.json()['region'] == 'EU_868'
+
+
+@pytest.mark.asyncio
+async def test_get_gpio_devices_endpoint(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    with patch('database.get_gpio_devices', new_callable=AsyncMock, return_value=[
+        {'id': 1, 'type': 'i2c_sensor', 'name': 'BME280', 'enabled': 1,
+         'pin_a': None, 'pin_b': None, 'pin_sw': None, 'i2c_bus': 1,
+         'i2c_address': '0x76', 'sensor_type': 'BME280', 'action': None, 'config_json': '{}'}
+    ]):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.get('/api/config/gpio')
+    assert r.status_code == 200
+    assert r.json()[0]['name'] == 'BME280'
+
+
+@pytest.mark.asyncio
+async def test_add_gpio_device_endpoint(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    with patch('database.add_gpio_device', new_callable=AsyncMock, return_value=1):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.post('/api/config/gpio', json={
+                'type': 'buzzer', 'name': 'Buzzer', 'enabled': 1,
+                'pin_a': 18, 'pin_b': None, 'pin_sw': None, 'i2c_bus': 1,
+                'i2c_address': None, 'sensor_type': None, 'action': None, 'config_json': '{}'
+            })
+    assert r.status_code == 200
+    assert r.json()['id'] == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_gpio_device_endpoint(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    with patch('database.delete_gpio_device', new_callable=AsyncMock):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.delete('/api/config/gpio/1')
+    assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_i2c_scan_endpoint(mock_client):
+    from main import app
+    from unittest.mock import patch
+    fake_output = (
+        "     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n"
+        "00:          -- -- -- -- -- -- -- -- -- -- -- -- -- \n"
+        "10: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- \n"
+        "20: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- \n"
+        "30: -- -- -- -- -- -- -- -- -- -- -- -- 3c -- -- -- \n"
+        "40: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- \n"
+        "50: -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- \n"
+        "60: -- -- -- -- -- -- -- -- 68 -- -- -- -- -- -- -- \n"
+        "70: -- -- -- -- -- -- 76 --                         \n"
+    )
+    import subprocess
+    with patch('subprocess.run') as mock_run:
+        mock_run.return_value = type('R', (), {'stdout': fake_output, 'returncode': 0})()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.get('/api/config/i2c-scan?bus=1')
+    assert r.status_code == 200
+    devices = r.json()
+    addrs = [d['address'] for d in devices]
+    assert '0x3c' in addrs
+    assert '0x68' in addrs
+    assert '0x76' in addrs
+    ds = next(d for d in devices if d['address'] == '0x68')
+    assert ds['known_device'] == 'DS3231'

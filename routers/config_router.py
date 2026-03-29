@@ -1,0 +1,264 @@
+# routers/config_router.py
+import subprocess
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
+
+import config as cfg
+import database
+import meshtasticd_client
+
+router = APIRouter()
+templates = Jinja2Templates(directory='templates')
+
+# I2C address lookup table
+_I2C_KNOWN = {
+    '0x76': 'BME280', '0x77': 'BMP280/BME280',
+    '0x68': 'DS3231', '0x6f': 'DS1307',
+    '0x3c': 'SSD1306', '0x3d': 'SSD1306',
+    '0x44': 'SHT31', '0x45': 'SHT31',
+    '0x38': 'AHT20', '0x40': 'HTU21D',
+}
+
+
+@router.get('/config', response_class=HTMLResponse)
+async def config_page(request: Request):
+    gpio = await database.get_gpio_devices(cfg.DB_PATH)
+    return templates.TemplateResponse(request, 'config.html', {
+        'active_tab': 'config',
+        'gpio_devices': gpio,
+    })
+
+
+@router.get('/api/config/node')
+async def get_node_config():
+    return await meshtasticd_client.get_node_config(cfg.DB_PATH)
+
+
+class NodeConfigRequest(BaseModel):
+    long_name: str
+    short_name: str
+    role: str
+
+
+@router.post('/api/config/node')
+async def post_node_config(body: NodeConfigRequest):
+    try:
+        await meshtasticd_client.set_node_config(body.long_name, body.short_name, body.role)
+        return {'ok': True}
+    except RuntimeError as e:
+        return JSONResponse({'error': str(e)}, status_code=503)
+
+
+@router.get('/api/config/lora')
+async def get_lora_config():
+    return await meshtasticd_client.get_lora_config(cfg.DB_PATH)
+
+
+class LoraConfigRequest(BaseModel):
+    region: str
+    modem_preset: str
+
+
+@router.post('/api/config/lora')
+async def post_lora_config(body: LoraConfigRequest):
+    try:
+        await meshtasticd_client.set_lora_config(body.region, body.modem_preset)
+        return {'ok': True}
+    except RuntimeError as e:
+        return JSONResponse({'error': str(e)}, status_code=503)
+
+
+@router.get('/api/config/channels')
+async def get_channels():
+    return await meshtasticd_client.get_channels(cfg.DB_PATH)
+
+
+class ChannelRequest(BaseModel):
+    name: str
+    psk_b64: str = ''
+
+
+@router.post('/api/config/channels/{idx}')
+async def post_channel(idx: int, body: ChannelRequest):
+    try:
+        await meshtasticd_client.set_channel(idx, body.name, body.psk_b64)
+        return {'ok': True}
+    except RuntimeError as e:
+        return JSONResponse({'error': str(e)}, status_code=503)
+
+
+@router.get('/api/config/gpio')
+async def get_gpio():
+    return await database.get_gpio_devices(cfg.DB_PATH)
+
+
+class GpioDeviceRequest(BaseModel):
+    type: str
+    name: str
+    enabled: int = 1
+    pin_a: int | None = None
+    pin_b: int | None = None
+    pin_sw: int | None = None
+    i2c_bus: int = 1
+    i2c_address: str | None = None
+    sensor_type: str | None = None
+    action: str | None = None
+    config_json: str = '{}'
+
+
+@router.post('/api/config/gpio')
+async def add_gpio(body: GpioDeviceRequest):
+    dev_id = await database.add_gpio_device(cfg.DB_PATH, body.model_dump())
+    return {'id': dev_id}
+
+
+@router.put('/api/config/gpio/{dev_id}')
+async def update_gpio(dev_id: int, body: GpioDeviceRequest):
+    await database.update_gpio_device(cfg.DB_PATH, dev_id, body.model_dump())
+    return {'ok': True}
+
+
+@router.delete('/api/config/gpio/{dev_id}')
+async def delete_gpio(dev_id: int):
+    await database.delete_gpio_device(cfg.DB_PATH, dev_id)
+    return {'ok': True}
+
+
+@router.post('/api/config/gpio/{dev_id}/test')
+async def test_gpio(dev_id: int):
+    devices = await database.get_gpio_devices(cfg.DB_PATH)
+    dev = next((d for d in devices if d['id'] == dev_id), None)
+    if dev is None:
+        return JSONResponse({'error': 'Device not found'}, status_code=404)
+    try:
+        result = _test_device(dev)
+        return {'ok': True, 'result': result}
+    except Exception as e:
+        return JSONResponse({'ok': False, 'error': str(e)}, status_code=500)
+
+
+def _test_device(dev: dict) -> str:
+    dtype = dev['type']
+    if dtype in ('i2c_sensor', 'rtc'):
+        import smbus2
+        bus = smbus2.SMBus(dev['i2c_bus'])
+        addr = int(dev['i2c_address'], 16)
+        val = bus.read_byte(addr)
+        bus.close()
+        return f'read byte: 0x{val:02x}'
+    elif dtype == 'buzzer':
+        import RPi.GPIO as GPIO
+        pin = dev['pin_a']
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(pin, GPIO.OUT)
+        GPIO.output(pin, GPIO.HIGH)
+        import time
+        time.sleep(0.2)
+        GPIO.output(pin, GPIO.LOW)
+        GPIO.cleanup(pin)
+        return 'buzz OK'
+    elif dtype == 'led':
+        import RPi.GPIO as GPIO
+        pin = dev['pin_a']
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(pin, GPIO.OUT)
+        for _ in range(3):
+            GPIO.output(pin, GPIO.HIGH)
+            import time; time.sleep(0.1)
+            GPIO.output(pin, GPIO.LOW)
+            time.sleep(0.1)
+        GPIO.cleanup(pin)
+        return 'blink OK'
+    elif dtype == 'encoder':
+        import RPi.GPIO as GPIO
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(dev['pin_a'], GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        GPIO.setup(dev['pin_b'], GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        a = GPIO.input(dev['pin_a'])
+        b = GPIO.input(dev['pin_b'])
+        GPIO.cleanup([dev['pin_a'], dev['pin_b']])
+        return f'pin_a={a} pin_b={b}'
+    elif dtype == 'button':
+        import RPi.GPIO as GPIO
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(dev['pin_a'], GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        val = GPIO.input(dev['pin_a'])
+        GPIO.cleanup(dev['pin_a'])
+        return f'state={val}'
+    return 'unknown type'
+
+
+def _parse_i2cdetect(output: str) -> list[dict]:
+    """Parse i2cdetect -y N output into list of {address, known_device}."""
+    found = []
+    for line in output.splitlines():
+        parts = line.split()
+        if not parts or not parts[0].endswith(':'):
+            continue
+        row_base = int(parts[0].rstrip(':'), 16)
+        for col, cell in enumerate(parts[1:]):
+            if cell not in ('--', 'UU') and len(cell) == 2:
+                try:
+                    addr_int = row_base + col
+                    addr_str = f'0x{addr_int:02x}'
+                    known = _I2C_KNOWN.get(addr_str, '')
+                    found.append({'address': addr_str, 'known_device': known})
+                except ValueError:
+                    pass
+    return found
+
+
+@router.get('/api/config/i2c-scan')
+async def i2c_scan(bus: int = 1):
+    try:
+        result = subprocess.run(
+            ['i2cdetect', '-y', str(bus)],
+            capture_output=True, text=True, timeout=5
+        )
+        return _parse_i2cdetect(result.stdout)
+    except FileNotFoundError:
+        return JSONResponse({'error': 'i2cdetect not found — install i2c-tools'}, status_code=500)
+    except subprocess.TimeoutExpired:
+        return JSONResponse({'error': 'i2cdetect timeout'}, status_code=500)
+
+
+@router.get('/api/config/wifi/scan')
+async def wifi_scan():
+    try:
+        result = subprocess.run(
+            ['nmcli', '-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list'],
+            capture_output=True, text=True, timeout=10
+        )
+        networks = []
+        for line in result.stdout.splitlines():
+            parts = line.split(':')
+            if len(parts) >= 3 and parts[0]:
+                networks.append({
+                    'ssid': parts[0],
+                    'signal': int(parts[1]) if parts[1].isdigit() else 0,
+                    'security': parts[2],
+                })
+        return networks
+    except FileNotFoundError:
+        return JSONResponse({'error': 'nmcli not found'}, status_code=500)
+
+
+class WifiConnectRequest(BaseModel):
+    ssid: str
+    password: str
+
+
+@router.post('/api/config/wifi/connect')
+async def wifi_connect(body: WifiConnectRequest):
+    try:
+        result = subprocess.run(
+            ['nmcli', 'dev', 'wifi', 'connect', body.ssid, 'password', body.password],
+            capture_output=True, text=True, timeout=30
+        )
+        if result.returncode == 0:
+            return {'ok': True}
+        return JSONResponse({'error': result.stderr.strip()}, status_code=500)
+    except FileNotFoundError:
+        return JSONResponse({'error': 'nmcli not found'}, status_code=500)

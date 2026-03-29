@@ -7,13 +7,6 @@ router = APIRouter()
 templates = Jinja2Templates(directory='templates')
 
 
-@router.get('/config', response_class=HTMLResponse)
-async def config_page(request: Request):
-    return templates.TemplateResponse(request, 'placeholder.html', {
-        'active_tab': 'config', 'page_title': 'Configurazione'
-    })
-
-
 @router.get('/metrics', response_class=HTMLResponse)
 async def metrics_page(request: Request):
     return templates.TemplateResponse(request, 'placeholder.html', {
