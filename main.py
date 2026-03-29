@@ -17,11 +17,26 @@ logging.basicConfig(level=getattr(logging, cfg.LOG_LEVEL, logging.WARNING))
 from routers import nodes, map_router, log_router, placeholders, commands, ws_router
 
 
+async def _broadcast_task() -> None:
+    """Read events from meshtasticd_client event queue and broadcast to all WS clients."""
+    queue = meshtasticd_client.get_event_queue()
+    while True:
+        try:
+            event = queue.get_nowait()
+            await ws_router.manager.broadcast(event)
+        except asyncio.QueueEmpty:
+            await asyncio.sleep(0.05)
+        except Exception as e:
+            logging.getLogger(__name__).warning(f'Broadcast task error: {e}')
+            await asyncio.sleep(0.1)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await database.init(cfg.DB_PATH)
     await meshtasticd_client.load_nodes_from_db()    # populate cache from DB before board connects
     asyncio.create_task(meshtasticd_client.connect())
+    asyncio.create_task(_broadcast_task())
     yield
     await meshtasticd_client.disconnect()
 
