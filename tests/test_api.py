@@ -130,7 +130,8 @@ async def test_post_request_position_returns_requested(mock_client):
 async def test_post_send_text_returns_sent(mock_client):
     from main import app
     from unittest.mock import AsyncMock, patch
-    with patch('meshtasticd_client.send_text', new_callable=AsyncMock) as mock_st:
+    with patch('meshtasticd_client.send_text', new_callable=AsyncMock) as mock_st, \
+         patch('database.save_message', new_callable=AsyncMock) as mock_save:
         async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
             r = await ac.post('/api/messages/send', json={
                 'text': 'Hello',
@@ -140,6 +141,7 @@ async def test_post_send_text_returns_sent(mock_client):
     assert r.status_code == 200
     assert r.json()['status'] == 'sent'
     mock_st.assert_called_once_with('Hello', '!aabbccdd', 0)
+    mock_save.assert_called_once()
 
 
 @pytest.mark.asyncio

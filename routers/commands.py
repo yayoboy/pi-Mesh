@@ -2,6 +2,9 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import meshtasticd_client
+import database
+import config as cfg
+import time
 
 router = APIRouter()
 
@@ -41,6 +44,11 @@ async def post_send_text(body: SendTextRequest):
     if not meshtasticd_client.is_connected():
         raise HTTPException(503, detail='board not connected')
     await meshtasticd_client.send_text(body.text, body.to, body.channel)
+    local_id = meshtasticd_client._local_id or '!local'
+    await database.save_message(
+        cfg.DB_PATH, local_id, body.channel, body.text,
+        int(time.time()), True, None, None, body.to
+    )
     return {'status': 'sent'}
 
 

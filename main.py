@@ -34,6 +34,7 @@ async def _broadcast_task() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await database.init(cfg.DB_PATH)
+    await database.cleanup_old_messages(cfg.DB_PATH, days=30)
     await meshtasticd_client.load_nodes_from_db()    # populate cache from DB before board connects
     asyncio.create_task(meshtasticd_client.connect())
     asyncio.create_task(_broadcast_task())
