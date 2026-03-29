@@ -56,6 +56,29 @@ CREATE TABLE IF NOT EXISTS custom_markers (
     latitude REAL NOT NULL,
     longitude REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS config_cache (
+    section    TEXT NOT NULL,
+    key        TEXT NOT NULL DEFAULT 'data',
+    value      TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (section, key)
+);
+
+CREATE TABLE IF NOT EXISTS gpio_devices (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    type         TEXT NOT NULL,
+    name         TEXT NOT NULL,
+    enabled      INTEGER DEFAULT 1,
+    pin_a        INTEGER,
+    pin_b        INTEGER,
+    pin_sw       INTEGER,
+    i2c_bus      INTEGER DEFAULT 1,
+    i2c_address  TEXT,
+    sensor_type  TEXT,
+    action       TEXT,
+    config_json  TEXT DEFAULT '{}'
+);
 """
 
 
@@ -329,4 +352,73 @@ async def mark_dm_read(db_path: str, peer_id: str) -> None:
                ON CONFLICT(peer_id) DO UPDATE SET last_read_ts = excluded.last_read_ts''',
             (peer_id, int(time.time()))
         )
+        await db.commit()
+
+
+async def get_config_cache(db_path: str, section: str) -> dict | None:
+    """Return cached config for section, or None if not cached."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            'SELECT value FROM config_cache WHERE section = ? AND key = ?',
+            (section, 'data')
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        return json.loads(row['value'])
+
+
+async def set_config_cache(db_path: str, section: str, data: dict) -> None:
+    """Upsert config cache for section."""
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            'INSERT INTO config_cache (section, key, value, updated_at) VALUES (?, ?, ?, ?)'
+            ' ON CONFLICT(section, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at',
+            (section, 'data', json.dumps(data), int(time.time()))
+        )
+        await db.commit()
+
+
+async def get_gpio_devices(db_path: str) -> list[dict]:
+    """Return all GPIO devices."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute('SELECT * FROM gpio_devices ORDER BY id')
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def add_gpio_device(db_path: str, device: dict) -> int:
+    """Insert a new GPIO device. Returns new id."""
+    async with aiosqlite.connect(db_path) as db:
+        cur = await db.execute(
+            '''INSERT INTO gpio_devices
+               (type, name, enabled, pin_a, pin_b, pin_sw, i2c_bus, i2c_address,
+                sensor_type, action, config_json)
+               VALUES (:type, :name, :enabled, :pin_a, :pin_b, :pin_sw, :i2c_bus,
+                       :i2c_address, :sensor_type, :action, :config_json)''',
+            device
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def update_gpio_device(db_path: str, device_id: int, device: dict) -> None:
+    """Update an existing GPIO device."""
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            '''UPDATE gpio_devices SET
+               type=:type, name=:name, enabled=:enabled, pin_a=:pin_a, pin_b=:pin_b,
+               pin_sw=:pin_sw, i2c_bus=:i2c_bus, i2c_address=:i2c_address,
+               sensor_type=:sensor_type, action=:action, config_json=:config_json
+               WHERE id=:id''',
+            {**device, 'id': device_id}
+        )
+        await db.commit()
+
+
+async def delete_gpio_device(db_path: str, device_id: int) -> None:
+    """Delete a GPIO device."""
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute('DELETE FROM gpio_devices WHERE id = ?', (device_id,))
         await db.commit()
