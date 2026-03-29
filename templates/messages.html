@@ -1,69 +1,97 @@
 {% extends "base.html" %}
 {% block content %}
-<div style="display:flex; height:100%; overflow:hidden;">
+<div x-data="messagesPage()" style="display:flex;height:100%;overflow:hidden;">
 
-  <!-- SIDEBAR LEFT (130px) -->
-  <div style="width:130px; border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; overflow:hidden;">
-    <div style="padding:8px 6px 4px; font-size:10px; color:var(--accent); font-weight:bold; text-transform:uppercase; letter-spacing:.06em;">Conversazioni</div>
+  <!-- SIDEBAR LEFT 130px -->
+  <div style="width:130px;border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;">
+    <div style="padding:8px 6px 4px;font-size:10px;color:var(--accent);font-weight:bold;text-transform:uppercase;letter-spacing:.06em;">Conv</div>
 
     <!-- Broadcast entry -->
-    <div id="conv-broadcast" class="conv-item" onclick="selectConv('broadcast', null)"
-         style="padding:5px 8px; display:flex; align-items:center; gap:5px; cursor:pointer; font-size:11px; border-left:2px solid transparent;">
-      <!-- megaphone SVG Heroicons inline -->
+    <div @click="selectConv('broadcast', null)" style="padding:5px 8px;display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;"
+         :style="conv === 'broadcast' ? 'border-left:2px solid var(--accent);background:var(--panel)' : 'border-left:2px solid transparent'">
       <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/>
       </svg>
       <span>Broadcast</span>
     </div>
 
-    <div style="height:1px; background:var(--border); margin:4px 6px;"></div>
-    <div style="padding:2px 8px 4px; font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em;">Diretti</div>
+    <div style="height:1px;background:var(--border);margin:4px 6px;"></div>
+    <div style="padding:2px 8px 4px;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Diretti</div>
 
-    <!-- DM thread list (populated by JS) -->
-    <div id="dm-thread-list" style="flex:1; overflow-y:auto;"></div>
+    <!-- DM thread list -->
+    <div style="flex:1;overflow-y:auto;">
+      <template x-for="thread in dmThreads" :key="thread.peer_id">
+        <div @click="selectConv('dm', thread.peer_id)"
+             style="padding:5px 8px;display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;"
+             :style="conv === thread.peer_id ? 'border-left:2px solid var(--accent);background:var(--panel)' : 'border-left:2px solid transparent'">
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" x-text="thread.short_name || thread.peer_id"></span>
+          <span x-show="thread.unread > 0" style="width:7px;height:7px;border-radius:50%;background:#4a9eff;flex-shrink:0;"></span>
+        </div>
+      </template>
+    </div>
   </div>
 
   <!-- THREAD AREA RIGHT -->
-  <div style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+
     <!-- Thread header -->
-    <div id="thread-header" style="padding:6px 10px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; flex-shrink:0;">
-      <span id="thread-title" style="font-weight:bold; font-size:12px;">Broadcast</span>
-      <span id="thread-sub" style="font-size:10px; color:var(--muted);">Canale 0 · tutti i nodi</span>
-      <div style="margin-left:auto;">
-        <select id="ch-select" style="font-size:11px; background:var(--panel); color:var(--text,#ccc); border:1px solid var(--border); border-radius:3px; padding:2px 4px;" onchange="reloadBroadcast()">
-          <option value="0">CH 0</option>
-          <option value="1">CH 1</option>
-          <option value="2">CH 2</option>
-          <option value="3">CH 3</option>
-          <option value="4">CH 4</option>
-          <option value="5">CH 5</option>
-          <option value="6">CH 6</option>
-          <option value="7">CH 7</option>
+    <div style="padding:6px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;">
+      <span x-text="convTitle" style="font-weight:bold;font-size:12px;"></span>
+      <!-- Channel selector — broadcast only -->
+      <div x-show="conv === 'broadcast'" style="display:flex;align-items:center;gap:3px;">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--muted)">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 5.5A3.5 3.5 0 018.5 2H12v7H8.5A3.5 3.5 0 015 5.5zm7 0V2h3.5A3.5 3.5 0 0119 5.5v0A3.5 3.5 0 0115.5 9H12V5.5zm0 7v-3.5h3.5A3.5 3.5 0 0119 12.5v0a3.5 3.5 0 01-3.5 3.5H12zm0 0v3.5H8.5A3.5 3.5 0 015 18.5v0A3.5 3.5 0 018.5 15H12z"/>
+        </svg>
+        <select x-model.number="channel" @change="loadMessages()" style="font-size:11px;background:var(--panel);color:var(--text,#ccc);border:1px solid var(--border);border-radius:3px;padding:2px 4px;">
+          <template x-for="i in [0,1,2,3,4,5,6,7]">
+            <option :value="i" x-text="i"></option>
+          </template>
         </select>
       </div>
+      <!-- Trash icon — clear history -->
+      <button @click="clearHistory()" title="Pulisci cronologia"
+              style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--muted);padding:2px;line-height:0;">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+        </svg>
+      </button>
     </div>
 
     <!-- Message list -->
-    <div id="msg-list" style="flex:1; overflow-y:auto; padding:4px 8px;">
-      {% for m in messages|reverse %}
-      <div class="msg-row {% if m.is_outgoing %}outgoing{% endif %}" data-msg-id="{{ m.id }}">
-        <div class="msg-bubble">{{ m.text | e }}</div>
-        <div class="msg-meta">
-          {% if not m.is_outgoing %}{{ m.node_id | e }} · {% endif %}
-          <span data-ts="{{ m.timestamp }}"></span>
-          {% if m.rx_snr is not none %} · {{ m.rx_snr }}dB{% endif %}
-          {% if m.hop_count is not none and m.hop_count > 0 %} · {{ m.hop_count }}hop{% endif %}
+    <div x-ref="msgList" style="flex:1;overflow-y:auto;padding:4px 8px;display:flex;flex-direction:column;">
+      <!-- Infinite scroll sentinel (top) -->
+      <div x-ref="sentinel" style="height:1px;flex-shrink:0;"></div>
+
+      <template x-for="msg in messages" :key="msg.id">
+        <div class="msg-row" :class="{ outgoing: msg.is_outgoing }">
+          <div class="msg-bubble" x-text="msg.text"></div>
+          <div class="msg-meta">
+            <template x-if="!msg.is_outgoing">
+              <span x-text="(window.nodeCache?.get(msg.node_id)?.short_name || msg.node_id) + ' \xb7 '"></span>
+            </template>
+            <span x-text="new Date(msg.ts * 1000).toLocaleTimeString('it', { hour:'2-digit', minute:'2-digit' })"></span>
+            <template x-if="msg.rx_snr != null">
+              <span x-text="' \xb7 ' + msg.rx_snr + 'dB'"></span>
+            </template>
+            <template x-if="msg.hop_count != null && msg.hop_count > 0">
+              <span x-text="' \xb7 ' + msg.hop_count + 'hop'"></span>
+            </template>
+            <template x-if="msg.is_outgoing">
+              <span :class="msg.ack ? 'msg-ack delivered' : 'msg-ack'"
+                    :title="msg.ack ? 'Consegnato' : 'Inviato'"
+                    x-text="msg.ack ? ' \u2713\u2713' : ' \u2713'"></span>
+            </template>
+          </div>
         </div>
-      </div>
-      {% endfor %}
-      <div id="load-more"></div>
+      </template>
     </div>
 
     <!-- Send form -->
-    <div style="padding:6px 8px; border-top:1px solid var(--border); flex-shrink:0;">
-      <form id="send-form" onsubmit="sendMsg(event)" style="display:flex; gap:4px;">
-        <input id="msg-input" type="text" placeholder="Messaggio..." autocomplete="off" style="flex:1; min-height:32px; font-size:12px;">
-        <button type="submit" style="width:40px; min-height:32px; padding:0;">
+    <div style="padding:6px 8px;border-top:1px solid var(--border);flex-shrink:0;">
+      <form @submit.prevent="send()" style="display:flex;gap:4px;">
+        <input x-ref="input" type="text" placeholder="Messaggio..." autocomplete="off"
+               style="flex:1;min-height:32px;font-size:12px;">
+        <button type="submit" style="width:40px;min-height:32px;padding:0;">
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
           </svg>
@@ -75,200 +103,159 @@
 </div>
 
 <script>
-let currentConv = 'broadcast'
-let currentChannel = 0
-let loadingMore = false
-let _sentinel_observer = null
+function messagesPage() {
+  return {
+    conv: 'broadcast',
+    channel: 0,
+    messages: [],
+    dmThreads: [],
+    hasMore: false,
+    loading: false,
+    _onMessage: null,
+    _onAck: null,
+    _observer: null,
 
-function selectConv(type, peerId) {
-  currentConv = (type === 'broadcast') ? 'broadcast' : peerId
-  document.querySelectorAll('.conv-item').forEach(el => {
-    el.style.borderLeft = '2px solid transparent'
-    el.style.background = ''
-  })
-  const active = (type === 'broadcast')
-    ? document.getElementById('conv-broadcast')
-    : document.querySelector('[data-peer="' + CSS.escape(peerId) + '"]')
-  if (active) {
-    active.style.borderLeft = '2px solid var(--accent)'
-    active.style.background = 'var(--panel)'
+    get convTitle() {
+      if (this.conv === 'broadcast') return 'Broadcast'
+      const t = this.dmThreads.find(t => t.peer_id === this.conv)
+      if (t && t.short_name) return t.short_name
+      return window.nodeCache?.get(this.conv)?.short_name || this.conv
+    },
+
+    async init() {
+      await this.loadDmThreads()
+      await this.loadMessages()
+      this._onMessage = (e) => this.onNewMessage(e.detail)
+      this._onAck = (e) => this.onAck(e.detail)
+      window.addEventListener('message-new', this._onMessage)
+      window.addEventListener('msg-ack', this._onAck)
+      this._observer = new IntersectionObserver(([entry]) => {
+        if (entry.isIntersecting) this.loadMore()
+      })
+      this.$nextTick(() => {
+        if (this.$refs.sentinel) this._observer.observe(this.$refs.sentinel)
+      })
+      const openDm = new URLSearchParams(window.location.search).get('open_dm')
+      if (openDm) await this.selectConv('dm', openDm)
+    },
+
+    destroy() {
+      window.removeEventListener('message-new', this._onMessage)
+      window.removeEventListener('msg-ack', this._onAck)
+      if (this._observer) this._observer.disconnect()
+    },
+
+    async selectConv(type, peerId) {
+      this.conv = type === 'broadcast' ? 'broadcast' : peerId
+      this.messages = []
+      await this.loadMessages()
+      if (type !== 'broadcast') {
+        fetch('/api/dm/read', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ peer_id: peerId })
+        })
+        const thread = this.dmThreads.find(t => t.peer_id === peerId)
+        if (thread) thread.unread = 0
+      }
+    },
+
+    async loadMessages() {
+      if (this.loading) return
+      this.loading = true
+      try {
+        const url = this.conv === 'broadcast'
+          ? '/api/messages?channel=' + this.channel + '&limit=50'
+          : '/api/dm/messages?peer=' + encodeURIComponent(this.conv) + '&limit=50'
+        const r = await fetch(url)
+        if (!r.ok) return
+        const data = await r.json()
+        this.messages = data
+        this.hasMore = data.length === 50
+        this.$nextTick(() => {
+          if (this.$refs.msgList) this.$refs.msgList.scrollTop = this.$refs.msgList.scrollHeight
+        })
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async loadMore() {
+      if (this.loading || !this.hasMore || !this.messages.length) return
+      const beforeId = this.messages[0].id
+      this.loading = true
+      try {
+        const url = this.conv === 'broadcast'
+          ? '/api/messages?channel=' + this.channel + '&limit=50&before_id=' + beforeId
+          : '/api/dm/messages?peer=' + encodeURIComponent(this.conv) + '&limit=50&before_id=' + beforeId
+        const r = await fetch(url)
+        if (!r.ok) return
+        const data = await r.json()
+        const prevH = this.$refs.msgList.scrollHeight
+        this.messages = [...data, ...this.messages]
+        this.$nextTick(() => {
+          this.$refs.msgList.scrollTop = this.$refs.msgList.scrollHeight - prevH
+        })
+        this.hasMore = data.length === 50
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async loadDmThreads() {
+      const r = await fetch('/api/dm/threads')
+      if (r.ok) this.dmThreads = await r.json()
+    },
+
+    async send() {
+      const input = this.$refs.input
+      const text = input.value.trim()
+      if (!text) return
+      const to = this.conv === 'broadcast' ? '^all' : this.conv
+      const channel = this.conv === 'broadcast' ? this.channel : 0
+      const r = await fetch('/api/messages/send', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ text, to, channel })
+      })
+      if (r.ok) {
+        input.value = ''
+      } else {
+        input.style.borderColor = 'var(--danger)'
+        setTimeout(() => { input.style.borderColor = '' }, 1500)
+      }
+    },
+
+    onNewMessage(msg) {
+      const isDm = msg.destination && msg.destination !== '^all'
+      if (isDm) {
+        this.loadDmThreads()
+        if (this.conv === msg.node_id || this.conv === msg.destination) {
+          this.messages.push(msg)
+          this.$nextTick(() => {
+            if (this.$refs.msgList) this.$refs.msgList.scrollTop = this.$refs.msgList.scrollHeight
+          })
+        }
+      } else if (this.conv === 'broadcast' && msg.channel === this.channel) {
+        this.messages.push(msg)
+        this.$nextTick(() => {
+          if (this.$refs.msgList) this.$refs.msgList.scrollTop = this.$refs.msgList.scrollHeight
+        })
+      }
+    },
+
+    onAck() {
+      this.messages.filter(m => m.is_outgoing && !m.ack).forEach(m => { m.ack = 1 })
+    },
+
+    async clearHistory() {
+      const r = await fetch('/api/messages', { method: 'DELETE' })
+      if (r.ok) {
+        this.messages = []
+        this.dmThreads = []
+      }
+    },
   }
-
-  if (type === 'broadcast') {
-    document.getElementById('ch-select').style.display = ''
-    document.getElementById('thread-title').textContent = 'Broadcast'
-    document.getElementById('thread-sub').textContent = 'Canale ' + currentChannel + ' · tutti i nodi'
-    reloadBroadcast()
-  } else {
-    document.getElementById('ch-select').style.display = 'none'
-    const name = nodeCache.get(peerId)?.short_name || peerId
-    document.getElementById('thread-title').textContent = name
-    document.getElementById('thread-sub').textContent = 'Messaggio diretto'
-    loadDmThread(peerId)
-    fetch('/api/dm/read', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ peer: peerId }) })
-    const badge = document.querySelector('[data-peer="' + CSS.escape(peerId) + '"] .unread-badge')
-    if (badge) badge.remove()
-  }
 }
-
-async function reloadBroadcast() {
-  currentChannel = parseInt(document.getElementById('ch-select').value)
-  document.getElementById('thread-sub').textContent = 'Canale ' + currentChannel + ' · tutti i nodi'
-  const r = await fetch('/api/messages?channel=' + currentChannel + '&limit=50')
-  if (r.ok) {
-    const data = await r.json()
-    renderMessages([...data].reverse(), false)
-  }
-}
-
-async function loadDmThread(peerId) {
-  const r = await fetch('/api/dm/messages?peer=' + encodeURIComponent(peerId) + '&limit=50')
-  if (r.ok) {
-    const data = await r.json()
-    renderMessages([...(data.messages || data)].reverse(), true)
-  }
-}
-
-async function loadDmThreads() {
-  const r = await fetch('/api/dm/threads')
-  if (!r.ok) return
-  const data = await r.json()
-  const threads = data.threads || data
-  const list = document.getElementById('dm-thread-list')
-  list.textContent = ''
-  threads.forEach(t => {
-    const item = document.createElement('div')
-    item.className = 'conv-item'
-    item.dataset.peer = t.peer
-    item.style.cssText = 'padding:5px 8px; display:flex; align-items:center; gap:5px; cursor:pointer; font-size:11px; border-left:2px solid transparent;'
-    item.onclick = () => selectConv('dm', t.peer)
-    const nameEl = document.createElement('span')
-    nameEl.style.cssText = 'flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;'
-    nameEl.textContent = nodeCache.get(t.peer)?.short_name || t.peer
-    item.appendChild(nameEl)
-    if (t.unread_count > 0) {
-      const badge = document.createElement('span')
-      badge.className = 'unread-badge'
-      badge.style.cssText = 'background:var(--danger,#c62828); color:#fff; border-radius:8px; padding:0 5px; font-size:9px; flex-shrink:0;'
-      badge.textContent = t.unread_count
-      item.appendChild(badge)
-    }
-    list.appendChild(item)
-  })
-}
-
-function renderMessages(msgs, isDm) {
-  const list = document.getElementById('msg-list')
-  list.textContent = ''
-  msgs.forEach(m => list.appendChild(makeRow(m)))
-  const sentinel = document.createElement('div')
-  sentinel.id = 'load-more'
-  list.appendChild(sentinel)
-  list.scrollTop = list.scrollHeight
-  observeSentinel()
-}
-
-function makeRow(m) {
-  const row = document.createElement('div')
-  row.className = 'msg-row' + (m.is_outgoing ? ' outgoing' : '')
-  row.dataset.msgId = m.id
-  const bubble = document.createElement('div')
-  bubble.className = 'msg-bubble'
-  bubble.textContent = m.text
-  const meta = document.createElement('div')
-  meta.className = 'msg-meta'
-  const name = nodeCache.get(m.node_id)?.short_name || m.node_id
-  const ts = new Date(m.timestamp * 1000).toLocaleTimeString('it', { hour:'2-digit', minute:'2-digit' })
-  meta.textContent = (m.is_outgoing ? '' : name + ' \u00b7 ') + ts +
-    (m.rx_snr != null ? ' \u00b7 ' + m.rx_snr + 'dB' : '') +
-    (m.hop_count != null && m.hop_count > 0 ? ' \u00b7 ' + m.hop_count + 'hop' : '')
-  if (m.is_outgoing) {
-    const ackEl = document.createElement('span')
-    ackEl.className = 'msg-ack' + (m.ack ? ' delivered' : '')
-    ackEl.textContent = m.ack ? ' \u2713\u2713' : ' \u2713'
-    ackEl.title = m.ack ? 'Consegnato' : 'Inviato'
-    meta.appendChild(ackEl)
-  }
-  row.append(bubble, meta)
-  return row
-}
-
-async function sendMsg(e) {
-  e.preventDefault()
-  const text  = document.getElementById('msg-input').value.trim()
-  const input = document.getElementById('msg-input')
-  if (!text) return
-  const destination = (currentConv === 'broadcast') ? '^all' : currentConv
-  const channel     = (currentConv === 'broadcast') ? currentChannel : 0
-  const r = await fetch('/send', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ text, channel, destination })
-  })
-  if (r.ok) { input.value = '' }
-  else { input.style.borderColor = 'var(--danger)'; setTimeout(() => { input.style.borderColor = '' }, 1500) }
-}
-
-function observeSentinel() {
-  if (_sentinel_observer) { _sentinel_observer.disconnect(); _sentinel_observer = null }
-  const sentinel = document.getElementById('load-more')
-  if (!sentinel) return
-  _sentinel_observer = new IntersectionObserver(async ([entry]) => {
-    if (!entry.isIntersecting || loadingMore) return
-    const items = document.querySelectorAll('.msg-row')
-    if (!items.length) return
-    loadingMore = true
-    const firstId = items[0].dataset.msgId
-    if (!firstId) { loadingMore = false; return }
-    const url = (currentConv === 'broadcast')
-      ? '/api/messages?channel=' + currentChannel + '&limit=50&before_id=' + firstId
-      : '/api/dm/messages?peer=' + encodeURIComponent(currentConv) + '&limit=50&before_id=' + firstId
-    const resp = await fetch(url)
-    const data = await resp.json()
-    const msgs = data.messages || data
-    const list = document.getElementById('msg-list')
-    const prevH = list.scrollHeight
-    ;[...msgs].reverse().forEach(m => list.insertBefore(makeRow(m), list.firstChild))
-    list.scrollTop = list.scrollHeight - prevH
-    loadingMore = false
-  }).observe(sentinel)
-}
-
-window.addEventListener('message-new', e => {
-  const m = e.detail
-  const isDm = m.destination && m.destination !== '^all'
-  if (isDm) {
-    loadDmThreads()
-    if (currentConv === m.node_id || currentConv === m.destination) {
-      const list = document.getElementById('msg-list')
-      list.insertBefore(makeRow(m), document.getElementById('load-more'))
-      list.scrollTop = list.scrollHeight
-    }
-  } else if (currentConv === 'broadcast' && m.channel === currentChannel) {
-    const list = document.getElementById('msg-list')
-    list.insertBefore(makeRow(m), document.getElementById('load-more'))
-    list.scrollTop = list.scrollHeight
-  }
-})
-
-window.addEventListener('msg-ack', () => {
-  document.querySelectorAll('.msg-row.outgoing .msg-ack:not(.delivered)').forEach(el => {
-    el.classList.add('delivered'); el.textContent = ' \u2713\u2713'; el.title = 'Consegnato'
-  })
-})
-
-// Format server-rendered timestamps
-document.querySelectorAll('[data-ts]').forEach(el => {
-  const ts = parseInt(el.dataset.ts)
-  if (ts) el.textContent = new Date(ts * 1000).toLocaleTimeString('it', { hour:'2-digit', minute:'2-digit' })
-})
-
-// Init
-const _openDm = new URLSearchParams(window.location.search).get('open_dm')
-observeSentinel()
-document.getElementById('msg-list').scrollTop = document.getElementById('msg-list').scrollHeight
-loadDmThreads().then(() => {
-  if (_openDm) selectConv('dm', _openDm)
-  else selectConv('broadcast', null)
-})
 </script>
 {% endblock %}
