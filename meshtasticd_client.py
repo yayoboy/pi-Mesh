@@ -99,11 +99,14 @@ def _on_receive(packet, interface) -> None:
         'hop_limit':   packet.get('hopLimit'),
     }
     _log_queue.append(entry)
+    failed = []
     for cb in list(_subscribers):
         try:
             cb(entry)
         except Exception:
-            pass
+            failed.append(cb)
+    for cb in failed:
+        unsubscribe_log(cb)
     # Refresh node cache on any packet
     if _connected and _interface:
         _refresh_node_cache()
@@ -138,10 +141,11 @@ async def connect() -> None:
 
 
 async def disconnect() -> None:
-    global _connected
+    global _connected, _interface
     _connected = False
     if _interface:
         try:
             _interface.close()
         except Exception:
             pass
+        _interface = None
