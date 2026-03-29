@@ -69,3 +69,31 @@ async def test_cleanup_old_messages(db):
     msgs = await database.get_messages(db, channel=0)
     assert len(msgs) == 1
     assert msgs[0]['text'] == 'new'
+
+
+@pytest.mark.asyncio
+async def test_save_dm_and_get_threads(db):
+    # DM from !peer to us (local = !local)
+    await database.save_message(db, '!peer', 0, 'Sei lì?', 1000, False, -5.0, 1, '!local')
+    await database.save_message(db, '!peer', 0, 'Ciao!',   1001, False, -6.0, 1, '!local')
+    # Our reply to !peer
+    await database.save_message(db, '!local', 0, 'Sì!', 1002, True, None, None, '!peer')
+    threads = await database.get_dm_threads(db, '!local')
+    assert len(threads) == 1
+    t = threads[0]
+    assert t['peer_id'] == '!peer'
+    assert t['last_text'] == 'Sì!'
+    assert t['last_ts'] == 1002
+    assert t['unread'] == 2   # 2 incoming not yet read
+
+
+@pytest.mark.asyncio
+async def test_mark_dm_read(db):
+    await database.save_message(db, '!peer', 0, 'msg1', 1000, False, None, None, '!local')
+    await database.save_message(db, '!peer', 0, 'msg2', 1001, False, None, None, '!local')
+    threads_before = await database.get_dm_threads(db, '!local')
+    assert threads_before[0]['unread'] == 2
+
+    await database.mark_dm_read(db, '!peer')
+    threads_after = await database.get_dm_threads(db, '!local')
+    assert threads_after[0]['unread'] == 0

@@ -245,3 +245,88 @@ async def cleanup_old_messages(db_path: str, days: int = 30) -> None:
     async with aiosqlite.connect(db_path) as db:
         await db.execute('DELETE FROM messages WHERE ts < ?', (cutoff,))
         await db.commit()
+
+
+async def get_dm_threads(db_path: str, local_id: str) -> list[dict]:
+    """Return list of DM conversations with unread count, newest thread first."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        # Get distinct peer + last message per thread
+        cursor = await db.execute("""
+            SELECT
+                CASE WHEN is_outgoing = 1 THEN destination ELSE node_id END AS peer_id,
+                text AS last_text,
+                MAX(ts) AS last_ts
+            FROM messages
+            WHERE destination != '^all'
+            GROUP BY CASE WHEN is_outgoing = 1 THEN destination ELSE node_id END
+            ORDER BY last_ts DESC
+        """)
+        threads = [dict(r) for r in await cursor.fetchall()]
+
+        result = []
+        for t in threads:
+            peer_id = t['peer_id']
+            # short_name from nodes table
+            c = await db.execute('SELECT short_name FROM nodes WHERE id = ?', (peer_id,))
+            row = await c.fetchone()
+            short_name = row['short_name'] if row else None
+            # unread = incoming msgs since last_read_ts
+            c2 = await db.execute(
+                'SELECT last_read_ts FROM dm_reads WHERE peer_id = ?', (peer_id,)
+            )
+            r2 = await c2.fetchone()
+            last_read = r2['last_read_ts'] if r2 else 0
+            c3 = await db.execute(
+                '''SELECT COUNT(*) FROM messages
+                   WHERE node_id = ? AND is_outgoing = 0 AND destination = ? AND ts > ?''',
+                (peer_id, local_id, last_read)
+            )
+            r3 = await c3.fetchone()
+            unread = r3[0] if r3 else 0
+            result.append({
+                'peer_id': peer_id,
+                'short_name': short_name,
+                'last_text': t['last_text'],
+                'last_ts': t['last_ts'],
+                'unread': unread,
+            })
+    return result
+
+
+async def get_dm_messages(
+    db_path: str, peer_id: str, local_id: str,
+    limit: int = 50, before_id: int | None = None
+) -> list[dict]:
+    """Return messages in a DM thread (both directions), oldest first."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        if before_id is not None:
+            cursor = await db.execute(
+                '''SELECT * FROM messages
+                   WHERE id < ? AND destination != '^all'
+                     AND (node_id = ? OR destination = ?)
+                   ORDER BY id DESC LIMIT ?''',
+                (before_id, peer_id, peer_id, limit)
+            )
+        else:
+            cursor = await db.execute(
+                '''SELECT * FROM messages
+                   WHERE destination != '^all'
+                     AND (node_id = ? OR destination = ?)
+                   ORDER BY id DESC LIMIT ?''',
+                (peer_id, peer_id, limit)
+            )
+        rows = await cursor.fetchall()
+    return [dict(r) for r in reversed(rows)]
+
+
+async def mark_dm_read(db_path: str, peer_id: str) -> None:
+    """Upsert dm_reads with current timestamp for peer_id."""
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            '''INSERT INTO dm_reads (peer_id, last_read_ts) VALUES (?, ?)
+               ON CONFLICT(peer_id) DO UPDATE SET last_read_ts = excluded.last_read_ts''',
+            (peer_id, int(time.time()))
+        )
+        await db.commit()
