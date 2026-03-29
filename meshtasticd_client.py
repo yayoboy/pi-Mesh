@@ -70,14 +70,14 @@ def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 def _add_distances() -> None:
     local_lat = local_lon = None
     for node in _node_cache.values():
-        if node.get('is_local') and node.get('latitude') and node.get('longitude'):
+        if node.get('is_local') and node.get('latitude') is not None and node.get('longitude') is not None:
             local_lat = node['latitude']
             local_lon = node['longitude']
             break
     for node in _node_cache.values():
         if node.get('is_local'):
             node['distance_km'] = 0.0
-        elif local_lat is not None and node.get('latitude') and node.get('longitude'):
+        elif local_lat is not None and node.get('latitude') is not None and node.get('longitude') is not None:
             node['distance_km'] = round(_haversine(local_lat, local_lon, node['latitude'], node['longitude']), 2)
         else:
             node['distance_km'] = None
