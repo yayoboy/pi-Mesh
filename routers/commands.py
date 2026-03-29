@@ -45,10 +45,14 @@ async def post_send_text(body: SendTextRequest):
         raise HTTPException(503, detail='board not connected')
     await meshtasticd_client.send_text(body.text, body.to, body.channel)
     local_id = meshtasticd_client._local_id or '!local'
-    await database.save_message(
-        cfg.DB_PATH, local_id, body.channel, body.text,
-        int(time.time()), True, None, None, body.to
-    )
+    try:
+        await database.save_message(
+            cfg.DB_PATH, local_id, body.channel, body.text,
+            int(time.time()), True, None, None, body.to
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f'Failed to persist outgoing message: {e}')
     return {'status': 'sent'}
 
 
