@@ -7,13 +7,6 @@ router = APIRouter()
 templates = Jinja2Templates(directory='templates')
 
 
-@router.get('/messages', response_class=HTMLResponse)
-async def messages_page(request: Request):
-    return templates.TemplateResponse(request, 'placeholder.html', {
-        'active_tab': 'messages', 'page_title': 'Messaggi'
-    })
-
-
 @router.get('/config', response_class=HTMLResponse)
 async def config_page(request: Request):
     return templates.TemplateResponse(request, 'placeholder.html', {

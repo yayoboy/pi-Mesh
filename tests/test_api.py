@@ -40,11 +40,15 @@ async def test_log_page_returns_200(mock_client):
 
 
 @pytest.mark.asyncio
-async def test_messages_placeholder_returns_200(mock_client):
+async def test_messages_page_returns_200(mock_client):
     from main import app
-    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
-        r = await ac.get('/messages')
+    from unittest.mock import patch, AsyncMock
+    with patch('database.get_messages', new_callable=AsyncMock, return_value=[]), \
+         patch('database.get_dm_threads', new_callable=AsyncMock, return_value=[]):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.get('/messages')
     assert r.status_code == 200
+    assert 'text/html' in r.headers['content-type']
 
 
 @pytest.mark.asyncio
@@ -200,3 +204,56 @@ async def test_delete_marker_404_when_not_found(mock_client):
         async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
             r = await ac.delete('/api/map/markers/9999')
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_messages_endpoint(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    sample = [{'id': 1, 'node_id': '!aaa', 'channel': 0, 'text': 'hi',
+               'ts': 1000, 'is_outgoing': 0, 'rx_snr': None,
+               'hop_count': None, 'ack': 0, 'destination': '^all'}]
+    with patch('database.get_messages', new_callable=AsyncMock, return_value=sample):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.get('/api/messages?channel=0')
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, list)
+    assert data[0]['text'] == 'hi'
+
+
+@pytest.mark.asyncio
+async def test_get_dm_threads_endpoint(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    sample = [{'peer_id': '!bbb', 'short_name': 'NODE1',
+               'last_text': 'ciao', 'last_ts': 1001, 'unread': 2}]
+    with patch('database.get_dm_threads', new_callable=AsyncMock, return_value=sample):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.get('/api/dm/threads')
+    assert r.status_code == 200
+    data = r.json()
+    assert data[0]['peer_id'] == '!bbb'
+    assert data[0]['unread'] == 2
+
+
+@pytest.mark.asyncio
+async def test_mark_dm_read_endpoint(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    with patch('database.mark_dm_read', new_callable=AsyncMock):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.post('/api/dm/read', json={'peer_id': '!bbb'})
+    assert r.status_code == 200
+    assert r.json() == {'ok': True}
+
+
+@pytest.mark.asyncio
+async def test_clear_messages_endpoint(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    with patch('database.clear_messages', new_callable=AsyncMock):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.delete('/api/messages')
+    assert r.status_code == 200
+    assert r.json() == {'ok': True}

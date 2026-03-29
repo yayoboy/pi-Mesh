@@ -14,7 +14,7 @@ import meshtasticd_client
 
 logging.basicConfig(level=getattr(logging, cfg.LOG_LEVEL, logging.WARNING))
 
-from routers import nodes, map_router, log_router, placeholders, commands, ws_router
+from routers import nodes, map_router, log_router, placeholders, commands, ws_router, messages_router
 
 
 async def _broadcast_task() -> None:
@@ -48,6 +48,7 @@ app.mount('/static', StaticFiles(directory='static'), name='static')
 app.include_router(nodes.router)
 app.include_router(map_router.router)
 app.include_router(log_router.router)
+app.include_router(messages_router.router)
 app.include_router(placeholders.router)
 app.include_router(commands.router)
 app.include_router(ws_router.router)
