@@ -16,6 +16,9 @@ _dirty_nodes: set[str] = set()
 _last_node_fetch: float = 0.0
 _log_queue: deque = deque(maxlen=500)
 _subscribers: list = []
+_event_queue: asyncio.Queue = asyncio.Queue()
+_loop: asyncio.AbstractEventLoop | None = None
+_traceroute_cache: dict[str, dict] = {}
 
 import config as cfg
 
@@ -54,6 +57,10 @@ def subscribe_log(callback) -> None:
 def unsubscribe_log(callback) -> None:
     if callback in _subscribers:
         _subscribers.remove(callback)
+
+
+def get_event_queue() -> asyncio.Queue:
+    return _event_queue
 
 
 # --- Internal ---
@@ -115,31 +122,107 @@ def _refresh_node_cache() -> None:
 
 
 def _on_receive(packet, interface) -> None:
-    entry = {
-        'ts':          int(time.time()),
-        'from':        packet.get('fromId', '?'),
-        'type':        packet.get('decoded', {}).get('portnum', 'UNKNOWN'),
-        'snr':         packet.get('rxSnr'),
-        'hop_limit':   packet.get('hopLimit'),
+    from_id   = packet.get('fromId', '?')
+    portnum   = packet.get('decoded', {}).get('portnum', 'UNKNOWN')
+    snr       = packet.get('rxSnr')
+    hop_limit = packet.get('hopLimit')
+
+    # Always emit a log event
+    log_event = {
+        'type':      'log',
+        'ts':        int(time.time()),
+        'from':      from_id,
+        'portnum':   portnum,
+        'snr':       snr,
+        'hop_limit': hop_limit,
     }
-    _log_queue.append(entry)
+    _log_queue.append(log_event)
+    if _loop is not None:
+        _loop.call_soon_threadsafe(_event_queue.put_nowait, log_event)
+
+    # Emit typed event based on portnum
+    decoded = packet.get('decoded', {})
+
+    if portnum == 'NODEINFO_APP':
+        user = decoded.get('user', {})
+        typed_event = {
+            'type':          'node',
+            'id':            from_id,
+            'short_name':    user.get('shortName', ''),
+            'long_name':     user.get('longName', ''),
+            'hw_model':      user.get('hwModel', ''),
+            'last_heard':    int(time.time()),
+            'snr':           snr,
+            'hop_count':     hop_limit,
+            'battery_level': None,
+            'latitude':      None,
+            'longitude':     None,
+            'is_local':      False,
+            'distance_km':   None,
+        }
+        if _loop is not None:
+            _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+
+    elif portnum == 'POSITION_APP':
+        pos = decoded.get('position', {})
+        typed_event = {
+            'type':       'position',
+            'id':         from_id,
+            'latitude':   pos.get('latitude'),
+            'longitude':  pos.get('longitude'),
+            'last_heard': int(time.time()),
+        }
+        if _loop is not None:
+            _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+
+    elif portnum == 'TELEMETRY_APP':
+        telemetry = decoded.get('telemetry', {})
+        device_metrics = telemetry.get('deviceMetrics', {})
+        typed_event = {
+            'type':          'telemetry',
+            'id':            from_id,
+            'battery_level': device_metrics.get('batteryLevel'),
+            'snr':           snr,
+        }
+        if _loop is not None:
+            _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+
+    elif portnum == 'TRACEROUTE_APP':
+        route_discovery = decoded.get('routeDiscovery', {})
+        hops = route_discovery.get('route', [])
+        _traceroute_cache[from_id] = {
+            'node_id': from_id,
+            'hops':    hops,
+            'ts':      int(time.time()),
+        }
+        typed_event = {
+            'type':    'traceroute_result',
+            'node_id': from_id,
+            'hops':    hops,
+        }
+        if _loop is not None:
+            _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+
+    # Notify log subscribers
     failed = []
     for cb in list(_subscribers):
         try:
-            cb(entry)
+            cb(log_event)
         except Exception:
             failed.append(cb)
     for cb in failed:
         unsubscribe_log(cb)
+
     # Refresh node cache on any packet
     if _connected and _interface:
         _refresh_node_cache()
 
 
 async def connect() -> None:
-    global _interface, _connected, _local_id
+    global _interface, _connected, _local_id, _loop
     import meshtastic.serial_interface
     from pubsub import pub
+    _loop = asyncio.get_event_loop()    # capture event loop for threadsafe callbacks
     backoff = 15
     while True:
         try:

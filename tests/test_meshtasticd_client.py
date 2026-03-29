@@ -68,3 +68,96 @@ def test_add_distances_no_local_node_all_none():
     }
     meshtasticd_client._add_distances()
     assert meshtasticd_client._node_cache['!remote']['distance_km'] is None
+
+
+import asyncio
+
+
+def test_get_event_queue_returns_asyncio_queue():
+    q = meshtasticd_client.get_event_queue()
+    assert isinstance(q, asyncio.Queue)
+
+
+@pytest.mark.asyncio
+async def test_on_receive_always_emits_log_event():
+    import meshtasticd_client as mc
+    # Drain queue
+    q = mc.get_event_queue()
+    while not q.empty():
+        q.get_nowait()
+
+    mc._loop = asyncio.get_event_loop()
+    packet = {
+        'fromId': '!aabbccdd',
+        'rxSnr': 5.5,
+        'hopLimit': 3,
+        'decoded': {'portnum': 'TEXT_MESSAGE_APP'},
+    }
+    mc._on_receive(packet, None)
+    await asyncio.sleep(0)
+
+    assert not q.empty()
+    event = q.get_nowait()
+    assert event['type'] == 'log'
+    assert event['from'] == '!aabbccdd'
+    mc._loop = None
+
+
+@pytest.mark.asyncio
+async def test_on_receive_position_emits_typed_event():
+    import meshtasticd_client as mc
+    q = mc.get_event_queue()
+    while not q.empty():
+        q.get_nowait()
+
+    mc._loop = asyncio.get_event_loop()
+    packet = {
+        'fromId': '!aabbccdd',
+        'rxSnr': 4.0,
+        'hopLimit': 3,
+        'decoded': {
+            'portnum': 'POSITION_APP',
+            'position': {'latitude': 41.9, 'longitude': 12.5},
+        },
+    }
+    mc._on_receive(packet, None)
+    await asyncio.sleep(0)
+
+    events = []
+    while not q.empty():
+        events.append(q.get_nowait())
+    types = [e['type'] for e in events]
+    assert 'position' in types
+    pos_event = next(e for e in events if e['type'] == 'position')
+    assert pos_event['id'] == '!aabbccdd'
+    assert pos_event['latitude'] == pytest.approx(41.9)
+    mc._loop = None
+
+
+@pytest.mark.asyncio
+async def test_on_receive_telemetry_emits_typed_event():
+    import meshtasticd_client as mc
+    q = mc.get_event_queue()
+    while not q.empty():
+        q.get_nowait()
+
+    mc._loop = asyncio.get_event_loop()
+    packet = {
+        'fromId': '!aabbccdd',
+        'rxSnr': 3.0,
+        'hopLimit': 2,
+        'decoded': {
+            'portnum': 'TELEMETRY_APP',
+            'telemetry': {'deviceMetrics': {'batteryLevel': 78}},
+        },
+    }
+    mc._on_receive(packet, None)
+    await asyncio.sleep(0)
+
+    events = []
+    while not q.empty():
+        events.append(q.get_nowait())
+    tel_event = next((e for e in events if e['type'] == 'telemetry'), None)
+    assert tel_event is not None
+    assert tel_event['battery_level'] == 78
+    mc._loop = None
