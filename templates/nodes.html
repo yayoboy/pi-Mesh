@@ -1,5 +1,80 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+/* --- Expand row (portrait) --- */
+.node-detail { display: none; }
+.node-row.expanded .node-detail { display: block; }
+
+/* --- Orientation layout --- */
+@media (orientation: portrait) {
+  .nodes-portrait { display: flex !important; flex-direction: column; }
+  .nodes-landscape { display: none !important; }
+}
+@media (orientation: landscape) {
+  .nodes-portrait { display: none !important; }
+  .nodes-landscape { display: flex !important; }
+}
+.nodes-portrait { display: flex; flex-direction: column; }
+.nodes-landscape { display: none; height: 100%; }
+
+/* --- Landscape columns --- */
+.node-list-col {
+  width: 200px;
+  min-width: 160px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+.node-detail-col {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+.node-list-item {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 11px;
+  border-left: 3px solid transparent;
+  transition: border-left-color 0.15s;
+}
+.node-list-item.selected {
+  border-left-color: var(--accent, #4a9eff);
+  background: rgba(74,158,255,0.08);
+}
+
+/* --- Shared stat boxes and action buttons --- */
+.stat-grid { display: flex; gap: 6px; }
+.stat-box {
+  background: var(--panel, #12151f);
+  border-radius: 4px;
+  padding: 6px 8px;
+  text-align: center;
+  flex: 1;
+  min-width: 0;
+}
+.stat-val { color: var(--text, #ccc); font-weight: 700; font-size: 12px; }
+.stat-lbl { color: var(--muted, #666); font-size: 9px; margin-top: 1px; }
+.action-grid { display: flex; gap: 6px; flex-wrap: wrap; }
+.action-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+  background: var(--panel, #12151f);
+  border: 1px solid var(--border, #2a3a4a);
+  border-radius: 4px;
+  color: var(--text, #ccc);
+  font-size: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.action-btn:active { opacity: 0.7; }
+</style>
+
 <div x-data="nodesPage()" x-init="init()" class="h-full flex flex-col overflow-hidden">
 
   <!-- Header -->
@@ -9,44 +84,213 @@
     <span x-text="nodes.length + ' trovati'" style="color:var(--muted);"></span>
   </div>
 
-  <!-- Node list -->
-  <div class="flex-1 overflow-y-auto">
-    <template x-if="nodes.length === 0">
-      <div class="flex items-center justify-center h-32" style="color:var(--muted);font-size:12px;">
-        Nessun nodo rilevato
-      </div>
-    </template>
-
-    <template x-for="node in nodes" :key="node.id">
-      <div class="flex items-center gap-3 px-3 py-2"
-           style="border-bottom:1px solid var(--border);min-height:52px;">
-
-        <!-- Avatar -->
-        <div class="shrink-0 flex items-center justify-center rounded-full text-white font-bold"
-             :style="`width:34px;height:34px;font-size:9px;font-family:monospace;
-                      background:${node.is_local ? '#4a9eff' : (isOnline(node) ? '#4caf50' : '#374151')};
-                      ${node.is_local ? 'box-shadow:0 0 8px #4a9eff' : ''}`"
-             x-text="(node.short_name || node.id).slice(0,6)">
+  <!-- PORTRAIT VIEW -->
+  <div class="nodes-portrait flex-1 overflow-hidden">
+    <div class="flex-1 overflow-y-auto" id="node-list" style="height:100%;">
+      <template x-if="nodes.length === 0">
+        <div class="flex items-center justify-center h-32" style="color:var(--muted);font-size:12px;">
+          Nessun nodo rilevato
         </div>
+      </template>
 
-        <!-- Info -->
-        <div class="flex-1 min-w-0">
-          <div class="font-semibold truncate" style="font-size:12px;"
-               x-text="node.long_name || node.short_name || node.id"></div>
-          <div style="font-size:10px;color:var(--muted);"
-               x-text="node.hw_model || ''"></div>
-          <div class="flex gap-3 mt-0.5" style="font-size:10px;color:var(--muted);">
-            <span x-text="node.snr != null ? node.snr + ' dB' : ''"></span>
-            <span x-text="node.battery_level != null ? node.battery_level + '%' : ''"></span>
-            <span x-text="node.hop_count != null ? node.hop_count + ' hop' : ''"></span>
+      <template x-for="node in nodes" :key="node.id">
+        <div class="node-row"
+             :class="{ expanded: selectedNodeId === node.id }"
+             style="border-bottom:1px solid var(--border);">
+
+          <!-- Summary row — click to expand/collapse -->
+          <div class="flex items-center gap-3 px-3 py-2 cursor-pointer"
+               style="min-height:52px;"
+               @click="selectedNodeId = (selectedNodeId === node.id ? null : node.id)">
+
+            <!-- Avatar -->
+            <div class="shrink-0 flex items-center justify-center rounded-full text-white font-bold"
+                 :style="`width:34px;height:34px;font-size:9px;font-family:monospace;
+                          background:${node.is_local ? '#4a9eff' : (isOnline(node) ? '#4caf50' : '#374151')};
+                          ${node.is_local ? 'box-shadow:0 0 8px #4a9eff' : ''}`"
+                 x-text="(node.short_name || node.id).slice(0,6)">
+            </div>
+
+            <!-- Name + model + last heard -->
+            <div class="flex-1 min-w-0">
+              <div class="font-semibold truncate" style="font-size:12px;"
+                   x-text="node.long_name || node.short_name || node.id"></div>
+              <div style="font-size:10px;color:var(--muted);" x-text="node.hw_model || ''"></div>
+              <div style="font-size:10px;color:var(--muted);"
+                   x-text="node.last_heard ? formatAgo(node.last_heard) : ''"></div>
+            </div>
+
+            <!-- Online dot + chevron -->
+            <div class="shrink-0 flex flex-col items-center gap-1">
+              <div class="w-2 h-2 rounded-full"
+                   :style="`background:${isOnline(node) ? '#4caf50' : '#374151'}`"></div>
+              <svg :style="`transform:${selectedNodeId === node.id ? 'rotate(180deg)' : 'none'};transition:transform 0.2s;`"
+                   width="12" height="12" fill="none" stroke="var(--muted)" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Expanded detail -->
+          <div class="node-detail px-3 pb-3" style="border-top:1px solid var(--border);">
+            <div class="stat-grid mt-2">
+              <div class="stat-box">
+                <div class="stat-val" x-text="node.hop_count != null ? node.hop_count : '—'"></div>
+                <div class="stat-lbl">Hops</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-val" x-text="node.snr != null ? node.snr + ' dB' : '—'"></div>
+                <div class="stat-lbl">SNR</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-val" x-text="node.battery_level != null ? node.battery_level + '%' : '—'"></div>
+                <div class="stat-lbl">Batt</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-val" x-text="node.distance_km != null ? node.distance_km.toFixed(1) + 'km' : '—'"></div>
+                <div class="stat-lbl">Dist</div>
+              </div>
+            </div>
+
+            <div class="mt-2" style="font-size:9px;color:var(--muted);" x-text="node.id"></div>
+
+            <template x-if="!node.is_local">
+              <div class="action-grid mt-2">
+                <button class="action-btn" @click.stop="doTraceroute(node)">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                  </svg>
+                  Traceroute
+                </button>
+                <button class="action-btn" @click.stop="typeof nodeActions !== 'undefined' && nodeActions.requestPosition(node.id)">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
+                  </svg>
+                  Posiz.
+                </button>
+                <button class="action-btn" @click.stop="doDM(node)">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  </svg>
+                  DM
+                </button>
+                <button class="action-btn" @click.stop="typeof nodeActions !== 'undefined' && nodeActions.focusOnMap(node.id)">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                  </svg>
+                  Mappa
+                </button>
+              </div>
+            </template>
           </div>
         </div>
+      </template>
+    </div>
+  </div>
 
-        <!-- Online dot -->
-        <div class="shrink-0 w-2 h-2 rounded-full"
-             :style="`background:${isOnline(node) ? '#4caf50' : '#374151'}`"></div>
-      </div>
-    </template>
+  <!-- LANDSCAPE VIEW -->
+  <div class="nodes-landscape flex-1" style="min-height:0;">
+
+    <!-- Left: node list -->
+    <div class="node-list-col">
+      <template x-for="node in nodes" :key="'ls-' + node.id">
+        <div class="node-list-item"
+             :class="{ selected: selectedNodeId === node.id }"
+             @click="selectedNodeId = node.id">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full shrink-0"
+                 :style="`background:${node.is_local ? '#4a9eff' : (isOnline(node) ? '#4caf50' : '#374151')}`"></div>
+            <span class="truncate" style="font-size:11px;" x-text="node.short_name || node.id"></span>
+          </div>
+          <div style="font-size:9px;color:var(--muted);margin-top:1px;padding-left:16px;"
+               x-text="node.last_heard ? formatAgo(node.last_heard) : ''"></div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Right: detail panel -->
+    <div class="node-detail-col">
+      <template x-if="selectedNode">
+        <div>
+          <!-- Node header -->
+          <div class="flex items-center gap-3 mb-3">
+            <div class="shrink-0 flex items-center justify-center rounded-full text-white font-bold"
+                 :style="`width:38px;height:38px;font-size:10px;font-family:monospace;
+                          background:${selectedNode.is_local ? '#4a9eff' : (isOnline(selectedNode) ? '#4caf50' : '#374151')};
+                          ${selectedNode.is_local ? 'box-shadow:0 0 8px #4a9eff' : ''}`"
+                 x-text="(selectedNode.short_name || selectedNode.id).slice(0,6)">
+            </div>
+            <div>
+              <div style="font-size:13px;font-weight:600;"
+                   x-text="selectedNode.long_name || selectedNode.short_name || selectedNode.id"></div>
+              <div style="font-size:10px;color:var(--accent);" x-text="selectedNode.hw_model || ''"></div>
+            </div>
+          </div>
+
+          <!-- Last heard -->
+          <div style="font-size:10px;color:var(--muted);margin-bottom:10px;"
+               x-text="selectedNode.last_heard ? 'Sentito ' + formatAgo(selectedNode.last_heard) : 'Mai sentito'"></div>
+
+          <!-- Stats -->
+          <div class="stat-grid mb-3">
+            <div class="stat-box">
+              <div class="stat-val" x-text="selectedNode.hop_count != null ? selectedNode.hop_count : '—'"></div>
+              <div class="stat-lbl">Hops</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-val" x-text="selectedNode.snr != null ? selectedNode.snr + ' dB' : '—'"></div>
+              <div class="stat-lbl">SNR</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-val" x-text="selectedNode.battery_level != null ? selectedNode.battery_level + '%' : '—'"></div>
+              <div class="stat-lbl">Batt</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-val" x-text="selectedNode.distance_km != null ? selectedNode.distance_km.toFixed(1) + 'km' : '—'"></div>
+              <div class="stat-lbl">Dist</div>
+            </div>
+          </div>
+
+          <!-- Node ID -->
+          <div style="font-size:9px;color:var(--muted);margin-bottom:10px;" x-text="selectedNode.id"></div>
+
+          <!-- Actions -->
+          <template x-if="!selectedNode.is_local">
+            <div class="action-grid">
+              <button class="action-btn" @click="doTraceroute(selectedNode)" style="flex-basis:calc(50% - 3px);">
+                <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                </svg>
+                Traceroute
+              </button>
+              <button class="action-btn" @click="typeof nodeActions !== 'undefined' && nodeActions.requestPosition(selectedNode.id)" style="flex-basis:calc(50% - 3px);">
+                <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
+                </svg>
+                Richiedi Pos.
+              </button>
+              <button class="action-btn" @click="doDM(selectedNode)" style="flex-basis:calc(50% - 3px);">
+                <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Invia DM
+              </button>
+              <button class="action-btn" @click="typeof nodeActions !== 'undefined' && nodeActions.focusOnMap(selectedNode.id)" style="flex-basis:calc(50% - 3px);">
+                <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                </svg>
+                Vedi su Mappa
+              </button>
+            </div>
+          </template>
+        </div>
+      </template>
+      <template x-if="!selectedNode">
+        <div class="flex items-center justify-center h-full" style="color:var(--muted);font-size:12px;">
+          Seleziona un nodo
+        </div>
+      </template>
+    </div>
   </div>
 </div>
 
@@ -54,20 +298,63 @@
 function nodesPage() {
   return {
     nodes: [],
-    async init() {
-      await this.fetch()
-      setInterval(() => this.fetch(), 10000)
+    selectedNodeId: null,
+
+    get selectedNode() {
+      if (!this.selectedNodeId) return null
+      return this.nodes.find(n => n.id === this.selectedNodeId) || null
     },
-    async fetch() {
+
+    async init() {
+      await this.fetchNodes()
+      setInterval(() => this.fetchNodes(), 10000)
+      window.addEventListener('node-update', (e) => {
+        const updated = e.detail
+        const idx = this.nodes.findIndex(n => n.id === updated.id)
+        if (idx >= 0) {
+          this.nodes[idx] = Object.assign({}, this.nodes[idx], updated)
+        } else {
+          this.nodes.push(updated)
+        }
+      })
+    },
+
+    async fetchNodes() {
       try {
         const r = await window.fetch('/api/nodes')
         this.nodes = await r.json()
       } catch(e) {}
     },
+
     isOnline(node) {
       if (!node.last_heard) return false
       return (Date.now() / 1000 - node.last_heard) < 1800
-    }
+    },
+
+    formatAgo(ts) {
+      if (!ts) return 'mai'
+      const sec = Math.floor(Date.now() / 1000 - ts)
+      if (sec < 60)   return sec + 's fa'
+      if (sec < 3600) return Math.floor(sec / 60) + 'm fa'
+      return Math.floor(sec / 3600) + 'h fa'
+    },
+
+    doTraceroute(node) {
+      if (typeof nodeActions === 'undefined') return
+      nodeActions.traceroute(node.id)
+        .then(() => { if (typeof showToast === 'function') showToast('Traceroute inviato') })
+        .catch(() => { if (typeof showToast === 'function') showToast('Traceroute fallito', 'warn') })
+    },
+
+    doDM(node) {
+      if (typeof nodeActions === 'undefined') return
+      const text = window.prompt('Messaggio a ' + (node.short_name || node.id) + ':')
+      if (text) {
+        nodeActions.sendDM(node.id, text)
+          .then(() => { if (typeof showToast === 'function') showToast('DM inviato') })
+          .catch(() => { if (typeof showToast === 'function') showToast('DM fallito', 'warn') })
+      }
+    },
   }
 }
 </script>
