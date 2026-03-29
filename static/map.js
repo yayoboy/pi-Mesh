@@ -4,7 +4,6 @@
 
 // --- Stato globale ---
 
-const nodeCache = new Map()
 let leafletMap = null
 let mapReady = false
 const markerCache = new Map()
@@ -546,7 +545,7 @@ function initMapIfNeeded() {
 
   var trNode = new URLSearchParams(window.location.search).get('traceroute')
   if (trNode) {
-    fetch('/api/traceroute/' + encodeURIComponent(trNode))
+    fetch('/api/nodes/' + encodeURIComponent(trNode) + '/traceroute')
       .then(function(r) { return r.json() })
       .then(function(data) {
         if (data.results && data.results[0]) renderTraceroutePath(data.results[0].hops)

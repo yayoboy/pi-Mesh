@@ -292,11 +292,11 @@ async def connect() -> None:
     asyncio.create_task(_command_worker())
     asyncio.create_task(_flush_task())
     backoff = 15
+    pub.subscribe(_on_receive, 'meshtastic.receive')
     while True:
         try:
             logger.warning(f'Connecting to board at {cfg.SERIAL_PATH}')
             _interface = meshtastic.serial_interface.SerialInterface(cfg.SERIAL_PATH)
-            pub.subscribe(_on_receive, 'meshtastic.receive')
             _connected = True
             backoff = 15
             logger.warning(f'Connected to board at {cfg.SERIAL_PATH}')
