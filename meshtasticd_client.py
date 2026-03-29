@@ -247,8 +247,7 @@ async def _flush_dirty(db_path: str) -> None:
     if not _dirty_nodes:
         return
     nodes_to_flush = [_node_cache[nid] for nid in list(_dirty_nodes) if nid in _node_cache]
-    for node in nodes_to_flush:
-        await database.upsert_node(db_path, node)
+    await database.bulk_upsert_nodes(db_path, nodes_to_flush)
     _dirty_nodes.clear()
     logger.debug(f'Flushed {len(nodes_to_flush)} dirty nodes to DB')
 
@@ -265,7 +264,6 @@ async def _flush_task() -> None:
 
 async def load_nodes_from_db(db_path: str | None = None) -> None:
     """Populate _node_cache from SQLite at startup before board connects."""
-    global _node_cache
     path = db_path or cfg.DB_PATH
     rows = await database.get_all_nodes(path)
     for row in rows:
@@ -319,6 +317,7 @@ async def connect() -> None:
 
 async def disconnect() -> None:
     global _connected, _interface
+    await _flush_dirty(cfg.DB_PATH)   # flush pending nodes before shutdown
     _connected = False
     if _interface:
         try:

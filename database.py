@@ -2,6 +2,7 @@
 import aiosqlite
 import json
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,43 @@ async def upsert_node(db_path: str, node: dict) -> None:
         await db.commit()
 
 
+async def bulk_upsert_nodes(db_path: str, nodes: list[dict]) -> None:
+    """Upsert multiple nodes in a single transaction."""
+    if not nodes:
+        return
+    async with aiosqlite.connect(db_path) as db:
+        for node in nodes:
+            await db.execute(
+                '''INSERT INTO nodes
+                   (id, short_name, long_name, latitude, longitude,
+                    last_heard, snr, battery_level, hop_count, hw_model,
+                    is_local, raw_json, distance_km)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                     short_name=excluded.short_name,
+                     long_name=excluded.long_name,
+                     latitude=excluded.latitude,
+                     longitude=excluded.longitude,
+                     last_heard=excluded.last_heard,
+                     snr=excluded.snr,
+                     battery_level=excluded.battery_level,
+                     hop_count=excluded.hop_count,
+                     hw_model=excluded.hw_model,
+                     is_local=excluded.is_local,
+                     raw_json=excluded.raw_json,
+                     distance_km=excluded.distance_km''',
+                (
+                    node.get('id'), node.get('short_name'), node.get('long_name'),
+                    node.get('latitude'), node.get('longitude'),
+                    node.get('last_heard'), node.get('snr'),
+                    node.get('battery_level'), node.get('hop_count'),
+                    node.get('hw_model'), node.get('is_local'),
+                    node.get('raw_json'), node.get('distance_km'),
+                )
+            )
+        await db.commit()
+
+
 async def get_all_nodes(db_path: str) -> list[dict]:
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
@@ -93,7 +131,6 @@ async def get_all_nodes(db_path: str) -> list[dict]:
 
 
 async def save_packet(db_path: str, from_id: str, packet_type: str, raw: dict) -> None:
-    import time
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             'INSERT INTO packets (ts, from_id, packet_type, raw_json) VALUES (?,?,?,?)',
