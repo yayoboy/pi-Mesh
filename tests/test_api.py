@@ -149,3 +149,54 @@ async def test_post_send_text_503_when_disconnected(mock_client):
             'channel': 0,
         })
     assert r.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_get_markers_returns_empty_list(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    with patch('database.get_markers', new_callable=AsyncMock, return_value=[]):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.get('/api/map/markers')
+    assert r.status_code == 200
+    assert r.json() == {'markers': []}
+
+
+@pytest.mark.asyncio
+async def test_post_marker_creates_and_returns(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    created = {'id': 1, 'label': 'HQ', 'icon_type': 'poi', 'latitude': 41.9, 'longitude': 12.5}
+    with patch('database.create_marker', new_callable=AsyncMock, return_value=created):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.post('/api/map/markers', json={
+                'label': 'HQ',
+                'icon_type': 'poi',
+                'latitude': 41.9,
+                'longitude': 12.5,
+            })
+    assert r.status_code == 200
+    data = r.json()
+    assert data['label'] == 'HQ'
+    assert data['id'] == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_marker_returns_deleted(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    with patch('database.delete_marker', new_callable=AsyncMock, return_value=True):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.delete('/api/map/markers/1')
+    assert r.status_code == 200
+    assert r.json()['status'] == 'deleted'
+
+
+@pytest.mark.asyncio
+async def test_delete_marker_404_when_not_found(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    with patch('database.delete_marker', new_callable=AsyncMock, return_value=False):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.delete('/api/map/markers/9999')
+    assert r.status_code == 404
