@@ -1,103 +1,63 @@
 {% extends "base.html" %}
-{% block content %}
+{% block head %}
+<link rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  #content { overflow: hidden; }
-
-  .f-row {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 10px; height: 28px; border-bottom: 1px solid var(--border);
-    font-size: 11px; cursor: pointer;
-    -webkit-tap-highlight-color: transparent; user-select: none;
-  }
-  .f-row:last-child { border-bottom: none; }
-  .f-row:active { background: rgba(255,255,255,0.04); }
-
-  .tog { position:relative; width:26px; height:15px; flex-shrink:0; pointer-events:none; }
-  .tog input { opacity:0; width:0; height:0; position:absolute; }
-  .tog-t { position:absolute; inset:0; border-radius:8px; background:var(--border,#2a3a4a); transition:background .12s; }
-  .tog input:checked + .tog-t { background:var(--accent,#4a9eff); }
-  .tog-k { position:absolute; top:2.5px; left:2.5px; width:10px; height:10px; border-radius:50%; background:#ddd; transition:transform .12s; }
-  .tog input:checked ~ .tog-k { transform:translateX(11px); }
-
-  .mk-row {
-    display: flex; align-items: center; gap: 5px;
-    height: 28px; padding: 0 8px; border-bottom: 1px solid var(--border);
-    font-size: 10px;
-  }
-
+  main { overflow: hidden !important; }
   .leaflet-control-zoom a {
-    background: rgba(10,12,20,0.55) !important;
-    border-color: rgba(42,58,74,0.5) !important;
-    color: var(--text,#ccc) !important;
-  }
-  .leaflet-control-zoom a:hover {
-    background: rgba(10,12,20,0.8) !important;
+    background: rgba(6,8,16,0.55) !important;
+    border-color: rgba(26,34,51,0.5) !important;
+    color: var(--text,#c9d1e0) !important;
   }
 </style>
-
+{% endblock %}
+{% block content %}
 <div style="position:relative;width:100%;height:100%;">
 
-  <!-- Mappa Leaflet -->
   <div id="map-container"
        data-bounds='{{ bounds | tojson }}'
        data-zoom-min="{{ zoom_min }}"
        data-zoom-max="{{ zoom_max }}"
        style="position:absolute;inset:0;"></div>
 
-  <!-- Overlay "tocca per posizionare" (placement mode) -->
-  <div id="placement-hint"
-       style="display:none;position:absolute;inset:0;z-index:800;
-              align-items:center;justify-content:center;pointer-events:none;">
-    <div style="background:rgba(10,12,20,0.88);border:1px solid var(--accent);
-                border-radius:4px;padding:8px 14px;font-size:11px;color:var(--accent);">
-      Tocca la mappa per posizionare
-    </div>
-  </div>
-
-  <!-- Bottone pannello (top-right, 32×32) -->
+  <!-- Panel toggle top-right -->
   <button id="panel-toggle"
           style="position:absolute;top:6px;right:6px;z-index:1000;
                  width:32px;height:32px;padding:0;
                  display:flex;align-items:center;justify-content:center;
-                 background:rgba(10,12,20,0.55);border:1px solid rgba(42,58,74,0.5);
-                 border-radius:4px;color:var(--text,#ccc);
+                 background:rgba(6,8,16,0.55);border:1px solid rgba(26,34,51,0.5);
+                 border-radius:4px;color:var(--text);
                  -webkit-tap-highlight-color:transparent;">
     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round"
-            d="M4 6h16M4 12h16M4 18h7"/>
+      <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h7"/>
     </svg>
   </button>
 
-  <!-- Layer switcher compatto (sotto panel toggle) -->
+  <!-- Layer switcher compatto -->
   <div style="position:absolute;top:46px;right:6px;z-index:1000;
-              background:rgba(10,12,20,0.55);border:1px solid rgba(42,58,74,0.5);
+              background:rgba(6,8,16,0.55);border:1px solid rgba(26,34,51,0.5);
               border-radius:4px;overflow:hidden;width:32px;">
-    <button class="layer-btn" data-layer="osm" onclick="switchLayer('osm')"
-            title="Stradale"
-            style="width:100%;height:28px;padding:0;border:none;border-bottom:1px solid rgba(42,58,74,0.4);
+    <button class="layer-btn" data-layer="osm" onclick="switchLayer('osm')" title="Stradale"
+            style="width:100%;height:28px;padding:0;border:none;border-bottom:1px solid rgba(26,34,51,0.4);
                    background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
-                   color:var(--accent,#4a9eff);
-                   -webkit-tap-highlight-color:transparent;">
+                   color:var(--accent);-webkit-tap-highlight-color:transparent;">
       <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
       </svg>
     </button>
-    <button class="layer-btn" data-layer="topo" onclick="switchLayer('topo')"
-            title="Topo"
-            style="width:100%;height:28px;padding:0;border:none;border-bottom:1px solid rgba(42,58,74,0.4);
+    <button class="layer-btn" data-layer="topo" onclick="switchLayer('topo')" title="Topo"
+            style="width:100%;height:28px;padding:0;border:none;border-bottom:1px solid rgba(26,34,51,0.4);
                    background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
-                   color:var(--text,#ccc);
-                   -webkit-tap-highlight-color:transparent;">
+                   color:var(--text);-webkit-tap-highlight-color:transparent;">
       <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M3 21l5-10 5 5 4-7 4 12"/>
       </svg>
     </button>
-    <button class="layer-btn" data-layer="satellite" onclick="switchLayer('satellite')"
-            title="Satellite"
+    <button class="layer-btn" data-layer="satellite" onclick="switchLayer('satellite')" title="Satellite"
             style="width:100%;height:28px;padding:0;border:none;
                    background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
-                   color:var(--text,#ccc);
-                   -webkit-tap-highlight-color:transparent;">
+                   color:var(--text);-webkit-tap-highlight-color:transparent;">
       <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="3"/>
         <path stroke-linecap="round" stroke-linejoin="round" d="M6.3 6.3l11.4 11.4M17.7 6.3L6.3 17.7"/>
@@ -105,246 +65,52 @@
     </button>
   </div>
 
-  <!-- Badge traceroute (top-left) -->
-  <div id="traceroute-badge"
-       style="display:none;position:absolute;top:6px;left:6px;right:46px;z-index:900;
-              background:rgba(10,12,20,0.95);border:1px solid var(--accent);border-radius:3px;
-              padding:0 7px;height:32px;box-sizing:border-box;
-              align-items:center;gap:4px;overflow:hidden;font-size:9px;color:var(--accent);">
-    <svg width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0;">
-      <path stroke-linecap="round" stroke-linejoin="round"
-            d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-    </svg>
-    <span id="traceroute-badge-text" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
-  </div>
-
-  <!-- Pannello unico (slide da destra) -->
-  <div id="right-panel"
-       style="display:none;position:absolute;top:0;right:0;bottom:0;width:160px;z-index:700;
-              flex-direction:column;overflow:hidden;
-              background:var(--bg,#0a0c14);border-left:1px solid var(--border);">
-
-    <!-- Legenda -->
-    <div style="padding:5px 10px 3px;font-size:9px;color:var(--accent);
-                text-transform:uppercase;letter-spacing:.08em;flex-shrink:0;
-                border-bottom:1px solid var(--border);">Legenda</div>
-    <div style="padding:4px 10px 6px;display:flex;flex-wrap:wrap;gap:6px 10px;font-size:9px;color:var(--text,#ccc);border-bottom:1px solid var(--border);flex-shrink:0;">
-      <span style="display:flex;align-items:center;gap:3px;"><span style="width:7px;height:7px;border-radius:50%;background:#4a9eff;box-shadow:0 0 3px #4a9eff;"></span>Locale</span>
-      <span style="display:flex;align-items:center;gap:3px;"><span style="width:7px;height:7px;border-radius:50%;background:#4caf50;"></span>Online</span>
-      <span style="display:flex;align-items:center;gap:3px;"><span style="width:7px;height:7px;border-radius:50%;background:#555;"></span>Offline</span>
-      <span style="display:flex;align-items:center;gap:3px;"><span style="width:14px;height:2px;background:#4caf50;border-radius:1px;"></span>buono</span>
-      <span style="display:flex;align-items:center;gap:3px;"><span style="width:14px;height:2px;background:#fb8c00;border-radius:1px;"></span>medio</span>
-      <span style="display:flex;align-items:center;gap:3px;"><span style="width:14px;height:2px;background:#e53935;border-radius:1px;"></span>scarso</span>
-      <span style="display:flex;align-items:center;gap:3px;"><span style="width:14px;height:2px;background:#ffd54f;opacity:0.8;border-radius:1px;"></span>route</span>
-    </div>
-
-    <!-- Sezione filtri -->
-    <div style="padding:5px 10px 3px;font-size:9px;color:var(--accent);
-                text-transform:uppercase;letter-spacing:.08em;flex-shrink:0;
-                border-bottom:1px solid var(--border);">Filtri</div>
-
-    <label class="f-row"><span>Online</span>
-      <span class="tog"><input type="checkbox" id="filter-online"><span class="tog-t"></span><span class="tog-k"></span></span>
-    </label>
-    <label class="f-row"><span>Offline</span>
-      <span class="tog"><input type="checkbox" id="filter-offline"><span class="tog-t"></span><span class="tog-k"></span></span>
-    </label>
-    <label class="f-row"><span>Linee hop</span>
-      <span class="tog"><input type="checkbox" id="filter-hoplines"><span class="tog-t"></span><span class="tog-k"></span></span>
-    </label>
-    <label class="f-row"><span>Marker</span>
-      <span class="tog"><input type="checkbox" id="filter-markers"><span class="tog-t"></span><span class="tog-k"></span></span>
-    </label>
-    <label class="f-row" style="border-bottom:none;"><span>Nodo locale</span>
-      <span class="tog"><input type="checkbox" id="filter-local"><span class="tog-t"></span><span class="tog-k"></span></span>
-    </label>
-    <div style="padding:7px 10px 6px;border-bottom:1px solid var(--border);flex-shrink:0;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;font-size:10px;">
-        <span style="color:var(--muted,#666);">Hop max</span>
-        <span id="filter-maxhops-val" style="color:var(--accent);font-weight:600;">7</span>
-      </div>
-      <input type="range" id="filter-maxhops" min="1" max="7" value="7"
-             style="width:100%;height:18px;cursor:pointer;">
-    </div>
-
-    <!-- Sezione marker -->
-    <div style="padding:5px 10px 3px;font-size:9px;color:var(--accent);
-                text-transform:uppercase;letter-spacing:.08em;flex-shrink:0;
-                border-bottom:1px solid var(--border);">Marker</div>
-    <div id="marker-list" style="flex:1;overflow-y:auto;"></div>
-    <div style="padding:5px 8px;border-top:1px solid var(--border);flex-shrink:0;">
-      <button id="add-marker-btn"
-              style="width:100%;font-size:11px;padding:6px 0;
-                     display:flex;align-items:center;justify-content:center;gap:4px;
-                     -webkit-tap-highlight-color:transparent;">
-        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
-        </svg>
-        Aggiungi
-      </button>
-    </div>
-  </div>
-
-  <!-- Bottone centra sulla board (bottom-right, sopra zoom) -->
+  <!-- Centra sulla board -->
   <button id="btn-center-board" onclick="centerOnBoard()" title="Centra sulla board"
           style="position:absolute;bottom:70px;right:6px;z-index:1000;
-                 width:32px;height:32px;min-height:32px;padding:0;
+                 width:32px;height:32px;padding:0;
                  display:flex;align-items:center;justify-content:center;
-                 background:rgba(10,12,20,0.55);border:1px solid rgba(42,58,74,0.5);
-                 border-radius:4px;cursor:pointer;color:var(--text,#ccc);
+                 background:rgba(6,8,16,0.55);border:1px solid rgba(26,34,51,0.5);
+                 border-radius:4px;cursor:pointer;color:var(--text);
                  -webkit-tap-highlight-color:transparent;">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-      <circle cx="12" cy="12" r="3"/><path stroke-linecap="round" d="M12 2v4m0 12v4M2 12h4m12 0h4"/>
+      <circle cx="12" cy="12" r="3"/>
+      <path stroke-linecap="round" d="M12 2v4m0 12v4M2 12h4m12 0h4"/>
     </svg>
   </button>
 
-</div>
+  <!-- Popup nodo -->
+  <div id="node-popup"
+       style="display:none;position:absolute;z-index:900;
+              background:rgba(6,8,16,0.96);border:1px solid var(--border);
+              border-radius:6px;padding:10px;width:190px;
+              box-shadow:0 4px 16px rgba(0,0,0,0.6);font-size:10px;pointer-events:auto;">
+  </div>
 
-<!-- Modal marker — appeso al body per evitare clipping -->
-<div id="marker-modal"
-     style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;
-            background:rgba(0,0,0,.72);z-index:9999;
-            align-items:center;justify-content:center;">
-  <div style="background:var(--panel,#12151f);border:1px solid var(--border);
-              border-radius:5px;padding:14px;
-              width:260px;max-width:calc(100vw - 24px);font-size:12px;">
-    <div style="font-size:10px;font-weight:600;margin-bottom:10px;
-                color:var(--accent);text-transform:uppercase;letter-spacing:.06em;">
-      Nuovo marker
-    </div>
-    <input id="marker-label" type="text" placeholder="Nome..."
-           style="width:100%;margin-bottom:8px;box-sizing:border-box;
-                  font-size:13px;padding:8px 9px;border-radius:3px;">
-    <div id="marker-type-btns"
-         style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">
-      <button class="mtype-btn" data-type="poi"
-              style="flex:1;min-width:calc(50% - 3px);padding:7px 4px;font-size:11px;
-                     border-radius:3px;border:1px solid var(--accent);
-                     background:var(--accent);color:#fff;">
-        POI
-      </button>
-      <button class="mtype-btn" data-type="antenna"
-              style="flex:1;min-width:calc(50% - 3px);padding:7px 4px;font-size:11px;
-                     border-radius:3px;border:1px solid var(--border);
-                     background:transparent;color:var(--text,#ccc);">
-        Antenna
-      </button>
-      <button class="mtype-btn" data-type="base"
-              style="flex:1;min-width:calc(50% - 3px);padding:7px 4px;font-size:11px;
-                     border-radius:3px;border:1px solid var(--border);
-                     background:transparent;color:var(--text,#ccc);">
-        Base
-      </button>
-      <button class="mtype-btn" data-type="obstacle"
-              style="flex:1;min-width:calc(50% - 3px);padding:7px 4px;font-size:11px;
-                     border-radius:3px;border:1px solid var(--border);
-                     background:transparent;color:var(--text,#ccc);">
-        Ostacolo
-      </button>
-    </div>
-    <div id="marker-coords-hint"
-         style="font-size:10px;color:var(--muted,#666);margin-bottom:10px;text-align:center;">
-    </div>
-    <div style="display:flex;gap:7px;">
-      <button id="marker-cancel"
-              style="flex:1;padding:9px 0;font-size:12px;border-radius:3px;">
-        Annulla
-      </button>
-      <button id="marker-save"
-              style="flex:1;padding:9px 0;font-size:12px;font-weight:600;
-                     background:var(--accent);color:#fff;border:none;
-                     border-radius:3px;cursor:pointer;">
-        Salva
-      </button>
-    </div>
+  <!-- Pannello laterale -->
+  <div id="right-panel"
+       style="display:none;position:absolute;top:0;right:0;bottom:0;width:160px;z-index:700;
+              flex-direction:column;overflow:hidden;
+              background:var(--bg);border-left:1px solid var(--border);">
+    <div style="padding:5px 10px;font-size:9px;color:var(--accent);text-transform:uppercase;
+                border-bottom:1px solid var(--border);">Filtri</div>
   </div>
 </div>
 
-<!-- Popup info nodo (posizionato via JS) -->
-<div id="node-popup"
-     style="display:none;position:absolute;z-index:900;
-            background:rgba(10,12,20,0.96);border:1px solid var(--border,#2a3a4a);
-            border-radius:6px;padding:10px;width:190px;
-            box-shadow:0 4px 16px rgba(0,0,0,0.6);font-size:10px;pointer-events:auto;">
-</div>
-
+<script>
+// Pre-populate nodeCache from server-rendered JSON (no initial HTTP request)
+var _serverNodes = {{ nodes_json | safe }};
+</script>
 <script src="/static/map.js?v=5"></script>
 <script>
-// Sposta modal al body per evitare clipping da overflow:hidden
-document.body.appendChild(document.getElementById('marker-modal'))
-
-var _pendingMarkerLatLng = null
-var _selectedMarkerType = 'poi'
-
-// Toggle pannello unico
 document.getElementById('panel-toggle').onclick = function() {
   var p = document.getElementById('right-panel')
   p.style.display = p.style.display === 'flex' ? 'none' : 'flex'
 }
 
-// Selezione tipo marker
-document.getElementById('marker-type-btns').addEventListener('click', function(e) {
-  var btn = e.target.closest('.mtype-btn')
-  if (!btn) return
-  _selectedMarkerType = btn.dataset.type
-  document.querySelectorAll('.mtype-btn').forEach(function(b) {
-    var on = b === btn
-    b.style.background = on ? 'var(--accent)' : 'transparent'
-    b.style.color      = on ? '#fff' : 'var(--text,#ccc)'
-    b.style.border     = '1px solid ' + (on ? 'var(--accent)' : 'var(--border)')
-  })
-})
-
-// "Aggiungi" → chiude il pannello, attiva placement mode
-document.getElementById('add-marker-btn').onclick = function() {
-  document.getElementById('right-panel').style.display = 'none'
-  document.getElementById('placement-hint').style.display = 'flex'
-  if (typeof leafletMap !== 'undefined' && leafletMap) {
-    leafletMap.once('click', function(e) {
-      document.getElementById('placement-hint').style.display = 'none'
-      _openMarkerModal(e.latlng)
-    })
-  }
-}
-
-function _openMarkerModal(latlng) {
-  _pendingMarkerLatLng = latlng
-  _selectedMarkerType = 'poi'
-  document.querySelectorAll('.mtype-btn').forEach(function(b) {
-    var on = b.dataset.type === 'poi'
-    b.style.background = on ? 'var(--accent)' : 'transparent'
-    b.style.color      = on ? '#fff' : 'var(--text,#ccc)'
-    b.style.border     = '1px solid ' + (on ? 'var(--accent)' : 'var(--border)')
-  })
-  document.getElementById('marker-label').value = ''
-  document.getElementById('marker-coords-hint').textContent =
-    latlng.lat.toFixed(4) + '\u00b0, ' + latlng.lng.toFixed(4) + '\u00b0'
-  document.getElementById('marker-coords-hint').style.color = 'var(--accent,#4a9eff)'
-  document.getElementById('marker-modal').style.display = 'flex'
-}
-
-document.getElementById('marker-cancel').onclick = function() {
-  document.getElementById('marker-modal').style.display = 'none'
-  document.getElementById('placement-hint').style.display = 'none'
-  if (typeof leafletMap !== 'undefined' && leafletMap) leafletMap.off('click')
-  _pendingMarkerLatLng = null
-}
-
-document.getElementById('marker-save').onclick = async function() {
-  var label = document.getElementById('marker-label').value.trim()
-  if (!label) { document.getElementById('marker-label').focus(); return }
-  if (!_pendingMarkerLatLng) {
-    document.getElementById('marker-coords-hint').textContent = 'Posizione non impostata'
-    document.getElementById('marker-coords-hint').style.color = 'var(--danger,#ef9a9a)'
-    return
-  }
-  try {
-    await addCustomMarker(label, _selectedMarkerType, _pendingMarkerLatLng)
-    document.getElementById('marker-modal').style.display = 'none'
-  } catch(e) {
-    document.getElementById('marker-coords-hint').textContent = 'Errore nel salvataggio'
-    document.getElementById('marker-coords-hint').style.color = 'var(--danger,#ef9a9a)'
-  }
+// Feed server nodes into nodeCache on load
+if (typeof nodeCache !== 'undefined' && _serverNodes) {
+  _serverNodes.forEach(function(n) { nodeCache.set(n.id, n) })
 }
 </script>
 {% endblock %}
