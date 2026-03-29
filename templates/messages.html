@@ -49,7 +49,7 @@
         </select>
       </div>
       <!-- Trash icon — clear history -->
-      <button @click="clearHistory()" title="Pulisci cronologia"
+      <button @click="showConfirm = true" title="Pulisci cronologia"
               style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--muted);padding:2px;line-height:0;">
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -100,6 +100,48 @@
     </div>
   </div>
 
+  <!-- Confirm modal (PinesUI style) -->
+  <template x-teleport="body">
+    <div x-show="showConfirm"
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 flex items-center justify-center p-4"
+         @keydown.escape.window="showConfirm = false"
+         style="display:none;">
+      <!-- Overlay -->
+      <div @click="showConfirm = false" class="fixed inset-0" style="background:rgba(0,0,0,.65);"></div>
+      <!-- Dialog -->
+      <div x-show="showConfirm"
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0 scale-95"
+           x-transition:enter-end="opacity-100 scale-100"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-start="opacity-100 scale-100"
+           x-transition:leave-end="opacity-0 scale-95"
+           class="relative z-10 w-64 rounded-lg p-5"
+           style="background:var(--panel);border:1px solid var(--border);">
+        <h3 class="text-sm font-semibold" style="color:var(--text);margin:0 0 6px;">Cancellare la cronologia?</h3>
+        <p style="font-size:11px;color:var(--muted);margin:0 0 16px;">Tutti i messaggi verranno eliminati definitivamente.</p>
+        <div class="flex gap-2 justify-end">
+          <button @click="showConfirm = false"
+                  class="rounded px-3 py-1.5 text-xs"
+                  style="background:var(--border);color:var(--text);border:none;cursor:pointer;">
+            Annulla
+          </button>
+          <button @click="clearHistory()"
+                  class="rounded px-3 py-1.5 text-xs"
+                  style="background:#dc2626;color:#fff;border:none;cursor:pointer;">
+            Elimina
+          </button>
+        </div>
+      </div>
+    </div>
+  </template>
+
 </div>
 
 <script>
@@ -111,6 +153,7 @@ function messagesPage() {
     dmThreads: [],
     hasMore: false,
     loading: false,
+    showConfirm: false,
     _onMessage: null,
     _onAck: null,
     _observer: null,
@@ -251,12 +294,12 @@ function messagesPage() {
     },
 
     async clearHistory() {
-      if (!confirm('Cancellare tutta la cronologia messaggi?')) return
       const r = await fetch('/api/messages', { method: 'DELETE' })
       if (r.ok) {
         this.messages = []
         this.dmThreads = []
       }
+      this.showConfirm = false
     },
   }
 }
