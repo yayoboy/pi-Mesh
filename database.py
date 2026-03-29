@@ -301,21 +301,21 @@ async def get_dm_messages(
     """Return messages in a DM thread (both directions), oldest first."""
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
+        base_where = """destination != '^all' AND (
+            (node_id = ? AND destination = ?) OR
+            (node_id = ? AND destination = ?)
+        )"""
+        # params order: peer→local, local→peer
+        params = (peer_id, local_id, local_id, peer_id)
         if before_id is not None:
             cursor = await db.execute(
-                '''SELECT * FROM messages
-                   WHERE id < ? AND destination != '^all'
-                     AND (node_id = ? OR destination = ?)
-                   ORDER BY id DESC LIMIT ?''',
-                (before_id, peer_id, peer_id, limit)
+                f'SELECT * FROM messages WHERE id < ? AND {base_where} ORDER BY id DESC LIMIT ?',
+                (before_id, *params, limit)
             )
         else:
             cursor = await db.execute(
-                '''SELECT * FROM messages
-                   WHERE destination != '^all'
-                     AND (node_id = ? OR destination = ?)
-                   ORDER BY id DESC LIMIT ?''',
-                (peer_id, peer_id, limit)
+                f'SELECT * FROM messages WHERE {base_where} ORDER BY id DESC LIMIT ?',
+                (*params, limit)
             )
         rows = await cursor.fetchall()
     return [dict(r) for r in reversed(rows)]
