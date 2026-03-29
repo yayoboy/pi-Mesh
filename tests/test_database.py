@@ -16,6 +16,7 @@ async def test_init_creates_tables(tmp_path):
     assert 'nodes' in tables
     assert 'messages' in tables
     assert 'packets' in tables
+    assert 'custom_markers' in tables
 
 
 @pytest.mark.asyncio
@@ -128,6 +129,7 @@ async def test_get_markers_returns_list(tmp_path):
     markers = await database.get_markers(db_path)
     assert len(markers) == 2
     assert markers[0]['label'] == 'M1'
+    assert markers[1]['label'] == 'M2'
 
 
 @pytest.mark.asyncio
