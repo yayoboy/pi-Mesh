@@ -126,6 +126,8 @@ async def connect() -> None:
             _connected = True
             backoff = 15
             logger.warning(f'Connected to board at {cfg.SERIAL_PATH}')
+            # Wait for myInfo to be populated before first cache refresh
+            await asyncio.sleep(3)
             # Keep alive — poll every 30s
             while _connected:
                 _refresh_node_cache()
