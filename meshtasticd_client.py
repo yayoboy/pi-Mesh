@@ -148,9 +148,10 @@ def _refresh_node_cache() -> None:
 async def _save_incoming_message(
     from_id: str, channel: int, text: str, snr, hop_limit, dest: str
 ) -> None:
+    now = int(time.time())
     msg_id = await database.save_message(
         cfg.DB_PATH, from_id, channel, text,
-        int(time.time()), False, snr, hop_limit, dest
+        now, False, snr, hop_limit, dest
     )
     typed_event = {
         'type':        'message',
@@ -158,7 +159,7 @@ async def _save_incoming_message(
         'node_id':     from_id,
         'channel':     channel,
         'text':        text,
-        'ts':          int(time.time()),
+        'ts':          now,
         'is_outgoing': False,
         'rx_snr':      snr,
         'hop_count':   hop_limit,
