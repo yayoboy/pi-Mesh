@@ -1,0 +1,18 @@
+[Unit]
+Description=pi-Mesh FastAPI App
+After=network.target meshtasticd.service
+Requires=meshtasticd.service
+
+[Service]
+Type=simple
+User=pimesh
+WorkingDirectory=/home/pimesh/pi-Mesh
+ExecStart=/home/pimesh/pi-Mesh/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8080 --workers 1 --log-level warning
+Restart=always
+RestartSec=5
+EnvironmentFile=/home/pimesh/pi-Mesh/config.env
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
