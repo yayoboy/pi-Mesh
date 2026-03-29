@@ -244,11 +244,14 @@ function messagesPage() {
       }
     },
 
-    onAck() {
-      this.messages.filter(m => m.is_outgoing && !m.ack).forEach(m => { m.ack = 1 })
+    onAck(msg) {
+      this.messages
+        .filter(m => m.is_outgoing && !m.ack && m.destination === msg.node_id)
+        .forEach(m => { m.ack = 1 })
     },
 
     async clearHistory() {
+      if (!confirm('Cancellare tutta la cronologia messaggi?')) return
       const r = await fetch('/api/messages', { method: 'DELETE' })
       if (r.ok) {
         this.messages = []
