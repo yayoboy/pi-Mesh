@@ -7,6 +7,28 @@ const activeTab = { name: document.querySelector('.tab.active')?.dataset.tab || 
 const nodeCache = new Map()
 const messageCache = []
 
+// ===== NODE ACTIONS (page-agnostic, shared by nodes.html and map.js) =====
+const nodeActions = {
+  traceroute: (nodeId) =>
+    fetch(`/api/nodes/${encodeURIComponent(nodeId)}/traceroute`, { method: 'POST' })
+      .then(r => r.json()),
+
+  requestPosition: (nodeId) =>
+    fetch(`/api/nodes/${encodeURIComponent(nodeId)}/request-position`, { method: 'POST' })
+      .then(r => r.json()),
+
+  sendDM: (nodeId, text) =>
+    fetch('/api/messages/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: nodeId, text: text, channel: 0 }),
+    }).then(r => r.json()),
+
+  focusOnMap: (nodeId) => {
+    window.location.href = `/map?focus=${encodeURIComponent(nodeId)}`
+  },
+}
+
 // ===== TOAST =====
 let _lastConnected = null
 
@@ -30,11 +52,23 @@ function showToast(msg, type, duration) {
 
 // ===== UTILITY =====
 function reexecScripts(container) {
-  container.querySelectorAll('script').forEach(oldScript => {
-    const s = document.createElement('script')
-    s.textContent = oldScript.textContent
-    oldScript.parentNode.replaceChild(s, oldScript)
+  const scripts = Array.from(container.querySelectorAll('script'))
+  let chain = Promise.resolve()
+  scripts.forEach(oldScript => {
+    chain = chain.then(() => new Promise(resolve => {
+      const s = document.createElement('script')
+      if (oldScript.src) {
+        s.src = oldScript.src
+        s.onload = resolve
+        s.onerror = resolve
+      } else {
+        s.textContent = oldScript.textContent
+      }
+      oldScript.parentNode.replaceChild(s, oldScript)
+      if (!oldScript.src) resolve()
+    }))
   })
+  return chain
 }
 
 // ===== WEBSOCKET =====
@@ -72,92 +106,92 @@ function initWS() {
       ack:               handleAck,
       traceroute_result: handleTracerouteResult,
     }
-    handlers[msg.type]?.(msg.data)
+    handlers[msg.type]?.(msg)
   }
 
 }
 
 // ===== HANDLER MESSAGGI WS =====
-function handleInit(data) {
-  updateConnectionStatus(data.connected)
-  data.nodes.forEach(n => nodeCache.set(n.id, n))
-  if (activeTab.name === 'messages') renderMessages(data.messages)
-  if (data.theme) applyTheme(data.theme)
-  const local = data.nodes.find(n => n.is_local)
+function handleInit(msg) {
+  const nodes = msg.nodes || []
+  nodes.forEach(n => nodeCache.set(n.id, n))
+  const local = nodes.find(n => n.is_local)
   if (local) {
     const el = document.getElementById('node-name')
     if (el) el.textContent = local.short_name || local.id
     updateGpsBadge(local.latitude != null && local.longitude != null)
   }
-  window.dispatchEvent(new CustomEvent('ws-init', { detail: data }))
+  window.dispatchEvent(new CustomEvent('ws-init', { detail: msg }))
   fetch('/api/wifi/status').then(r => r.json()).then(s => {
     updateWifiBadge(s.state === 'connected')
   }).catch(() => {})
 }
 
-function handleMessage(data) {
-  messageCache.unshift(data)
+function handleMessage(msg) {
+  messageCache.unshift(msg)
   if (messageCache.length > 200) messageCache.pop()
-  window.dispatchEvent(new CustomEvent('message-new', { detail: data }))
-  const prefix = (data.destination && data.destination !== '^all') ? 'DM ' : 'MSG '
-  if (typeof showToast === 'function') showToast(prefix + (data.node_id || '') + ': ' + (data.text || '').slice(0, 30))
+  window.dispatchEvent(new CustomEvent('message-new', { detail: msg }))
+  const prefix = (msg.destination && msg.destination !== '^all') ? 'DM ' : 'MSG '
+  if (typeof showToast === 'function') showToast(prefix + (msg.node_id || '') + ': ' + (msg.text || '').slice(0, 30))
 }
 
-function handleNode(data) {
-  const isNew = !nodeCache.has(data.id)
-  nodeCache.set(data.id, data)
-  if (isNew && !data.is_local) showToast('Nuovo nodo: ' + (data.short_name || data.id))
-  if (activeTab.name === 'nodes') updateNodeRow(data)
-  if (activeTab.name === 'map' && typeof mapReady !== 'undefined' && mapReady) updateMapMarker(data)
-  if (data.is_local) {
+function handleNode(msg) {
+  // msg = { type: 'node', id, short_name, long_name, hw_model, ... }
+  const isNew = !nodeCache.has(msg.id)
+  nodeCache.set(msg.id, msg)
+  if (isNew && !msg.is_local) showToast('Nuovo nodo: ' + (msg.short_name || msg.id))
+  window.dispatchEvent(new CustomEvent('node-update', { detail: msg }))
+  if (msg.is_local) {
     const el = document.getElementById('node-name')
-    if (el) el.textContent = data.short_name || data.id
-    updateGpsBadge(data.latitude != null && data.longitude != null)
+    if (el) el.textContent = msg.short_name || msg.id
+    updateGpsBadge(msg.latitude != null && msg.longitude != null)
   }
 }
 
-function handlePosition(data) {
-  const node = nodeCache.get(data.node_id)
+function handlePosition(msg) {
+  // msg = { type: 'position', id, latitude, longitude, last_heard }
+  const node = nodeCache.get(msg.id)
   if (node) {
-    node.latitude  = data.latitude
-    node.longitude = data.longitude
-    if (activeTab.name === 'map' && typeof mapReady !== 'undefined' && mapReady) updateMapMarker(node)
+    node.latitude   = msg.latitude
+    node.longitude  = msg.longitude
+    node.last_heard = msg.last_heard
     if (node.is_local) updateGpsBadge(true)
   }
+  window.dispatchEvent(new CustomEvent('position-update', { detail: msg }))
 }
 
-function handleTelemetry(data) {
-  if (activeTab.name === 'telemetry') updateTelemetryChart(data)
-  if (data.node_id === 'pi' && data.type === 'systemMetrics' && data.values) {
-    const v = data.values
-    const ram = document.getElementById('ram-badge')
-    if (ram && v.ram_mb) ram.textContent = v.ram_mb + 'MB'
-    const temp = document.getElementById('temp-badge')
-    if (temp && v.cpu_temp_c != null) temp.textContent = v.cpu_temp_c + '°C'
+function handleTelemetry(msg) {
+  // msg = { type: 'telemetry', id, battery_level, snr }
+  const node = nodeCache.get(msg.id)
+  if (node) {
+    if (msg.battery_level != null) node.battery_level = msg.battery_level
+    if (msg.snr != null) node.snr = msg.snr
   }
+  window.dispatchEvent(new CustomEvent('telemetry-update', { detail: msg }))
 }
 
-function handleSensor(data) {
-  if (activeTab.name === 'telemetry') updateSensorDisplay(data)
+function handleSensor(msg) {
+  window.dispatchEvent(new CustomEvent('sensor-update', { detail: msg }))
 }
 
-function handleLog(data) {
-  window.dispatchEvent(new CustomEvent('log-entry', { detail: data }))
+function handleLog(msg) {
+  window.dispatchEvent(new CustomEvent('log-entry', { detail: msg }))
 }
 
-function handleAck(data) {
-  window.dispatchEvent(new CustomEvent('msg-ack', { detail: data }))
+function handleAck(msg) {
+  window.dispatchEvent(new CustomEvent('msg-ack', { detail: msg }))
 }
 
-function handleTracerouteResult(data) {
-  window.dispatchEvent(new CustomEvent('traceroute_result', { detail: data }))
+function handleTracerouteResult(msg) {
+  // msg = { type: 'traceroute_result', node_id, hops: [...] }
+  window.dispatchEvent(new CustomEvent('traceroute_result', { detail: msg }))
 }
 
-function handleStatus(data) {
-  if (data.connected !== undefined) updateConnectionStatus(data.connected)
-  if (data.ram_mb) {
+function handleStatus(msg) {
+  if (msg.connected !== undefined) updateConnectionStatus(msg.connected)
+  if (msg.ram_mb) {
     const el = document.getElementById('ram-badge')
-    if (el) el.textContent = data.ram_mb + 'MB'
+    if (el) el.textContent = msg.ram_mb + 'MB'
   }
 }
 
@@ -184,8 +218,8 @@ function updateWifiBadge(connected) {
 }
 
 // ===== ENCODER =====
-function handleEncoder(data) {
-  const { encoder, action } = data
+function handleEncoder(msg) {
+  const { encoder, action } = msg
   if (encoder === 1) {
     const tabs = ['messages', 'nodes', 'map', 'telemetry', 'settings', 'log']
     const current = tabs.indexOf(activeTab.name)
@@ -195,15 +229,11 @@ function handleEncoder(data) {
     return
   }
   if (encoder === 2) {
-    const handlers = {
-      messages:  enc2Messages,
-      nodes:     enc2Nodes,
-      map:       enc2Map,
-      telemetry: enc2Telemetry,
-      settings:  enc2Settings,
-      log:       enc2Log,
+    const enc2handlers = {
+      messages: enc2Messages, nodes: enc2Nodes, map: enc2Map,
+      telemetry: enc2Telemetry, settings: enc2Settings, log: enc2Log,
     }
-    handlers[activeTab.name]?.(action)
+    enc2handlers[activeTab.name]?.(action)
   }
 }
 
@@ -246,7 +276,7 @@ async function navigateTo(tabName) {
     const newContent = doc.getElementById('content')
     if (newContent) {
       document.getElementById('content').innerHTML = newContent.innerHTML
-      reexecScripts(document.getElementById('content'))
+      await reexecScripts(document.getElementById('content'))
     }
   } catch (e) {
     console.error('navigateTo error:', e)
@@ -256,8 +286,11 @@ async function navigateTo(tabName) {
     t.classList.toggle('active', t.dataset.tab === tabName)
   })
 
-  if (tabName === 'map')       initMapIfNeeded()
-  if (tabName === 'telemetry') initChartsIfNeeded()
+  if (tabName === 'map') {
+    // Reset map state — old DOM was destroyed by SPA navigation
+    if (typeof mapReady !== 'undefined') { mapReady = false; leafletMap = null; markerCache.clear() }
+    setTimeout(() => { if (typeof initMapIfNeeded === 'function') initMapIfNeeded() }, 100)
+  }
   attachKeyboardListeners()
 }
 
@@ -336,9 +369,6 @@ function applyTheme(theme) {
 
 // ===== GRAFICI (stub, completato in Task telemetry) =====
 function initChartsIfNeeded() { /* implementato in telemetry.html inline */ }
-function updateTelemetryChart(data) { window.dispatchEvent(new CustomEvent('telemetry-update', { detail: data })) }
-function updateSensorDisplay(data) { window.dispatchEvent(new CustomEvent('sensor-update', { detail: data })) }
-function updateNodeRow(data) { window.dispatchEvent(new CustomEvent('node-update', { detail: data })) }
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
