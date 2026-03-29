@@ -1,0 +1,15 @@
+[Unit]
+Description=Meshtastic Daemon
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/meshtasticd --port /dev/ttyACM0
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

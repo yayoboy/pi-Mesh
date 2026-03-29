@@ -68,11 +68,13 @@
   <!-- TEMA -->
   <div class="settings-section" style="border-top:1px solid var(--border);">
     <div class="settings-label">Tema UI</div>
-    <div style="display:flex; gap:8px; margin-bottom:8px;">
-      <button onclick="setTheme('dark')"  style="flex:1; min-height:36px; font-size:12px;">Dark</button>
-      <button onclick="setTheme('light')" style="flex:1; min-height:36px; font-size:12px;">Light</button>
-      <button onclick="setTheme('hc')"    style="flex:1; min-height:36px; font-size:12px;">HC</button>
+    <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+      <button onclick="selectTheme('dark')"  class="theme-btn" data-theme="dark"  style="flex:1; min-height:36px; font-size:12px;">Dark</button>
+      <button onclick="selectTheme('light')" class="theme-btn" data-theme="light" style="flex:1; min-height:36px; font-size:12px;">Light</button>
+      <button onclick="selectTheme('hc')"    class="theme-btn" data-theme="hc"    style="flex:1; min-height:36px; font-size:12px;">HC</button>
+      <button onclick="selectTheme('custom')" class="theme-btn" data-theme="custom" style="flex:1; min-height:36px; font-size:12px;">Custom</button>
     </div>
+
     <div class="settings-label">Colore accento</div>
     <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
       {% set swatches = ['#4a9eff','#4caf50','#ff9800','#e91e63','#9c27b0','#00bcd4','#ff5722','#8bc34a'] %}
@@ -87,8 +89,22 @@
       <input type="color" id="accent-picker" value="{{ accent_color or '#4a9eff' }}"
              style="padding:2px; min-height:32px; width:48px; flex-shrink:0;"
              oninput="applyAccent(this.value)">
-      <button onclick="saveAccent()" style="min-height:32px; font-size:12px;">Salva</button>
     </div>
+
+    <div id="custom-theme-section" style="display:none; margin-top:8px;">
+      <div class="settings-label">Colori personalizzati</div>
+      <div class="settings-row"><label>Sfondo</label>       <input type="color" id="ct-bg"      class="ct-pick" data-var="--bg"      style="width:48px;min-height:32px;flex:unset;"></div>
+      <div class="settings-row"><label>Superficie</label>   <input type="color" id="ct-surface" class="ct-pick" data-var="--bg2"     style="width:48px;min-height:32px;flex:unset;"></div>
+      <div class="settings-row"><label>Testo</label>        <input type="color" id="ct-text"    class="ct-pick" data-var="--text"    style="width:48px;min-height:32px;flex:unset;"></div>
+      <div class="settings-row"><label>Testo secondario</label><input type="color" id="ct-muted" class="ct-pick" data-var="--muted"  style="width:48px;min-height:32px;flex:unset;"></div>
+      <div class="settings-row"><label>Bordi</label>        <input type="color" id="ct-border"  class="ct-pick" data-var="--border"  style="width:48px;min-height:32px;flex:unset;"></div>
+      <div class="settings-row"><label>Successo</label>     <input type="color" id="ct-ok"      class="ct-pick" data-var="--ok"      style="width:48px;min-height:32px;flex:unset;"></div>
+      <div class="settings-row"><label>Attenzione</label>   <input type="color" id="ct-warn"    class="ct-pick" data-var="--warn"    style="width:48px;min-height:32px;flex:unset;"></div>
+      <div class="settings-row"><label>Pericolo</label>     <input type="color" id="ct-danger"  class="ct-pick" data-var="--danger"  style="width:48px;min-height:32px;flex:unset;"></div>
+    </div>
+
+    <button onclick="saveTheme()" style="margin-top:8px; min-height:36px;">Salva tema</button>
+    <div id="theme-status" style="font-size:11px; color:var(--muted); margin-top:4px;"></div>
   </div>
 
   <!-- WIFI -->
@@ -197,7 +213,16 @@
   <!-- CONFIGURAZIONE -->
   <div class="settings-section" style="border-top:1px solid var(--border);">
     <div class="settings-label">Configurazione</div>
-    <div class="settings-row"><label>Porta seriale</label><input type="text" id="cfg-serial" value=""></div>
+    <div class="settings-row">
+      <label>Porta seriale</label>
+      <select id="cfg-serial" style="flex:1;" onchange="onSerialChange()">
+        <option value="">Caricamento...</option>
+      </select>
+    </div>
+    <div id="serial-custom-row" class="settings-row" style="display:none;">
+      <label>Porta manuale</label>
+      <input type="text" id="cfg-serial-custom" placeholder="/dev/ttyUSB0" value="">
+    </div>
     <div class="settings-row"><label>MAP lat min</label><input type="number" id="cfg-lat-min" step="0.1" value=""></div>
     <div class="settings-row"><label>MAP lat max</label><input type="number" id="cfg-lat-max" step="0.1" value=""></div>
     <div class="settings-row"><label>MAP lon min</label><input type="number" id="cfg-lon-min" step="0.1" value=""></div>
@@ -473,27 +498,122 @@ async function saveLoraConfig() {
 }
 
 let _pendingAccent = null
+let _currentTheme = document.body.className.replace('theme-', '') || 'dark'
 
 function applyAccent(color) {
   _pendingAccent = color
   document.documentElement.style.setProperty('--accent', color)
   document.body.style.setProperty('--accent', color)
-  const picker = document.getElementById('accent-picker')
+  var picker = document.getElementById('accent-picker')
   if (picker) picker.value = color
+  try {
+    var saved = JSON.parse(localStorage.getItem('piMeshTheme') || '{}')
+    if (!saved.vars) saved.vars = {}
+    saved.vars['--accent'] = color
+    localStorage.setItem('piMeshTheme', JSON.stringify(saved))
+  } catch(e){}
 }
 
-async function saveAccent() {
-  const color = _pendingAccent || document.getElementById('accent-picker')?.value
-  if (!color) return
-  const theme = document.body.className.replace('theme-', '') || 'dark'
-  await fetch('/api/set-theme', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({theme, accent_color: color})})
-}
-
-async function setTheme(theme) {
-  await fetch('/api/set-theme', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({theme})})
+function selectTheme(theme) {
+  _currentTheme = theme
   document.body.className = 'theme-' + theme
   document.documentElement.className = 'theme-' + theme
+  document.getElementById('custom-theme-section').style.display = theme === 'custom' ? '' : 'none'
+  document.querySelectorAll('.theme-btn').forEach(function(b) {
+    b.style.outline = b.dataset.theme === theme ? '2px solid var(--accent)' : 'none'
+  })
+  if (theme === 'custom') {
+    _loadCustomColors()
+  } else {
+    document.documentElement.removeAttribute('style')
+    if (_pendingAccent) {
+      document.documentElement.style.setProperty('--accent', _pendingAccent)
+    }
+  }
+  try {
+    var saved = JSON.parse(localStorage.getItem('piMeshTheme') || '{}')
+    saved.theme = theme
+    if (theme !== 'custom') delete saved.vars
+    localStorage.setItem('piMeshTheme', JSON.stringify(saved))
+  } catch(e){}
 }
+
+function _loadCustomColors() {
+  var style = getComputedStyle(document.documentElement)
+  document.querySelectorAll('.ct-pick').forEach(function(pick) {
+    var v = style.getPropertyValue(pick.dataset.var).trim()
+    if (v) pick.value = _toHex(v)
+  })
+}
+
+function _toHex(color) {
+  if (color.startsWith('#')) return color
+  var d = document.createElement('div')
+  d.style.color = color
+  document.body.appendChild(d)
+  var c = getComputedStyle(d).color
+  document.body.removeChild(d)
+  var m = c.match(/\d+/g)
+  if (!m || m.length < 3) return '#000000'
+  return '#' + m.slice(0,3).map(function(v) { return parseInt(v).toString(16).padStart(2,'0') }).join('')
+}
+
+document.addEventListener('input', function(e) {
+  if (!e.target.classList.contains('ct-pick')) return
+  document.documentElement.style.setProperty(e.target.dataset.var, e.target.value)
+})
+
+async function saveTheme() {
+  var st = document.getElementById('theme-status')
+  var vars = {}
+  if (_currentTheme === 'custom') {
+    document.querySelectorAll('.ct-pick').forEach(function(pick) {
+      vars[pick.dataset.var] = pick.value
+    })
+  }
+  if (_pendingAccent) vars['--accent'] = _pendingAccent
+  var saved = { theme: _currentTheme }
+  if (Object.keys(vars).length > 0) saved.vars = vars
+  localStorage.setItem('piMeshTheme', JSON.stringify(saved))
+  try {
+    var payload = { theme: _currentTheme }
+    if (_pendingAccent) payload.accent_color = _pendingAccent
+    await fetch('/api/set-theme', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    st.textContent = 'Tema salvato'
+  } catch (_) {
+    st.textContent = 'Errore salvataggio'
+  }
+}
+
+// Init: restore saved theme state
+(function() {
+  try {
+    var saved = JSON.parse(localStorage.getItem('piMeshTheme'))
+    if (!saved) return
+    _currentTheme = saved.theme || 'dark'
+    document.querySelectorAll('.theme-btn').forEach(function(b) {
+      b.style.outline = b.dataset.theme === _currentTheme ? '2px solid var(--accent)' : 'none'
+    })
+    if (_currentTheme === 'custom') {
+      document.getElementById('custom-theme-section').style.display = ''
+      if (saved.vars) {
+        Object.entries(saved.vars).forEach(function(kv) {
+          document.documentElement.style.setProperty(kv[0], kv[1])
+        })
+        _loadCustomColors()
+      }
+    }
+    if (saved.vars && saved.vars['--accent']) {
+      _pendingAccent = saved.vars['--accent']
+      var picker = document.getElementById('accent-picker')
+      if (picker) picker.value = saved.vars['--accent']
+    }
+  } catch(e){}
+})()
 
 async function sendRemoteConfig() {
   const nodeId = document.getElementById('remote-node-select').value
@@ -519,8 +639,62 @@ async function saveHardwareConfig() {
 }
 
 // Configurazione
+async function loadSerialPorts() {
+  try {
+    var r = await fetch('/api/serial-ports')
+    var data = await r.json()
+    var sel = document.getElementById('cfg-serial')
+    sel.textContent = ''
+    var ports = data.ports || []
+    ports.forEach(function(p) {
+      var opt = document.createElement('option')
+      opt.value = p
+      opt.textContent = p
+      if (p === data.current) opt.selected = true
+      sel.appendChild(opt)
+    })
+    var custom = document.createElement('option')
+    custom.value = '__custom__'
+    custom.textContent = 'Personalizza...'
+    sel.appendChild(custom)
+    if (data.current && !ports.includes(data.current)) {
+      custom.selected = true
+      document.getElementById('serial-custom-row').style.display = 'flex'
+      document.getElementById('cfg-serial-custom').value = data.current
+    }
+  } catch (_) {
+    var sel = document.getElementById('cfg-serial')
+    sel.textContent = ''
+    var opt = document.createElement('option')
+    opt.value = ''
+    opt.textContent = 'Errore caricamento porte'
+    sel.appendChild(opt)
+  }
+}
+
+function onSerialChange() {
+  var sel = document.getElementById('cfg-serial')
+  var customRow = document.getElementById('serial-custom-row')
+  if (sel.value === '__custom__') {
+    customRow.style.display = 'flex'
+    document.getElementById('cfg-serial-custom').focus()
+  } else {
+    customRow.style.display = 'none'
+  }
+}
+
+function getSerialPort() {
+  var sel = document.getElementById('cfg-serial')
+  if (sel.value === '__custom__') {
+    return document.getElementById('cfg-serial-custom').value.trim()
+  }
+  return sel.value
+}
+
+loadSerialPorts()
+
 fetch('/api/config').then(r=>r.json()).then(c => {
-  document.getElementById('cfg-serial').value = c.SERIAL_PORT || ''
+  // Serial port loaded by loadSerialPorts() separately
   document.getElementById('cfg-lat-min').value = c.MAP_LAT_MIN
   document.getElementById('cfg-lat-max').value = c.MAP_LAT_MAX
   document.getElementById('cfg-lon-min').value = c.MAP_LON_MIN
@@ -533,7 +707,7 @@ fetch('/api/config').then(r=>r.json()).then(c => {
 
 async function saveConfig() {
   const payload = {
-    SERIAL_PORT:    document.getElementById('cfg-serial').value,
+    SERIAL_PORT:    getSerialPort(),
     MAP_LAT_MIN:    document.getElementById('cfg-lat-min').value,
     MAP_LAT_MAX:    document.getElementById('cfg-lat-max').value,
     MAP_LON_MIN:    document.getElementById('cfg-lon-min').value,

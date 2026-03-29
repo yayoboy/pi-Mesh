@@ -11,6 +11,10 @@ let hopLinesLayer
 let tracerouteLayer
 let customMarkersLayer
 let customMarkersData = []
+let osmLayer = null
+let topoLayer = null
+let satelliteLayer = null
+let activeLayer = null
 
 // --- Icone SVG Heroicons ---
 
@@ -274,21 +278,14 @@ function initNodeContextMenu(marker, node) {
     }
 
     menuItem('poi', 'Invia DM', function() {
-      window.location.href = '/messages?open_dm=' + encodeURIComponent(node.id)
+      var text = window.prompt('Messaggio a ' + (node.short_name || node.id) + ':')
+      if (text && typeof nodeActions !== 'undefined') nodeActions.sendDM(node.id, text)
     })
-    menuItem('poi', 'Richiedi posizione', function() {
-      fetch('/send', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ text: '', destination: node.id, type: 'position_request' }),
-      })
+    menuItem('antenna', 'Richiedi posizione', function() {
+      if (typeof nodeActions !== 'undefined') nodeActions.requestPosition(node.id)
     })
     menuItem('route', 'Traceroute', function() {
-      fetch('/api/traceroute', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ node_id: node.id }),
-      })
+      if (typeof nodeActions !== 'undefined') nodeActions.traceroute(node.id)
     })
 
     var pt    = leafletMap.latLngToContainerPoint(marker.getLatLng())
@@ -315,10 +312,173 @@ function closeContextMenu() {
   if (m) m.remove()
 }
 
+function formatAgo(ts) {
+  if (!ts) return 'mai'
+  var sec = Math.floor(Date.now() / 1000 - ts)
+  if (sec < 60)   return sec + 's fa'
+  if (sec < 3600) return Math.floor(sec / 60) + ' min fa'
+  return Math.floor(sec / 3600) + 'h fa'
+}
+
+function makeStatBox(value, label) {
+  var box = document.createElement('div')
+  box.style.cssText = 'background:var(--panel,#12151f);border-radius:3px;padding:4px 6px;text-align:center;flex:1;'
+  var v = document.createElement('div')
+  v.style.cssText = 'color:var(--text,#ccc);font-weight:700;font-size:11px;'
+  v.textContent = value
+  var l = document.createElement('div')
+  l.style.cssText = 'color:var(--muted,#666);font-size:8px;'
+  l.textContent = label
+  box.append(v, l)
+  return box
+}
+
+function showNodePopup(marker, node) {
+  var popup = document.getElementById('node-popup')
+  if (!popup) return
+  popup.textContent = ''
+
+  var online  = (Date.now() / 1000 - (node.last_heard || 0)) < 1800
+  var bgColor = node.is_local ? '#4a9eff' : (online ? '#4caf50' : '#555')
+  var glow    = node.is_local ? 'box-shadow:0 0 8px #4a9eff;' : ''
+  var label   = String(node.short_name || node.id).slice(0, 6)
+
+  // Header: avatar + names + close button
+  var header = document.createElement('div')
+  header.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:7px;'
+
+  var avatar = document.createElement('div')
+  avatar.style.cssText = 'width:32px;height:32px;background:' + bgColor + ';border-radius:50%;' +
+    'border:2px solid #fff;' + glow + 'display:flex;align-items:center;justify-content:center;' +
+    'font-size:9px;font-weight:700;color:#fff;flex-shrink:0;font-family:monospace;box-sizing:border-box;'
+  avatar.textContent = label
+
+  var names = document.createElement('div')
+  names.style.cssText = 'flex:1;min-width:0;'
+  var longName = document.createElement('div')
+  longName.style.cssText = 'color:var(--text,#ccc);font-weight:600;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+  longName.textContent = node.long_name || node.short_name || node.id
+  names.appendChild(longName)
+  if (node.hw_model || node.hardware) {
+    var hw = document.createElement('div')
+    hw.style.cssText = 'color:var(--accent,#4a9eff);font-size:9px;'
+    hw.textContent = node.hw_model || node.hardware
+    names.appendChild(hw)
+  }
+
+  var closeBtn = document.createElement('button')
+  closeBtn.style.cssText = 'background:none;border:none;color:var(--muted,#666);cursor:pointer;padding:2px;flex-shrink:0;display:flex;'
+  closeBtn.title = 'Chiudi'
+  var svgNS = 'http://www.w3.org/2000/svg'
+  var s = document.createElementNS(svgNS, 'svg')
+  s.setAttribute('width', '12'); s.setAttribute('height', '12')
+  s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('fill', 'none')
+  s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '2.5')
+  var p = document.createElementNS(svgNS, 'path')
+  p.setAttribute('stroke-linecap', 'round'); p.setAttribute('stroke-linejoin', 'round')
+  p.setAttribute('d', 'M6 18L18 6M6 6l12 12')
+  s.appendChild(p)
+  closeBtn.appendChild(s)
+  closeBtn.onclick = function(e) { e.stopPropagation(); popup.style.display = 'none' }
+  header.append(avatar, names, closeBtn)
+
+  // short_name + id row
+  var meta = document.createElement('div')
+  meta.style.cssText = 'color:var(--muted,#888);font-size:9px;margin-bottom:3px;'
+  meta.textContent = '*' + (node.short_name || '') + '* \u00b7 ' + node.id
+
+  // last heard row
+  var heard = document.createElement('div')
+  heard.style.cssText = 'color:var(--muted,#888);font-size:9px;margin-bottom:7px;'
+  heard.textContent = 'Sentito ' + formatAgo(node.last_heard)
+
+  // stat boxes: hops, SNR, battery, distance
+  var stats = document.createElement('div')
+  stats.style.cssText = 'display:flex;gap:5px;'
+  var distLabel = node.distance_km != null ? node.distance_km.toFixed(1) + 'km' : '\u2014'
+  stats.append(
+    makeStatBox(node.hop_count != null ? String(node.hop_count) : '\u2014', 'Hops'),
+    makeStatBox(node.snr      != null ? node.snr + ' dB'        : '\u2014', 'SNR'),
+    makeStatBox(node.battery_level != null ? node.battery_level + '%' : '\u2014', 'Batt'),
+    makeStatBox(distLabel, 'Dist')
+  )
+
+  popup.append(header, meta, heard, stats)
+
+  if (!node.is_local) {
+    var actions = document.createElement('div')
+    actions.style.cssText = 'display:flex;gap:4px;margin-top:7px;flex-wrap:wrap;'
+
+    var trBtn = document.createElement('button')
+    trBtn.style.cssText = 'flex:1;padding:4px 6px;background:var(--panel,#12151f);border:1px solid var(--border,#2a3a4a);border-radius:3px;color:var(--text,#ccc);font-size:9px;cursor:pointer;display:flex;align-items:center;gap:3px;'
+    trBtn.textContent = 'Traceroute'
+    trBtn.onclick = function(e) {
+      e.stopPropagation()
+      popup.style.display = 'none'
+      if (typeof nodeActions !== 'undefined') {
+        nodeActions.traceroute(node.id).catch(function() {
+          if (typeof showToast === 'function') showToast('Traceroute fallito', 'warn')
+        })
+      }
+    }
+
+    var posBtn = document.createElement('button')
+    posBtn.style.cssText = trBtn.style.cssText
+    posBtn.textContent = 'Posiz.'
+    posBtn.onclick = function(e) {
+      e.stopPropagation()
+      popup.style.display = 'none'
+      if (typeof nodeActions !== 'undefined') nodeActions.requestPosition(node.id)
+    }
+
+    var dmBtn = document.createElement('button')
+    dmBtn.style.cssText = trBtn.style.cssText
+    dmBtn.textContent = 'DM'
+    dmBtn.onclick = function(e) {
+      e.stopPropagation()
+      popup.style.display = 'none'
+      var text = window.prompt('Messaggio a ' + (node.short_name || node.id) + ':')
+      if (text && typeof nodeActions !== 'undefined') {
+        nodeActions.sendDM(node.id, text).catch(function() {
+          if (typeof showToast === 'function') showToast('DM fallito', 'warn')
+        })
+      }
+    }
+
+    actions.append(trBtn, posBtn, dmBtn)
+    popup.appendChild(actions)
+  }
+
+  // Position next to marker
+  var pt    = leafletMap.latLngToContainerPoint(marker.getLatLng())
+  var mapEl = document.getElementById('map-container')
+  var pw    = 200
+  var left  = pt.x + 20
+  if (left + pw > mapEl.offsetWidth - 10) left = pt.x - pw - 10
+  popup.style.left    = left + 'px'
+  popup.style.top     = Math.max(6, pt.y - 60) + 'px'
+  popup.style.display = 'block'
+
+  // Close on outside click
+  setTimeout(function() {
+    document.addEventListener('click', function closePopup(e) {
+      if (!popup.contains(e.target)) {
+        popup.style.display = 'none'
+        document.removeEventListener('click', closePopup)
+      }
+    })
+  }, 50)
+}
+
 // --- Inizializzazione mappa ---
 
 function initMapIfNeeded() {
-  if (mapReady || typeof L === 'undefined') return
+  // If already initialized, just invalidate size and return
+  if (mapReady) {
+    if (leafletMap) setTimeout(function() { leafletMap.invalidateSize() }, 100)
+    return
+  }
+  if (typeof L === 'undefined') return
   hopLinesLayer = L.layerGroup()
   tracerouteLayer = L.layerGroup()
   customMarkersLayer = L.layerGroup()
@@ -328,25 +488,52 @@ function initMapIfNeeded() {
   if (!bounds) return
   var zoomMin = parseInt(el.dataset.zoomMin || '7')
   var zoomMax = parseInt(el.dataset.zoomMax || '12')
-  var center  = [
-    (bounds.lat_min + bounds.lat_max) / 2,
-    (bounds.lon_min + bounds.lon_max) / 2,
-  ]
+
+  // Restore saved view, or center on board node, or fall back to bounds center
+  var savedView = null
+  try { savedView = JSON.parse(localStorage.getItem('mapView')) } catch(e) {}
+  var center, zoom
+  if (savedView) {
+    center = [savedView.lat, savedView.lng]
+    zoom = savedView.zoom
+  } else {
+    // Try to center on local board node
+    var localNode = null
+    nodeCache.forEach(function(n) { if (n.is_local && n.latitude && n.longitude) localNode = n })
+    if (localNode) {
+      center = [localNode.latitude, localNode.longitude]
+      zoom = 11
+    } else {
+      center = [(bounds.lat_min + bounds.lat_max) / 2, (bounds.lon_min + bounds.lon_max) / 2]
+      zoom = 10
+    }
+  }
 
   leafletMap = L.map('map-container', {
-    center: center, zoom: 10, zoomControl: false,
-    minZoom: zoomMin, maxZoom: zoomMax,
-    maxBounds: [[bounds.lat_min, bounds.lon_min], [bounds.lat_max, bounds.lon_max]],
-    maxBoundsViscosity: 1.0,
+    center: center, zoom: zoom, zoomControl: false,
+    maxZoom: zoomMax,
     tap: true,
   })
 
-  var tileOpts       = { minZoom: zoomMin, maxZoom: zoomMax }
-  var osmLayer       = L.tileLayer('/tiles/osm/{z}/{x}/{y}',       tileOpts)
-  var topoLayer      = L.tileLayer('/tiles/topo/{z}/{x}/{y}',      tileOpts)
-  var satelliteLayer = L.tileLayer('/tiles/satellite/{z}/{x}/{y}', tileOpts)
+  // Save view on move/zoom
+  leafletMap.on('moveend', function() {
+    var c = leafletMap.getCenter()
+    localStorage.setItem('mapView', JSON.stringify({ lat: c.lat, lng: c.lng, zoom: leafletMap.getZoom() }))
+  })
+
+  var tileOpts       = { maxZoom: zoomMax }
+  var localTiles     = document.documentElement.dataset.localTiles === '1'
+  osmLayer       = localTiles
+    ? L.tileLayer('/static/tiles/osm/{z}/{x}/{y}', tileOpts)
+    : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', Object.assign({ attribution: '© OSM' }, tileOpts))
+  topoLayer      = localTiles
+    ? L.tileLayer('/static/tiles/topo/{z}/{x}/{y}', tileOpts)
+    : L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', Object.assign({ attribution: '© OpenTopoMap' }, tileOpts))
+  satelliteLayer = localTiles
+    ? L.tileLayer('/static/tiles/satellite/{z}/{x}/{y}', tileOpts)
+    : L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', Object.assign({ attribution: '© Esri' }, tileOpts))
+  activeLayer    = osmLayer
   osmLayer.addTo(leafletMap)
-  L.control.layers({ 'Stradale': osmLayer, 'Topo': topoLayer, 'Satellite': satelliteLayer }).addTo(leafletMap)
   L.control.zoom({ position: 'bottomright' }).addTo(leafletMap)
 
   hopLinesLayer.addTo(leafletMap)
@@ -360,9 +547,12 @@ function initMapIfNeeded() {
   renderHopLines()
   loadCustomMarkers()
 
+  // Invalidate size after delay to ensure container is visible
+  setTimeout(function() { leafletMap.invalidateSize() }, 200)
+
   var trNode = new URLSearchParams(window.location.search).get('traceroute')
   if (trNode) {
-    fetch('/api/traceroute/' + encodeURIComponent(trNode))
+    fetch('/api/nodes/' + encodeURIComponent(trNode) + '/traceroute')
       .then(function(r) { return r.json() })
       .then(function(data) {
         if (data.results && data.results[0]) renderTraceroutePath(data.results[0].hops)
@@ -370,22 +560,54 @@ function initMapIfNeeded() {
   }
 }
 
+function centerOnBoard() {
+  if (!mapReady || !leafletMap) return
+  var local = null
+  nodeCache.forEach(function(node) {
+    if (node.is_local && node.latitude && node.longitude) local = node
+  })
+  if (local) {
+    leafletMap.setView([local.latitude, local.longitude], leafletMap.getZoom())
+  }
+}
+
+function switchLayer(name) {
+  if (!mapReady) return
+  var layers = { osm: osmLayer, topo: topoLayer, satellite: satelliteLayer }
+  var next = layers[name]
+  if (!next || next === activeLayer) return
+  leafletMap.removeLayer(activeLayer)
+  next.addTo(leafletMap)
+  activeLayer = next
+  document.querySelectorAll('.layer-btn').forEach(function(btn) {
+    var on = btn.dataset.layer === name
+    btn.style.borderColor = on ? 'var(--accent,#4a9eff)' : 'rgba(42,58,74,0.5)'
+    btn.style.color = on ? 'var(--accent,#4a9eff)' : 'var(--text,#ccc)'
+  })
+}
+
 function updateMapMarker(node) {
   if (!node.latitude || !node.longitude || !mapReady) return
-  var color    = node.is_local ? '#4a9eff' : '#4caf50'
   var existing = markerCache.get(node.id)
   if (existing) {
     existing.setLatLng([node.latitude, node.longitude])
   } else {
-    var marker = L.circleMarker([node.latitude, node.longitude], {
-      radius: 8, color: color, fillColor: color, fillOpacity: 0.8,
+    var online  = (Date.now() / 1000 - (node.last_heard || 0)) < 1800
+    var bgColor = node.is_local ? '#4a9eff' : (online ? '#4caf50' : '#555')
+    var glow    = node.is_local ? 'box-shadow:0 0 8px #4a9eff;' : ''
+    var label   = escHtml(String(node.short_name || node.id).slice(0, 6))
+    var icon = L.divIcon({
+      html: '<div style="width:34px;height:34px;background:' + bgColor +
+            ';border-radius:50%;border:2px solid #fff;' + glow +
+            'display:flex;align-items:center;justify-content:center;' +
+            'font-size:9px;font-weight:700;color:#fff;font-family:monospace;' +
+            'box-sizing:border-box;">' + label + '</div>',
+      className: '',
+      iconSize:   [34, 34],
+      iconAnchor: [17, 17],
     })
-    marker.bindPopup(
-      '<b>' + escHtml(String(node.short_name || node.id)) + '</b><br>' +
-      escHtml(String(node.long_name || '')) + '<br>' +
-      'SNR: ' + escHtml(String(node.snr != null ? node.snr : '\u2014')) + ' dB<br>' +
-      'Batt: ' + escHtml(String(node.battery_level != null ? node.battery_level : '\u2014')) + '%'
-    )
+    var marker = L.marker([node.latitude, node.longitude], { icon: icon })
+    marker.on('click', function() { showNodePopup(marker, node) })
     initNodeContextMenu(marker, node)
     marker.addTo(leafletMap)
     markerCache.set(node.id, marker)
@@ -398,3 +620,13 @@ function updateMapMarker(node) {
 
 window.addEventListener('node-update',       function(e) { updateMapMarker(e.detail) })
 window.addEventListener('traceroute_result', function(e) { renderTraceroutePath(e.detail.hops) })
+window.addEventListener('position-update', function(e) {
+  var d = e.detail
+  var node = nodeCache.get(d.id)
+  if (node) {
+    node.latitude   = d.latitude
+    node.longitude  = d.longitude
+    node.last_heard = d.last_heard
+    updateMapMarker(node)
+  }
+})

@@ -1,400 +1,367 @@
 {% extends "base.html" %}
 {% block content %}
-<div id="node-list">
-{% if not nodes %}
-<div id="no-nodes" style="padding:24px; text-align:center; color:var(--muted); font-size:13px;">
-  Nessun nodo rilevato
-</div>
-{% endif %}
-{% for n in nodes %}
-<div class="list-item" data-node-id="{{ n.id }}" style="flex-direction:column; align-items:stretch;">
-  <div style="display:flex; align-items:center; gap:8px;">
-    <div class="node-badge" id="badge-{{ n.id }}"></div>
-    <div style="flex:1">
-      <div style="font-weight:bold;">{{ n.short_name or n.id }}</div>
-      <div style="font-size:11px; color:var(--muted);">{{ n.long_name or '' }}</div>
-    </div>
-    <button data-menu-btn="{{ n.id }}" style="background:none; border:none; padding:4px; cursor:pointer; color:var(--muted); flex-shrink:0;">
-      <svg width="13" height="13" fill="currentColor" viewBox="0 0 24 24">
-        <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
-      </svg>
-    </button>
+<style>
+/* --- Expand row (portrait) --- */
+.node-detail { display: none; }
+.node-row.expanded .node-detail { display: block; }
+
+/* --- Orientation layout --- */
+@media (orientation: portrait) {
+  .nodes-portrait { display: flex !important; flex-direction: column; }
+  .nodes-landscape { display: none !important; }
+}
+@media (orientation: landscape) {
+  .nodes-portrait { display: none !important; }
+  .nodes-landscape { display: flex !important; }
+}
+.nodes-portrait { display: flex; flex-direction: column; }
+.nodes-landscape { display: none; height: 100%; }
+
+/* --- Landscape columns --- */
+.node-list-col {
+  width: 200px;
+  min-width: 160px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+.node-detail-col {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+.node-list-item {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 11px;
+  border-left: 3px solid transparent;
+  transition: border-left-color 0.15s;
+}
+.node-list-item.selected {
+  border-left-color: var(--accent, #4a9eff);
+  background: rgba(74,158,255,0.08);
+}
+
+/* --- Shared stat boxes and action buttons --- */
+.stat-grid { display: flex; gap: 6px; }
+.stat-box {
+  background: var(--panel, #12151f);
+  border-radius: 4px;
+  padding: 6px 8px;
+  text-align: center;
+  flex: 1;
+  min-width: 0;
+}
+.stat-val { color: var(--text, #ccc); font-weight: 700; font-size: 12px; }
+.stat-lbl { color: var(--muted, #666); font-size: 9px; margin-top: 1px; }
+.action-grid { display: flex; gap: 6px; flex-wrap: wrap; }
+.action-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+  background: var(--panel, #12151f);
+  border: 1px solid var(--border, #2a3a4a);
+  border-radius: 4px;
+  color: var(--text, #ccc);
+  font-size: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.action-btn:active { opacity: 0.7; }
+</style>
+
+<div x-data="nodesPage()" x-init="init()" class="h-full flex flex-col overflow-hidden">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between px-3 py-2 shrink-0"
+       style="border-bottom:1px solid var(--border);font-size:11px;">
+    <span style="color:var(--accent);font-weight:600;">Nodi</span>
+    <span x-text="nodes.length + ' trovati'" style="color:var(--muted);"></span>
   </div>
-  <div id="detail-{{ n.id }}" style="display:none; padding-top:8px; border-top:1px solid var(--border); margin-top:8px;">
-    <div style="display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:11px; margin-bottom:8px;">
-      <span style="color:var(--muted)">ID</span><span>{{ n.id }}</span>
-      <span style="color:var(--muted)">Nome</span><span>{{ n.long_name or n.short_name or '—' }}</span>
-      <span style="color:var(--muted)">Hardware</span><span>{{ n.hw_model or '—' }}</span>
-      <span style="color:var(--muted)">Firmware</span><span>{{ n.firmware_version or '—' }}</span>
-      {% if n.role %}<span style="color:var(--muted)">Ruolo</span><span>{{ n.role }}</span>{% endif %}
-      {% if n.battery_level is not none %}<span style="color:var(--muted)">Batteria</span><span>{{ n.battery_level }}%</span>{% endif %}
-      {% if n.voltage is not none %}<span style="color:var(--muted)">Voltaggio</span><span>{{ '%.2f'|format(n.voltage) }}V</span>{% endif %}
-      {% if n.snr is not none %}<span style="color:var(--muted)">SNR</span><span>{{ n.snr }} dB</span>{% endif %}
-      {% if n.rssi is not none %}<span style="color:var(--muted)">RSSI</span><span>{{ n.rssi }} dBm</span>{% endif %}
-      {% if n.latitude %}<span style="color:var(--muted)">Posizione</span><span>{{ '%.4f'|format(n.latitude) }}° {{ '%.4f'|format(n.longitude) }}°</span>{% endif %}
-      {% if n.altitude is not none %}<span style="color:var(--muted)">Altitudine</span><span>{{ n.altitude }}m</span>{% endif %}
-      {% if n.last_heard %}<span style="color:var(--muted)">Ultimo contatto</span><span class="rel-time" data-ts="{{ n.last_heard }}"></span>{% endif %}
-      {% if n.hop_count is not none %}<span style="color:var(--muted)">Hop</span><span>{{ n.hop_count }}</span>{% endif %}
-      <span style="color:var(--muted)">Chiave pubblica</span><span id="pubkey-{{ n.id }}" style="font-family:monospace; font-size:10px; word-break:break-all;">—</span>
+
+  <!-- PORTRAIT VIEW -->
+  <div class="nodes-portrait flex-1 overflow-hidden">
+    <div class="flex-1 overflow-y-auto" id="node-list" style="height:100%;">
+      <template x-if="nodes.length === 0">
+        <div class="flex items-center justify-center h-32" style="color:var(--muted);font-size:12px;">
+          Nessun nodo rilevato
+        </div>
+      </template>
+
+      <template x-for="node in nodes" :key="node.id">
+        <div class="node-row"
+             :class="{ expanded: selectedNodeId === node.id }"
+             style="border-bottom:1px solid var(--border);">
+
+          <!-- Summary row — click to expand/collapse -->
+          <div class="flex items-center gap-3 px-3 py-2 cursor-pointer"
+               style="min-height:52px;"
+               @click="selectedNodeId = (selectedNodeId === node.id ? null : node.id)">
+
+            <!-- Avatar -->
+            <div class="shrink-0 flex items-center justify-center rounded-full text-white font-bold"
+                 :style="`width:34px;height:34px;font-size:9px;font-family:monospace;
+                          background:${node.is_local ? '#4a9eff' : (isOnline(node) ? '#4caf50' : '#374151')};
+                          ${node.is_local ? 'box-shadow:0 0 8px #4a9eff' : ''}`"
+                 x-text="(node.short_name || node.id).slice(0,6)">
+            </div>
+
+            <!-- Name + model + last heard -->
+            <div class="flex-1 min-w-0">
+              <div class="font-semibold truncate" style="font-size:12px;"
+                   x-text="node.long_name || node.short_name || node.id"></div>
+              <div style="font-size:10px;color:var(--muted);" x-text="node.hw_model || ''"></div>
+              <div style="font-size:10px;color:var(--muted);"
+                   x-text="node.last_heard ? formatAgo(node.last_heard) : ''"></div>
+            </div>
+
+            <!-- Online dot + chevron -->
+            <div class="shrink-0 flex flex-col items-center gap-1">
+              <div class="w-2 h-2 rounded-full"
+                   :style="`background:${node.is_local ? '#4a9eff' : (isOnline(node) ? '#4caf50' : '#374151')}`"></div>
+              <svg :style="`transform:${selectedNodeId === node.id ? 'rotate(180deg)' : 'none'};transition:transform 0.2s;`"
+                   width="12" height="12" fill="none" stroke="var(--muted)" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Expanded detail -->
+          <div class="node-detail px-3 pb-3" style="border-top:1px solid var(--border);">
+            <div class="stat-grid mt-2">
+              <div class="stat-box">
+                <div class="stat-val" x-text="node.hop_count != null ? node.hop_count : '—'"></div>
+                <div class="stat-lbl">Hops</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-val" x-text="node.snr != null ? node.snr + ' dB' : '—'"></div>
+                <div class="stat-lbl">SNR</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-val" x-text="node.battery_level != null ? node.battery_level + '%' : '—'"></div>
+                <div class="stat-lbl">Batt</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-val" x-text="node.distance_km != null ? node.distance_km.toFixed(1) + 'km' : '—'"></div>
+                <div class="stat-lbl">Dist</div>
+              </div>
+            </div>
+
+            <div class="mt-2" style="font-size:9px;color:var(--muted);" x-text="node.id"></div>
+
+            <template x-if="!node.is_local">
+              <div class="action-grid mt-2">
+                <button class="action-btn" @click.stop="doTraceroute(node)">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                  </svg>
+                  Traceroute
+                </button>
+                <button class="action-btn" @click.stop="typeof nodeActions !== 'undefined' && nodeActions.requestPosition(node.id)">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
+                  </svg>
+                  Posiz.
+                </button>
+                <button class="action-btn" @click.stop="doDM(node)">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  </svg>
+                  DM
+                </button>
+                <button class="action-btn" @click.stop="typeof nodeActions !== 'undefined' && nodeActions.focusOnMap(node.id)">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                  </svg>
+                  Mappa
+                </button>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
     </div>
-    <div style="display:flex; flex-direction:column; gap:4px; border-top:1px solid var(--border); padding-top:6px;">
-      <a href="/messages?open_dm={{ n.id | urlencode }}" style="display:flex; align-items:center; gap:6px; color:var(--text,#ccc); font-size:12px; text-decoration:none;">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
-        Invia DM
-      </a>
-      <button data-req-pos="{{ n.id }}" style="display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--text,#ccc); font-size:12px; text-align:left;">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-        Richiedi posizione
-      </button>
-      <button
-        onclick="(function(btn){fetch('/api/traceroute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({node_id:'{{ n.id }}'})}).then(function(r){return r.json()}).then(function(d){if(d.ok){var a=btn.nextElementSibling;if(a)a.style.display='flex'}})})(this)"
-        style="display:flex;align-items:center;gap:6px;background:none;border:none;padding:4px 0;cursor:pointer;color:var(--text,#ccc);font-size:12px;text-align:left;">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-        </svg>
-        Traceroute
-      </button>
-      <a href="/map?traceroute={{ n.id | urlencode }}"
-         style="display:none;align-items:center;gap:4px;font-size:10px;color:var(--accent);text-decoration:none;margin-top:2px;">
-        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-        </svg>
-        Vedi sulla mappa
-      </a>
-      <div style="border-top:1px solid var(--border); padding-top:4px; margin-top:2px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-        <button data-forget-node="{{ n.id }}" style="display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--danger,#ef9a9a); font-size:12px; text-align:left;">
-          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-          Elimina nodo
-        </button>
-        <label style="display:flex; align-items:center; gap:4px; font-size:11px; cursor:pointer; color:var(--muted);">
-          <input type="checkbox" data-forget-cascade="{{ n.id }}"> anche messaggi e telemetria
-        </label>
-      </div>
+  </div>
+
+  <!-- LANDSCAPE VIEW -->
+  <div class="nodes-landscape flex-1" style="min-height:0;">
+
+    <!-- Left: node list -->
+    <div class="node-list-col">
+      <template x-for="node in nodes" :key="'ls-' + node.id">
+        <div class="node-list-item"
+             :class="{ selected: selectedNodeId === node.id }"
+             @click="selectedNodeId = node.id">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full shrink-0"
+                 :style="`background:${node.is_local ? '#4a9eff' : (isOnline(node) ? '#4caf50' : '#374151')}`"></div>
+            <span class="truncate" style="font-size:11px;" x-text="node.short_name || node.id"></span>
+          </div>
+          <div style="font-size:9px;color:var(--muted);margin-top:1px;padding-left:16px;"
+               x-text="node.last_heard ? formatAgo(node.last_heard) : ''"></div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Right: detail panel -->
+    <div class="node-detail-col">
+      <template x-if="selectedNode">
+        <div>
+          <!-- Node header -->
+          <div class="flex items-center gap-3 mb-3">
+            <div class="shrink-0 flex items-center justify-center rounded-full text-white font-bold"
+                 :style="`width:38px;height:38px;font-size:10px;font-family:monospace;
+                          background:${selectedNode.is_local ? '#4a9eff' : (isOnline(selectedNode) ? '#4caf50' : '#374151')};
+                          ${selectedNode.is_local ? 'box-shadow:0 0 8px #4a9eff' : ''}`"
+                 x-text="(selectedNode.short_name || selectedNode.id).slice(0,6)">
+            </div>
+            <div>
+              <div style="font-size:13px;font-weight:600;"
+                   x-text="selectedNode.long_name || selectedNode.short_name || selectedNode.id"></div>
+              <div style="font-size:10px;color:var(--accent);" x-text="selectedNode.hw_model || ''"></div>
+            </div>
+          </div>
+
+          <!-- Last heard -->
+          <div style="font-size:10px;color:var(--muted);margin-bottom:10px;"
+               x-text="selectedNode.last_heard ? 'Sentito ' + formatAgo(selectedNode.last_heard) : 'Mai sentito'"></div>
+
+          <!-- Stats -->
+          <div class="stat-grid mb-3">
+            <div class="stat-box">
+              <div class="stat-val" x-text="selectedNode.hop_count != null ? selectedNode.hop_count : '—'"></div>
+              <div class="stat-lbl">Hops</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-val" x-text="selectedNode.snr != null ? selectedNode.snr + ' dB' : '—'"></div>
+              <div class="stat-lbl">SNR</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-val" x-text="selectedNode.battery_level != null ? selectedNode.battery_level + '%' : '—'"></div>
+              <div class="stat-lbl">Batt</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-val" x-text="selectedNode.distance_km != null ? selectedNode.distance_km.toFixed(1) + 'km' : '—'"></div>
+              <div class="stat-lbl">Dist</div>
+            </div>
+          </div>
+
+          <!-- Node ID -->
+          <div style="font-size:9px;color:var(--muted);margin-bottom:10px;" x-text="selectedNode.id"></div>
+
+          <!-- Actions -->
+          <template x-if="!selectedNode.is_local">
+            <div class="action-grid">
+              <button class="action-btn" @click="doTraceroute(selectedNode)" style="flex-basis:calc(50% - 3px);">
+                <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                </svg>
+                Traceroute
+              </button>
+              <button class="action-btn" @click="typeof nodeActions !== 'undefined' && nodeActions.requestPosition(selectedNode.id)" style="flex-basis:calc(50% - 3px);">
+                <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
+                </svg>
+                Richiedi Pos.
+              </button>
+              <button class="action-btn" @click="doDM(selectedNode)" style="flex-basis:calc(50% - 3px);">
+                <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Invia DM
+              </button>
+              <button class="action-btn" @click="typeof nodeActions !== 'undefined' && nodeActions.focusOnMap(selectedNode.id)" style="flex-basis:calc(50% - 3px);">
+                <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                </svg>
+                Vedi su Mappa
+              </button>
+            </div>
+          </template>
+        </div>
+      </template>
+      <template x-if="!selectedNode">
+        <div class="flex items-center justify-center h-full" style="color:var(--muted);font-size:12px;">
+          Seleziona un nodo
+        </div>
+      </template>
     </div>
   </div>
 </div>
-{% endfor %}
-</div>
+
 <script>
-var _localNodeCoords = null
+function nodesPage() {
+  return {
+    nodes: [],
+    selectedNodeId: null,
 
-function _haversineKm(lat1, lon1, lat2, lon2) {
-  var R = 6371
-  var dLat = (lat2 - lat1) * Math.PI / 180
-  var dLon = (lon2 - lon1) * Math.PI / 180
-  var a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
-}
+    get selectedNode() {
+      if (!this.selectedNodeId) return null
+      return this.nodes.find(n => n.id === this.selectedNodeId) || null
+    },
 
-function _relativeTime(ts) {
-  if (!ts) return '—'
-  var now = Date.now() / 1000
-  var diff = now - ts
-  if (diff < 60) return 'adesso'
-  if (diff < 3600) return Math.floor(diff / 60) + ' min fa'
-  if (diff < 86400) return Math.floor(diff / 3600) + ' ore fa'
-  return Math.floor(diff / 86400) + ' giorni fa'
-}
-
-function _formatDistance(km) {
-  if (km < 1) return Math.round(km * 1000) + 'm'
-  return km.toFixed(1) + 'km'
-}
-
-function makeSvgIcon(type) {
-  const ns = 'http://www.w3.org/2000/svg'
-  const svg = document.createElementNS(ns, 'svg')
-  svg.setAttribute('width', '13'); svg.setAttribute('height', '13')
-  svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor')
-  svg.setAttribute('stroke-width', '2'); svg.setAttribute('viewBox', '0 0 24 24')
-  if (type === 'menu') {
-    svg.setAttribute('fill', 'currentColor'); svg.setAttribute('stroke', 'none')
-    ;[['5','12'],['12','12'],['19','12']].forEach(([cx, cy]) => {
-      const c = document.createElementNS(ns, 'circle')
-      c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', '2')
-      svg.appendChild(c)
-    })
-  } else {
-    const paths = {
-      chat:  'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z',
-      pin:   'M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z',
-      trash: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
-    }
-    const p = document.createElementNS(ns, 'path')
-    p.setAttribute('stroke-linecap', 'round'); p.setAttribute('stroke-linejoin', 'round')
-    p.setAttribute('d', paths[type])
-    svg.appendChild(p)
-  }
-  return svg
-}
-
-function renderNodeRow(n) {
-  const existing = document.querySelector('[data-node-id="' + escHtml(n.id) + '"]')
-  const detailWasOpen = existing && document.getElementById('detail-' + n.id)?.style.display === 'block'
-
-  const row = document.createElement('div')
-  row.className = 'list-item'
-  row.dataset.nodeId = n.id
-  row.style.cssText = 'flex-direction:column; align-items:stretch;'
-
-  // Header
-  const header = document.createElement('div')
-  header.style.cssText = 'display:flex; align-items:center; gap:8px;'
-
-  const badge = document.createElement('div')
-  badge.className = 'node-badge'
-  badge.id = 'badge-' + n.id
-
-  const info = document.createElement('div')
-  info.style.flex = '1'
-  const nameEl = document.createElement('div')
-  nameEl.style.fontWeight = 'bold'
-  nameEl.textContent = n.short_name || n.id
-  const longEl = document.createElement('div')
-  longEl.style.cssText = 'font-size:11px; color:var(--muted);'
-  longEl.textContent = n.long_name || ''
-  info.append(nameEl, longEl)
-
-  const menuBtn = document.createElement('button')
-  menuBtn.dataset.menuBtn = n.id
-  menuBtn.style.cssText = 'background:none; border:none; padding:4px; cursor:pointer; color:var(--muted); flex-shrink:0;'
-  menuBtn.appendChild(makeSvgIcon('menu'))
-
-  header.append(badge, info, menuBtn)
-
-  // Detail panel
-  const detail = document.createElement('div')
-  detail.id = 'detail-' + n.id
-  detail.style.cssText = 'display:none; padding-top:8px; border-top:1px solid var(--border); margin-top:8px;'
-
-  // Info grid
-  const grid = document.createElement('div')
-  grid.style.cssText = 'display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:11px; margin-bottom:8px;'
-  const fields = [
-    ['ID', n.id],
-    ['Nome', n.long_name || n.short_name || '—'],
-    ['Hardware', n.hw_model || '—'],
-    ['Firmware', n.firmware_version || '—'],
-  ]
-  if (n.role) fields.push(['Ruolo', n.role])
-  if (n.battery_level != null) fields.push(['Batteria', n.battery_level + '%'])
-  if (n.voltage != null) fields.push(['Voltaggio', n.voltage.toFixed(2) + 'V'])
-  if (n.snr != null) fields.push(['SNR', n.snr + ' dB'])
-  if (n.rssi != null) fields.push(['RSSI', n.rssi + ' dBm'])
-  if (n.latitude != null) fields.push(['Posizione', n.latitude.toFixed(4) + '° ' + n.longitude.toFixed(4) + '°'])
-  if (n.altitude != null) fields.push(['Altitudine', n.altitude + 'm'])
-  if (n.last_heard) {
-    fields.push(['Ultimo contatto', _relativeTime(n.last_heard)])
-  }
-  if (_localNodeCoords && n.latitude != null && n.longitude != null && !n.is_local) {
-    var dist = _haversineKm(_localNodeCoords.lat, _localNodeCoords.lon, n.latitude, n.longitude)
-    fields.push(['Distanza', _formatDistance(dist)])
-  }
-  if (n.hop_count != null) fields.push(['Hop', n.hop_count])
-  fields.push(['Chiave pubblica', '—'])
-  fields.forEach(([label, value]) => {
-    const lEl = document.createElement('span')
-    lEl.style.color = 'var(--muted)'
-    lEl.textContent = label
-    const vEl = document.createElement('span')
-    vEl.textContent = value
-    if (label === 'Chiave pubblica') {
-      vEl.id = 'pubkey-' + n.id
-      vEl.style.cssText = 'font-family:monospace; font-size:10px; word-break:break-all;'
-    }
-    grid.append(lEl, vEl)
-  })
-  detail.appendChild(grid)
-
-  // Actions
-  const actions = document.createElement('div')
-  actions.style.cssText = 'display:flex; flex-direction:column; gap:4px; border-top:1px solid var(--border); padding-top:6px;'
-
-  // DM button
-  const dmBtn = document.createElement('button')
-  dmBtn.style.cssText = 'display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--text,#ccc); font-size:12px; text-align:left;'
-  dmBtn.appendChild(makeSvgIcon('chat'))
-  dmBtn.appendChild(document.createTextNode('Invia DM'))
-  dmBtn.onclick = () => { window.location.href = '/messages?open_dm=' + encodeURIComponent(n.id) }
-  actions.appendChild(dmBtn)
-
-  // Position button
-  const posBtn = document.createElement('button')
-  posBtn.dataset.reqPos = n.id
-  posBtn.style.cssText = 'display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--text,#ccc); font-size:12px; text-align:left;'
-  posBtn.appendChild(makeSvgIcon('pin'))
-  posBtn.appendChild(document.createTextNode('Richiedi posizione'))
-  actions.appendChild(posBtn)
-
-  // Traceroute button
-  var trSvgNs = 'http://www.w3.org/2000/svg'
-  var trBtn = document.createElement('button')
-  trBtn.style.cssText = 'display:flex;align-items:center;gap:6px;background:none;border:none;padding:4px 0;cursor:pointer;color:var(--text,#ccc);font-size:12px;text-align:left;'
-  var trSvg = document.createElementNS(trSvgNs, 'svg')
-  trSvg.setAttribute('width', '13'); trSvg.setAttribute('height', '13')
-  trSvg.setAttribute('fill', 'none'); trSvg.setAttribute('stroke', 'currentColor')
-  trSvg.setAttribute('stroke-width', '2'); trSvg.setAttribute('viewBox', '0 0 24 24')
-  var trPath = document.createElementNS(trSvgNs, 'path')
-  trPath.setAttribute('stroke-linecap', 'round'); trPath.setAttribute('stroke-linejoin', 'round')
-  trPath.setAttribute('d', 'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7')
-  trSvg.appendChild(trPath)
-  trBtn.appendChild(trSvg)
-  trBtn.appendChild(document.createTextNode('Traceroute'))
-
-  var trLink = document.createElement('a')
-  trLink.href = '/map?traceroute=' + encodeURIComponent(n.id)
-  trLink.style.cssText = 'display:none;align-items:center;gap:4px;font-size:10px;color:var(--accent);text-decoration:none;margin-top:2px;'
-  var trLinkSvg = document.createElementNS(trSvgNs, 'svg')
-  trLinkSvg.setAttribute('width', '10'); trLinkSvg.setAttribute('height', '10')
-  trLinkSvg.setAttribute('fill', 'none'); trLinkSvg.setAttribute('stroke', 'currentColor')
-  trLinkSvg.setAttribute('stroke-width', '2'); trLinkSvg.setAttribute('viewBox', '0 0 24 24')
-  var trLinkPath = document.createElementNS(trSvgNs, 'path')
-  trLinkPath.setAttribute('stroke-linecap', 'round'); trLinkPath.setAttribute('stroke-linejoin', 'round')
-  trLinkPath.setAttribute('d', 'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7')
-  trLinkSvg.appendChild(trLinkPath)
-  trLink.appendChild(trLinkSvg)
-  trLink.appendChild(document.createTextNode(' Vedi sulla mappa'))
-
-  trBtn.onclick = function() {
-    fetch('/api/traceroute', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ node_id: n.id }),
-    })
-      .then(function(r) { return r.json() })
-      .then(function(data) {
-        if (data.ok) {
-          trLink.style.display = 'flex'
-          setTimeout(function() { trLink.style.display = 'none' }, 15000)
+    async init() {
+      await this.fetchNodes()
+      this._interval = setInterval(() => this.fetchNodes(), 10000)
+      this._nodeUpdateHandler = (e) => {
+        const updated = e.detail
+        const idx = this.nodes.findIndex(n => n.id === updated.id)
+        if (idx >= 0) {
+          this.nodes[idx] = Object.assign({}, this.nodes[idx], updated)
+        } else {
+          this.nodes.push(updated)
         }
-      })
+      }
+      window.addEventListener('node-update', this._nodeUpdateHandler)
+    },
+
+    destroy() {
+      clearInterval(this._interval)
+      window.removeEventListener('node-update', this._nodeUpdateHandler)
+    },
+
+    async fetchNodes() {
+      try {
+        const r = await window.fetch('/api/nodes')
+        this.nodes = await r.json()
+      } catch(e) {}
+    },
+
+    isOnline(node) {
+      if (!node.last_heard) return false
+      return (Date.now() / 1000 - node.last_heard) < 1800
+    },
+
+    formatAgo(ts) {
+      if (!ts) return 'mai'
+      const sec = Math.floor(Date.now() / 1000 - ts)
+      if (sec < 60)   return sec + 's fa'
+      if (sec < 3600) return Math.floor(sec / 60) + 'm fa'
+      return Math.floor(sec / 3600) + 'h fa'
+    },
+
+    doTraceroute(node) {
+      if (typeof nodeActions === 'undefined') return
+      nodeActions.traceroute(node.id)
+        .then(() => { if (typeof showToast === 'function') showToast('Traceroute inviato') })
+        .catch(() => { if (typeof showToast === 'function') showToast('Traceroute fallito', 'warn') })
+    },
+
+    doDM(node) {
+      if (typeof nodeActions === 'undefined') return
+      const text = window.prompt('Messaggio a ' + (node.short_name || node.id) + ':')
+      if (text) {
+        nodeActions.sendDM(node.id, text)
+          .then(() => { if (typeof showToast === 'function') showToast('DM inviato') })
+          .catch(() => { if (typeof showToast === 'function') showToast('DM fallito', 'warn') })
+      }
+    },
   }
-
-  actions.appendChild(trBtn)
-  actions.appendChild(trLink)
-
-  // Delete button + cascade
-  const deleteRow = document.createElement('div')
-  deleteRow.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-top:1px solid var(--border); padding-top:4px; margin-top:2px;'
-  const forgetBtn = document.createElement('button')
-  forgetBtn.dataset.forgetNode = n.id
-  forgetBtn.style.cssText = 'display:flex; align-items:center; gap:6px; background:none; border:none; padding:4px 0; cursor:pointer; color:var(--danger,#ef9a9a); font-size:12px; text-align:left;'
-  forgetBtn.appendChild(makeSvgIcon('trash'))
-  forgetBtn.appendChild(document.createTextNode('Elimina nodo'))
-  const cascadeLabel = document.createElement('label')
-  cascadeLabel.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:11px; cursor:pointer; color:var(--muted);'
-  const cascadeCheck = document.createElement('input')
-  cascadeCheck.type = 'checkbox'
-  cascadeCheck.dataset.forgetCascade = n.id
-  cascadeLabel.append(cascadeCheck, document.createTextNode(' anche messaggi e telemetria'))
-  deleteRow.append(forgetBtn, cascadeLabel)
-  actions.appendChild(deleteRow)
-
-  detail.appendChild(actions)
-  row.append(header, detail)
-
-  if (existing) {
-    existing.replaceWith(row)
-    if (detailWasOpen) detail.style.display = 'block'
-  } else {
-    document.getElementById('no-nodes')?.remove()
-    document.getElementById('node-list').appendChild(row)
-  }
-  updateBadge(n.id, n.last_heard)
 }
-
-function updateBadge(id, lastHeard) {
-  const badge = document.getElementById('badge-' + id)
-  if (!badge) return
-  const ago = Date.now()/1000 - lastHeard
-  badge.className = 'node-badge ' + (ago < 300 ? 'online' : ago < 1800 ? 'recent' : 'offline')
-}
-
-// Inizializza badge per nodi server-rendered
-{% for n in nodes %}
-updateBadge('{{ n.id }}', {{ n.last_heard or 0 }})
-{% endfor %}
-
-// Imposta coordinate nodo locale dalle righe server-rendered
-{% for n in nodes %}
-{% if n.is_local and n.latitude %}
-_localNodeCoords = { lat: {{ n.latitude }}, lon: {{ n.longitude }} }
-{% endif %}
-{% endfor %}
-
-// Formatta timestamp relativi nelle righe server-rendered
-document.querySelectorAll('.rel-time[data-ts]').forEach(function(el) {
-  el.textContent = _relativeTime(parseInt(el.dataset.ts))
-})
-
-// Aggiorna in tempo reale via WebSocket
-window.addEventListener('node-update', e => renderNodeRow(e.detail))
-window.addEventListener('ws-init', function(e) {
-  var data = e.detail
-  if (data && data.nodes) {
-    var local = data.nodes.find(function(n) { return n.is_local && n.latitude != null })
-    if (local) _localNodeCoords = { lat: local.latitude, lon: local.longitude }
-  }
-})
-
-function loadNodePubKey(nodeId) {
-  const el = document.getElementById('pubkey-' + nodeId)
-  if (!el || (el.textContent !== '—' && el.textContent !== '')) return
-  el.textContent = '...'
-  fetch('/api/keys/' + encodeURIComponent(nodeId))
-    .then(r => r.json())
-    .then(d => { el.textContent = d.public_key || '—' })
-    .catch(() => { el.textContent = '—' })
-}
-
-// Toggle dettaglio e richiesta posizione
-document.getElementById('node-list').addEventListener('click', e => {
-  const reqBtn = e.target.closest('[data-req-pos]')
-  if (reqBtn) {
-    e.stopPropagation()
-    fetch('/send', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ text: '', destination: reqBtn.dataset.reqPos, type: 'position_request' })
-    })
-    return
-  }
-  const forgetBtn = e.target.closest('[data-forget-node]')
-  if (forgetBtn) {
-    e.stopPropagation()
-    const nodeId = forgetBtn.dataset.forgetNode
-    if (!confirm('Dimentica il nodo ' + nodeId + '?')) return
-    const cascadeCheck = document.querySelector('[data-forget-cascade="' + nodeId + '"]')
-    const cascade = cascadeCheck ? cascadeCheck.checked : false
-    fetch('/api/nodes/' + encodeURIComponent(nodeId) + (cascade ? '?cascade=true' : ''), {method: 'DELETE'})
-      .then(r => r.json())
-      .then(data => {
-        if (data.ok) {
-          const row = document.querySelector('[data-node-id="' + nodeId + '"]')
-          if (row) row.remove()
-          if (!document.querySelector('[data-node-id]')) {
-            const msg = document.createElement('div')
-            msg.id = 'no-nodes'
-            msg.style.cssText = 'padding:24px; text-align:center; color:var(--muted); font-size:13px;'
-            msg.textContent = 'Nessun nodo rilevato'
-            document.getElementById('node-list').appendChild(msg)
-          }
-        }
-      })
-    return
-  }
-  const menuBtn = e.target.closest('[data-menu-btn]')
-  if (menuBtn) {
-    e.stopPropagation()
-    const nodeId = menuBtn.dataset.menuBtn
-    const el = document.getElementById('detail-' + nodeId)
-    if (el) {
-      const opening = el.style.display === 'none'
-      el.style.display = opening ? 'block' : 'none'
-      if (opening) loadNodePubKey(nodeId)
-    }
-    return
-  }
-})
 </script>
 {% endblock %}
