@@ -178,6 +178,7 @@ function configPage() {
     channels: [],
     channelsCached: true,
 
+    loaded: { node: false, lora: false, channels: false },
     saving: { node: false, lora: false, channels: false },
     status: { node: '', lora: '', channels: '' },
 
@@ -187,19 +188,21 @@ function configPage() {
 
     async selectSection(s) {
       this.section = s
-      if (s === 'node' && !this.node.long_name) await this.loadNode()
-      if (s === 'lora' && !this.lora.region)    await this.loadLora()
-      if (s === 'channels' && this.channels.length === 0) await this.loadChannels()
+      if (s === 'node' && !this.loaded.node) await this.loadNode()
+      if (s === 'lora' && !this.loaded.lora) await this.loadLora()
+      if (s === 'channels' && !this.loaded.channels) await this.loadChannels()
     },
 
     async loadNode() {
       const r = await fetch('/api/config/node')
       if (r.ok) this.node = await r.json()
+      this.loaded.node = true
     },
 
     async loadLora() {
       const r = await fetch('/api/config/lora')
       if (r.ok) this.lora = await r.json()
+      this.loaded.lora = true
     },
 
     async loadChannels() {
@@ -209,6 +212,7 @@ function configPage() {
         this.channels = data.channels ?? data
         this.channelsCached = data.cached ?? false
       }
+      this.loaded.channels = true
     },
 
     async saveNode() {
