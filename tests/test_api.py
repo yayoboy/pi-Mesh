@@ -257,3 +257,19 @@ async def test_clear_messages_endpoint(mock_client):
             r = await ac.delete('/api/messages')
     assert r.status_code == 200
     assert r.json() == {'ok': True}
+
+
+@pytest.mark.asyncio
+async def test_get_dm_messages_endpoint(mock_client):
+    from main import app
+    from unittest.mock import patch, AsyncMock
+    sample = [{'id': 5, 'node_id': '!bbb', 'channel': 0, 'text': 'hey',
+               'ts': 1000, 'is_outgoing': 0, 'rx_snr': None,
+               'hop_count': None, 'ack': 0, 'destination': '!aabbccdd'}]
+    with patch('database.get_dm_messages', new_callable=AsyncMock, return_value=sample):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.get('/api/dm/messages?peer=!bbb')
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, list)
+    assert data[0]['text'] == 'hey'

@@ -15,7 +15,7 @@ templates = Jinja2Templates(directory='templates')
 @router.get('/messages', response_class=HTMLResponse)
 async def messages_page(request: Request):
     nodes = meshtasticd_client.get_nodes()
-    local_id = meshtasticd_client._local_id
+    local_id = meshtasticd_client._local_id or ''
     messages = await database.get_messages(cfg.DB_PATH, channel=0, limit=50)
     dm_threads = await database.get_dm_threads(cfg.DB_PATH, local_id)
     return templates.TemplateResponse(request, 'messages.html', {
@@ -40,13 +40,13 @@ async def delete_messages():
 
 @router.get('/api/dm/threads')
 async def get_dm_threads():
-    local_id = meshtasticd_client._local_id
+    local_id = meshtasticd_client._local_id or ''
     return await database.get_dm_threads(cfg.DB_PATH, local_id)
 
 
 @router.get('/api/dm/messages')
 async def get_dm_messages(peer: str, limit: int = 50, before_id: int | None = None):
-    local_id = meshtasticd_client._local_id
+    local_id = meshtasticd_client._local_id or ''
     return await database.get_dm_messages(cfg.DB_PATH, peer_id=peer,
                                           local_id=local_id, limit=limit,
                                           before_id=before_id)
