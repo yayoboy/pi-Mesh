@@ -115,28 +115,24 @@ def _on_receive(packet, interface) -> None:
 
 async def connect() -> None:
     global _interface, _connected
-    import meshtastic.tcp_interface
+    import meshtastic.serial_interface
     from pubsub import pub
     backoff = 15
     while True:
         try:
-            logger.warning(f'Connecting to meshtasticd at {cfg.MESHTASTICD_HOST}:{cfg.MESHTASTICD_PORT}')
-            _interface = meshtastic.tcp_interface.TCPInterface(
-                hostname=cfg.MESHTASTICD_HOST,
-                portNumber=cfg.MESHTASTICD_PORT,
-                noProto=False,
-            )
+            logger.warning(f'Connecting to board at {cfg.SERIAL_PATH}')
+            _interface = meshtastic.serial_interface.SerialInterface(cfg.SERIAL_PATH)
             pub.subscribe(_on_receive, 'meshtastic.receive')
             _connected = True
             backoff = 15
-            logger.warning('Connected to meshtasticd')
+            logger.warning(f'Connected to board at {cfg.SERIAL_PATH}')
             # Keep alive — poll every 30s
             while _connected:
                 _refresh_node_cache()
                 await asyncio.sleep(30)
         except Exception as e:
             _connected = False
-            logger.warning(f'meshtasticd connection failed: {e}. Retry in {backoff}s')
+            logger.warning(f'Board connection failed: {e}. Retry in {backoff}s')
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 120)
 
