@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS nodes (
     hop_count INTEGER,
     hw_model TEXT,
     is_local INTEGER DEFAULT 0,
-    raw_json TEXT
+    raw_json TEXT,
+    distance_km REAL
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -38,6 +39,14 @@ CREATE TABLE IF NOT EXISTS packets (
     packet_type TEXT,
     raw_json TEXT
 );
+
+CREATE TABLE IF NOT EXISTS custom_markers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL,
+    icon_type TEXT NOT NULL DEFAULT 'poi',
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL
+);
 """
 
 
@@ -56,16 +65,19 @@ async def upsert_node(db_path: str, node: dict) -> None:
     async with aiosqlite.connect(db_path) as db:
         await db.execute("""
             INSERT INTO nodes (id, short_name, long_name, latitude, longitude,
-                last_heard, snr, battery_level, hop_count, hw_model, is_local, raw_json)
+                last_heard, snr, battery_level, hop_count, hw_model, is_local, raw_json,
+                distance_km)
             VALUES (:id, :short_name, :long_name, :latitude, :longitude,
-                :last_heard, :snr, :battery_level, :hop_count, :hw_model, :is_local, :raw_json)
+                :last_heard, :snr, :battery_level, :hop_count, :hw_model, :is_local, :raw_json,
+                :distance_km)
             ON CONFLICT(id) DO UPDATE SET
                 short_name=excluded.short_name, long_name=excluded.long_name,
                 latitude=excluded.latitude, longitude=excluded.longitude,
                 last_heard=excluded.last_heard, snr=excluded.snr,
                 battery_level=excluded.battery_level, hop_count=excluded.hop_count,
                 hw_model=excluded.hw_model, is_local=excluded.is_local,
-                raw_json=excluded.raw_json
+                raw_json=excluded.raw_json,
+                distance_km=excluded.distance_km
         """, node)
         await db.commit()
 
@@ -88,3 +100,33 @@ async def save_packet(db_path: str, from_id: str, packet_type: str, raw: dict) -
             (int(time.time()), from_id, packet_type, json.dumps(raw))
         )
         await db.commit()
+
+
+async def get_markers(db_path: str) -> list[dict]:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute('SELECT * FROM custom_markers ORDER BY id')
+        rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def create_marker(db_path: str, label: str, icon_type: str,
+                        latitude: float, longitude: float) -> dict:
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            'INSERT INTO custom_markers (label, icon_type, latitude, longitude) VALUES (?,?,?,?)',
+            (label, icon_type, latitude, longitude)
+        )
+        await db.commit()
+        row_id = cursor.lastrowid
+    return {'id': row_id, 'label': label, 'icon_type': icon_type,
+            'latitude': latitude, 'longitude': longitude}
+
+
+async def delete_marker(db_path: str, marker_id: int) -> bool:
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            'DELETE FROM custom_markers WHERE id = ?', (marker_id,)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
