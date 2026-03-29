@@ -522,9 +522,16 @@ function initMapIfNeeded() {
   })
 
   var tileOpts       = { maxZoom: zoomMax }
-  osmLayer       = L.tileLayer('/static/tiles/osm/{z}/{x}/{y}',       tileOpts)
-  topoLayer      = L.tileLayer('/static/tiles/topo/{z}/{x}/{y}',      tileOpts)
-  satelliteLayer = L.tileLayer('/static/tiles/satellite/{z}/{x}/{y}', tileOpts)
+  var localTiles     = document.documentElement.dataset.localTiles === '1'
+  osmLayer       = localTiles
+    ? L.tileLayer('/static/tiles/osm/{z}/{x}/{y}', tileOpts)
+    : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', Object.assign({ attribution: '© OSM' }, tileOpts))
+  topoLayer      = localTiles
+    ? L.tileLayer('/static/tiles/topo/{z}/{x}/{y}', tileOpts)
+    : L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', Object.assign({ attribution: '© OpenTopoMap' }, tileOpts))
+  satelliteLayer = localTiles
+    ? L.tileLayer('/static/tiles/satellite/{z}/{x}/{y}', tileOpts)
+    : L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', Object.assign({ attribution: '© Esri' }, tileOpts))
   activeLayer    = osmLayer
   osmLayer.addTo(leafletMap)
   L.control.zoom({ position: 'bottomright' }).addTo(leafletMap)
