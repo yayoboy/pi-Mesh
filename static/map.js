@@ -279,21 +279,14 @@ function initNodeContextMenu(marker, node) {
     }
 
     menuItem('poi', 'Invia DM', function() {
-      window.location.href = '/messages?open_dm=' + encodeURIComponent(node.id)
+      var text = window.prompt('Messaggio a ' + (node.short_name || node.id) + ':')
+      if (text && typeof nodeActions !== 'undefined') nodeActions.sendDM(node.id, text)
     })
-    menuItem('poi', 'Richiedi posizione', function() {
-      fetch('/send', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ text: '', destination: node.id, type: 'position_request' }),
-      })
+    menuItem('antenna', 'Richiedi posizione', function() {
+      if (typeof nodeActions !== 'undefined') nodeActions.requestPosition(node.id)
     })
     menuItem('route', 'Traceroute', function() {
-      fetch('/api/traceroute', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ node_id: node.id }),
-      })
+      if (typeof nodeActions !== 'undefined') nodeActions.traceroute(node.id)
     })
 
     var pt    = leafletMap.latLngToContainerPoint(marker.getLatLng())
@@ -400,16 +393,62 @@ function showNodePopup(marker, node) {
   heard.style.cssText = 'color:var(--muted,#888);font-size:9px;margin-bottom:7px;'
   heard.textContent = 'Sentito ' + formatAgo(node.last_heard)
 
-  // stat boxes: hops, SNR, battery
+  // stat boxes: hops, SNR, battery, distance
   var stats = document.createElement('div')
   stats.style.cssText = 'display:flex;gap:5px;'
+  var distLabel = node.distance_km != null ? node.distance_km.toFixed(1) + 'km' : '\u2014'
   stats.append(
     makeStatBox(node.hop_count != null ? String(node.hop_count) : '\u2014', 'Hops'),
     makeStatBox(node.snr      != null ? node.snr + ' dB'        : '\u2014', 'SNR'),
-    makeStatBox(node.battery_level != null ? node.battery_level + '%' : '\u2014', 'Batt')
+    makeStatBox(node.battery_level != null ? node.battery_level + '%' : '\u2014', 'Batt'),
+    makeStatBox(distLabel, 'Dist')
   )
 
   popup.append(header, meta, heard, stats)
+
+  if (!node.is_local) {
+    var actions = document.createElement('div')
+    actions.style.cssText = 'display:flex;gap:4px;margin-top:7px;flex-wrap:wrap;'
+
+    var trBtn = document.createElement('button')
+    trBtn.style.cssText = 'flex:1;padding:4px 6px;background:var(--panel,#12151f);border:1px solid var(--border,#2a3a4a);border-radius:3px;color:var(--text,#ccc);font-size:9px;cursor:pointer;display:flex;align-items:center;gap:3px;'
+    trBtn.textContent = 'Traceroute'
+    trBtn.onclick = function(e) {
+      e.stopPropagation()
+      popup.style.display = 'none'
+      if (typeof nodeActions !== 'undefined') {
+        nodeActions.traceroute(node.id).catch(function() {
+          if (typeof showToast === 'function') showToast('Traceroute fallito', 'warn')
+        })
+      }
+    }
+
+    var posBtn = document.createElement('button')
+    posBtn.style.cssText = trBtn.style.cssText
+    posBtn.textContent = 'Posiz.'
+    posBtn.onclick = function(e) {
+      e.stopPropagation()
+      popup.style.display = 'none'
+      if (typeof nodeActions !== 'undefined') nodeActions.requestPosition(node.id)
+    }
+
+    var dmBtn = document.createElement('button')
+    dmBtn.style.cssText = trBtn.style.cssText
+    dmBtn.textContent = 'DM'
+    dmBtn.onclick = function(e) {
+      e.stopPropagation()
+      popup.style.display = 'none'
+      var text = window.prompt('Messaggio a ' + (node.short_name || node.id) + ':')
+      if (text && typeof nodeActions !== 'undefined') {
+        nodeActions.sendDM(node.id, text).catch(function() {
+          if (typeof showToast === 'function') showToast('DM fallito', 'warn')
+        })
+      }
+    }
+
+    actions.append(trBtn, posBtn, dmBtn)
+    popup.appendChild(actions)
+  }
 
   // Position next to marker
   var pt    = leafletMap.latLngToContainerPoint(marker.getLatLng())
@@ -484,9 +523,9 @@ function initMapIfNeeded() {
   })
 
   var tileOpts       = { maxZoom: zoomMax }
-  osmLayer       = L.tileLayer('/tiles/osm/{z}/{x}/{y}',       tileOpts)
-  topoLayer      = L.tileLayer('/tiles/topo/{z}/{x}/{y}',      tileOpts)
-  satelliteLayer = L.tileLayer('/tiles/satellite/{z}/{x}/{y}', tileOpts)
+  osmLayer       = L.tileLayer('/static/tiles/osm/{z}/{x}/{y}',       tileOpts)
+  topoLayer      = L.tileLayer('/static/tiles/topo/{z}/{x}/{y}',      tileOpts)
+  satelliteLayer = L.tileLayer('/static/tiles/satellite/{z}/{x}/{y}', tileOpts)
   activeLayer    = osmLayer
   osmLayer.addTo(leafletMap)
   L.control.zoom({ position: 'bottomright' }).addTo(leafletMap)
@@ -575,3 +614,13 @@ function updateMapMarker(node) {
 
 window.addEventListener('node-update',       function(e) { updateMapMarker(e.detail) })
 window.addEventListener('traceroute_result', function(e) { renderTraceroutePath(e.detail.hops) })
+window.addEventListener('position-update', function(e) {
+  var d = e.detail
+  var node = nodeCache.get(d.id)
+  if (node) {
+    node.latitude   = d.latitude
+    node.longitude  = d.longitude
+    node.last_heard = d.last_heard
+    updateMapMarker(node)
+  }
+})
