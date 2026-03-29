@@ -145,6 +145,30 @@ def _refresh_node_cache() -> None:
         logger.warning(f'Node cache refresh failed: {e}')
 
 
+async def _save_incoming_message(
+    from_id: str, channel: int, text: str, snr, hop_limit, dest: str
+) -> None:
+    msg_id = await database.save_message(
+        cfg.DB_PATH, from_id, channel, text,
+        int(time.time()), False, snr, hop_limit, dest
+    )
+    typed_event = {
+        'type':        'message',
+        'id':          msg_id,
+        'node_id':     from_id,
+        'channel':     channel,
+        'text':        text,
+        'ts':          int(time.time()),
+        'is_outgoing': False,
+        'rx_snr':      snr,
+        'hop_count':   hop_limit,
+        'ack':         0,
+        'destination': dest,
+    }
+    if _loop is not None:
+        _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+
+
 def _on_receive(packet, interface) -> None:
     from_id   = packet.get('fromId', '?')
     portnum   = packet.get('decoded', {}).get('portnum', 'UNKNOWN')
@@ -226,6 +250,26 @@ def _on_receive(packet, interface) -> None:
         }
         if _loop is not None:
             _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+
+    elif portnum == 'TEXT_MESSAGE_APP':
+        text   = decoded.get('text', '')
+        to_num = packet.get('to', 0xFFFFFFFF)
+        dest   = '^all' if to_num == 0xFFFFFFFF else f'!{to_num:08x}'
+        if _loop is not None:
+            asyncio.run_coroutine_threadsafe(
+                _save_incoming_message(from_id, decoded.get('channel', 0),
+                                       text, snr, hop_limit, dest),
+                _loop
+            )
+
+    elif portnum == 'ROUTING_APP':
+        error_reason = decoded.get('routing', {}).get('errorReason', 'NONE')
+        if error_reason == 'NONE' and _loop is not None:
+            asyncio.run_coroutine_threadsafe(
+                database.update_message_ack(cfg.DB_PATH, from_id), _loop
+            )
+            ack_event = {'type': 'ack', 'node_id': from_id}
+            _loop.call_soon_threadsafe(_event_queue.put_nowait, ack_event)
 
     # Notify log subscribers
     failed = []
