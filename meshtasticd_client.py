@@ -87,6 +87,135 @@ def get_traceroute_result(node_id: str) -> dict | None:
     return _traceroute_cache.get(node_id)
 
 
+async def get_node_config(db_path: str) -> dict:
+    """Read node config live from board, cache result. Returns cache if offline."""
+    if _connected and _interface:
+        try:
+            loop = asyncio.get_event_loop()
+            def _read():
+                lc = _interface.localNode.localConfig.device
+                return {
+                    'long_name': lc.long_name,
+                    'short_name': lc.short_name,
+                    'role': lc.Role.Name(lc.role),
+                }
+            data = await loop.run_in_executor(None, _read)
+            data['cached'] = False
+            await database.set_config_cache(db_path, 'node', data)
+            return data
+        except Exception as e:
+            logger.error('get_node_config failed: %s', e)
+    cached = await database.get_config_cache(db_path, 'node')
+    if cached:
+        cached['cached'] = True
+        return cached
+    return {'cached': True}
+
+
+async def get_lora_config(db_path: str) -> dict:
+    """Read LoRa config live from board, cache result. Returns cache if offline."""
+    if _connected and _interface:
+        try:
+            loop = asyncio.get_event_loop()
+            def _read():
+                lc = _interface.localNode.localConfig.lora
+                return {
+                    'region': lc.RegionCode.Name(lc.region),
+                    'modem_preset': lc.ModemPreset.Name(lc.modem_preset),
+                }
+            data = await loop.run_in_executor(None, _read)
+            data['cached'] = False
+            await database.set_config_cache(db_path, 'lora', data)
+            return data
+        except Exception as e:
+            logger.error('get_lora_config failed: %s', e)
+    cached = await database.get_config_cache(db_path, 'lora')
+    if cached:
+        cached['cached'] = True
+        return cached
+    return {'cached': True}
+
+
+async def get_channels(db_path: str) -> list[dict]:
+    """Read channels from board, cache result. Returns cache if offline."""
+    if _connected and _interface:
+        try:
+            loop = asyncio.get_event_loop()
+            def _read():
+                import base64
+                result = []
+                for ch in _interface.localNode.channels:
+                    psk_b64 = base64.b64encode(ch.settings.psk).decode() if ch.settings.psk else ''
+                    result.append({
+                        'index': ch.index,
+                        'name': ch.settings.name,
+                        'psk_b64': psk_b64,
+                        'role': ch.Role.Name(ch.role),
+                    })
+                return result
+            data = await loop.run_in_executor(None, _read)
+            await database.set_config_cache(db_path, 'channels', {'channels': data})
+            return data
+        except Exception as e:
+            logger.error('get_channels failed: %s', e)
+    cached = await database.get_config_cache(db_path, 'channels')
+    if cached:
+        return cached.get('channels', [])
+    return []
+
+
+def _do_set_node_config(long_name: str, short_name: str, role: str) -> None:
+    """Sync helper — runs in command queue thread."""
+    _interface.localNode.setOwner(long_name, short_name)
+    from meshtastic.protobuf import config_pb2
+    role_val = config_pb2.Config.DeviceConfig.Role.Value(role)
+    dev_cfg = config_pb2.Config.DeviceConfig(role=role_val)
+    _interface.localNode.setConfig(config_pb2.Config(device=dev_cfg))
+
+
+async def set_node_config(long_name: str, short_name: str, role: str) -> None:
+    """Queue node config write. Raises if board not connected."""
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _ln, _sn, _r = long_name, short_name, role
+    await _command_queue.put(lambda: _do_set_node_config(_ln, _sn, _r))
+
+
+def _do_set_lora_config(region: str, preset: str) -> None:
+    """Sync helper — runs in command queue thread."""
+    from meshtastic.protobuf import config_pb2
+    region_val = config_pb2.Config.LoRaConfig.RegionCode.Value(region)
+    preset_val = config_pb2.Config.LoRaConfig.ModemPreset.Value(preset)
+    lora_cfg = config_pb2.Config.LoRaConfig(region=region_val, modem_preset=preset_val)
+    _interface.localNode.setConfig(config_pb2.Config(lora=lora_cfg))
+
+
+async def set_lora_config(region: str, preset: str) -> None:
+    """Queue LoRa config write. Raises if board not connected."""
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _r, _p = region, preset
+    await _command_queue.put(lambda: _do_set_lora_config(_r, _p))
+
+
+def _do_set_channel(idx: int, name: str, psk_b64: str) -> None:
+    """Sync helper — runs in command queue thread."""
+    import base64
+    ch = _interface.localNode.channels[idx]
+    ch.settings.name = name
+    if psk_b64:
+        ch.settings.psk = base64.b64decode(psk_b64)
+    _interface.localNode.writeChannel(idx)
+
+
+async def set_channel(idx: int, name: str, psk_b64: str) -> None:
+    """Queue channel write. Raises if board not connected."""
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _i, _n, _p = idx, name, psk_b64
+    await _command_queue.put(lambda: _do_set_channel(_i, _n, _p))
+
+
 # --- Internal ---
 
 def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
