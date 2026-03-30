@@ -414,6 +414,55 @@
       </div>
     </template>
 
+    <!-- RTC -->
+    <template x-if="section === 'rtc'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:10px;">RTC I2C</div>
+        <div style="padding:10px;background:var(--panel);border:1px solid var(--border);border-radius:6px;margin-bottom:12px;">
+          <template x-if="rtcStatus === null">
+            <span style="font-size:11px;color:var(--muted);">Caricamento...</span>
+          </template>
+          <template x-if="rtcStatus !== null && rtcStatus.configured">
+            <div>
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                <div style="width:8px;height:8px;border-radius:50%;background:#4caf50;flex-shrink:0;"></div>
+                <span style="font-size:11px;color:var(--text);font-weight:600;">Attivo</span>
+                <span style="font-size:10px;color:var(--muted);" x-text="rtcStatus.model ? '· ' + rtcStatus.model.toUpperCase() : ''"></span>
+              </div>
+              <div x-show="rtcStatus.device" style="font-size:10px;color:var(--muted);" x-text="rtcStatus.device + (rtcStatus.time ? ' · ' + rtcStatus.time : '')"></div>
+              <div x-show="!rtcStatus.device" style="font-size:10px;color:#e5a50a;">Driver configurato — riavvia il Pi per attivare.</div>
+            </div>
+          </template>
+          <template x-if="rtcStatus !== null && !rtcStatus.configured">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div style="width:8px;height:8px;border-radius:50%;background:#374151;flex-shrink:0;"></div>
+              <span style="font-size:11px;color:var(--muted);">Non configurato</span>
+            </div>
+          </template>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">Modello RTC</div>
+        <select x-model="rtcModel"
+                style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;margin-bottom:10px;">
+          <option value="ds3231">DS3231 (consigliato)</option>
+          <option value="ds1307">DS1307</option>
+          <option value="pcf8523">PCF8523</option>
+          <option value="pcf8563">PCF8563</option>
+          <option value="rv3028">RV3028</option>
+          <option value="mcp7940x">MCP7940X</option>
+          <option value="abx80x">ABx80x</option>
+        </select>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Comando di setup (copia e incolla nel terminale)</div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <code style="flex:1;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;font-size:10px;color:var(--accent);word-break:break-all;"
+                x-text="'sudo bash ~/pi-Mesh/scripts/setup-rtc.sh ' + rtcModel"></code>
+          <button @click="copyRtcCmd()"
+                  style="padding:7px 10px;background:#1a3a5c;color:var(--accent);border:1px solid #2a5a8a;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap;"
+                  x-text="rtcCopied ? '✓' : 'Copia'"></button>
+        </div>
+        <p style="font-size:10px;color:var(--muted);margin-top:8px;">Richiede root. Riavvia il Pi dopo l'esecuzione.</p>
+      </div>
+    </template>
+
   </div><!-- /CONTENT -->
 
 </div><!-- /x-data -->
@@ -429,6 +478,7 @@ function configPage() {
       { id: 'gpio',     label: 'GPIO' },
       { id: 'theme',    label: 'Tema' },
       { id: 'wifi',     label: 'WiFi' },
+      { id: 'rtc',      label: 'RTC' },
     ],
 
     node: { long_name: '', short_name: '', role: 'CLIENT', cached: true },
@@ -450,6 +500,7 @@ function configPage() {
       if (s === 'lora'     && !this.lora.region)          await this.loadLora()
       if (s === 'channels' && this.channels.length === 0) await this.loadChannels()
       if (s === 'gpio')                                   await this.loadGpio()
+      if (s === 'rtc')                                    await this.loadRtc()
     },
 
     async loadNode() {
@@ -635,6 +686,24 @@ function configPage() {
       this.currentAccent = color
       localStorage.setItem('pimesh-accent', color)
       document.documentElement.style.setProperty('--accent', color)
+    },
+
+    // RTC
+    rtcStatus: null,
+    rtcModel: 'ds3231',
+    rtcCopied: false,
+
+    async loadRtc() {
+      const r = await fetch('/api/config/rtc/status')
+      if (r.ok) this.rtcStatus = await r.json()
+    },
+
+    copyRtcCmd() {
+      const cmd = 'sudo bash ~/pi-Mesh/scripts/setup-rtc.sh ' + this.rtcModel
+      navigator.clipboard.writeText(cmd).then(() => {
+        this.rtcCopied = true
+        setTimeout(() => { this.rtcCopied = false }, 2000)
+      })
     },
 
     // WiFi
