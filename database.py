@@ -95,6 +95,14 @@ async def init(db_path: str) -> None:
             await db.execute('DROP TABLE IF EXISTS messages')
             await db.execute('DROP TABLE IF EXISTS dm_reads')
         await db.executescript(_SCHEMA)
+
+        # Migrate nodes table if distance_km column missing (M4 addition)
+        cursor = await db.execute("PRAGMA table_info(nodes)")
+        node_cols = [row[1] for row in await cursor.fetchall()]
+        if node_cols and 'distance_km' not in node_cols:
+            logger.info('Migrating nodes table: adding distance_km column')
+            await db.execute('ALTER TABLE nodes ADD COLUMN distance_km REAL')
+
         await db.commit()
     logger.info(f'Database initialized: {db_path}')
 
