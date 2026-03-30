@@ -1,4 +1,5 @@
 # routers/config_router.py
+import os
 import subprocess
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -266,11 +267,10 @@ async def wifi_connect(body: WifiConnectRequest):
 
 @router.get('/api/config/rtc/status')
 async def rtc_status():
-    import os
-    CONFIG_PATHS = ['/boot/firmware/config.txt', '/boot/config.txt']
+    config_paths = ['/boot/firmware/config.txt', '/boot/config.txt']
     configured = False
     model = None
-    for path in CONFIG_PATHS:
+    for path in config_paths:
         try:
             with open(path) as f:
                 for line in f:
@@ -278,11 +278,11 @@ async def rtc_status():
                     if line.startswith('dtoverlay=i2c-rtc'):
                         configured = True
                         parts = line.split(',')
-                        if len(parts) >= 2:
-                            model = parts[1]
+                        if len(parts) >= 2 and parts[1].strip():
+                            model = parts[1].strip()
                         break
             break
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError, OSError):
             continue
 
     device = '/dev/rtc0' if os.path.exists('/dev/rtc0') else None
