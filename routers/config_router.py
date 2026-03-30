@@ -262,3 +262,46 @@ async def wifi_connect(body: WifiConnectRequest):
         return JSONResponse({'error': result.stderr.strip()}, status_code=500)
     except FileNotFoundError:
         return JSONResponse({'error': 'nmcli not found'}, status_code=500)
+
+
+@router.get('/api/config/rtc/status')
+async def rtc_status():
+    import os
+    CONFIG_PATHS = ['/boot/firmware/config.txt', '/boot/config.txt']
+    configured = False
+    model = None
+    for path in CONFIG_PATHS:
+        try:
+            with open(path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('dtoverlay=i2c-rtc'):
+                        configured = True
+                        parts = line.split(',')
+                        if len(parts) >= 2:
+                            model = parts[1]
+                        break
+            break
+        except FileNotFoundError:
+            continue
+
+    device = '/dev/rtc0' if os.path.exists('/dev/rtc0') else None
+
+    time_str = None
+    if device:
+        try:
+            result = subprocess.run(
+                ['hwclock', '-r', '--rtc=/dev/rtc0'],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                time_str = result.stdout.strip()
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+    return {
+        'configured': configured,
+        'model': model,
+        'device': device,
+        'time': time_str,
+    }

@@ -380,3 +380,59 @@ async def test_i2c_scan_endpoint(mock_client):
     assert '0x76' in addrs
     ds = next(d for d in devices if d['address'] == '0x68')
     assert ds['known_device'] == 'DS3231'
+
+
+@pytest.mark.asyncio
+async def test_rtc_status_not_configured(mock_client):
+    from main import app
+    from unittest.mock import patch, mock_open
+    fake_config = "# Raspberry Pi config\ndtparam=audio=on\n"
+    with patch('builtins.open', mock_open(read_data=fake_config)), \
+         patch('os.path.exists', return_value=False):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.get('/api/config/rtc/status')
+    assert r.status_code == 200
+    data = r.json()
+    assert data['configured'] is False
+    assert data['model'] is None
+    assert data['device'] is None
+    assert data['time'] is None
+
+
+@pytest.mark.asyncio
+async def test_rtc_status_configured_no_device(mock_client):
+    from main import app
+    from unittest.mock import patch, mock_open
+    fake_config = "dtparam=audio=on\ndtoverlay=i2c-rtc,ds3231\n"
+    with patch('builtins.open', mock_open(read_data=fake_config)), \
+         patch('os.path.exists', return_value=False):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.get('/api/config/rtc/status')
+    assert r.status_code == 200
+    data = r.json()
+    assert data['configured'] is True
+    assert data['model'] == 'ds3231'
+    assert data['device'] is None
+    assert data['time'] is None
+
+
+@pytest.mark.asyncio
+async def test_rtc_status_configured_with_device(mock_client):
+    from main import app
+    from unittest.mock import patch, mock_open
+    fake_config = "dtoverlay=i2c-rtc,ds3231\n"
+    fake_hwclock = type('R', (), {
+        'stdout': '2026-03-31 21:00:00.000000+0000',
+        'returncode': 0
+    })()
+    with patch('builtins.open', mock_open(read_data=fake_config)), \
+         patch('os.path.exists', return_value=True), \
+         patch('subprocess.run', return_value=fake_hwclock):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+            r = await ac.get('/api/config/rtc/status')
+    assert r.status_code == 200
+    data = r.json()
+    assert data['configured'] is True
+    assert data['model'] == 'ds3231'
+    assert data['device'] == '/dev/rtc0'
+    assert '2026-03-31' in data['time']
