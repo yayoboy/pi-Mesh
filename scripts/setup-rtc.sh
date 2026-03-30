@@ -27,11 +27,19 @@ fi
 
 # Richiede root
 if [[ $EUID -ne 0 ]]; then
-  err "Esegui come root: sudo bash $0 $MODEL"
+  err "Esegui come root: sudo bash $(basename "$0") $MODEL"
 fi
 
-CONFIG="/boot/firmware/config.txt"
 MODULES="/etc/modules"
+
+# Detect config.txt path (varies by Raspberry Pi OS version)
+if [[ -f /boot/firmware/config.txt ]]; then
+  CONFIG="/boot/firmware/config.txt"
+elif [[ -f /boot/config.txt ]]; then
+  CONFIG="/boot/config.txt"
+else
+  err "config.txt non trovato in /boot/firmware/ o /boot/"
+fi
 
 echo "▶ [1/4] Abilito I2C..."
 if raspi-config nonint get_i2c | grep -q "0"; then
@@ -44,7 +52,7 @@ fi
 echo ""
 echo "▶ [2/4] Configuro dtoverlay in $CONFIG..."
 OVERLAY="dtoverlay=i2c-rtc,$MODEL"
-if grep -q "dtoverlay=i2c-rtc" "$CONFIG"; then
+if grep -qF "$OVERLAY" "$CONFIG"; then
   skip "$OVERLAY già presente"
 else
   echo "$OVERLAY" >> "$CONFIG"
@@ -54,7 +62,7 @@ fi
 echo ""
 echo "▶ [3/4] Rimuovo fake-hwclock (interferisce con RTC reale)..."
 if dpkg -l fake-hwclock 2>/dev/null | grep -q "^ii"; then
-  apt-get purge -y fake-hwclock 2>/dev/null
+  apt-get purge -y fake-hwclock
   ok "fake-hwclock rimosso"
 else
   skip "fake-hwclock non installato"
@@ -66,9 +74,11 @@ HWCLOCK_SET="/lib/udev/hwclock-set"
 if [[ -f "$HWCLOCK_SET" ]]; then
   # Commenta le righe che saltano hwclock su sistemi senza RTC onboard
   if grep -q "^if \[ -e /run/systemd" "$HWCLOCK_SET"; then
-    sed -i 's|^if \[ -e /run/systemd|#if [ -e /run/systemd|' "$HWCLOCK_SET"
-    sed -i 's|^    exit 0|#    exit 0|' "$HWCLOCK_SET"
-    sed -i 's|^fi$|#fi|' "$HWCLOCK_SET"
+    sed -i \
+      -e 's|^if \[ -e /run/systemd|#if [ -e /run/systemd|' \
+      -e 's|^    exit 0|#    exit 0|' \
+      -e 's|^fi$|#fi|' \
+      "$HWCLOCK_SET"
     ok "hwclock-set configurato"
   else
     skip "hwclock-set già configurato"
