@@ -368,14 +368,14 @@
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
           <template x-for="c in accentSwatches" :key="c">
             <button @click="applyAccent(c)"
-                    style="width:28px;height:28px;border-radius:50%;padding:0;cursor:pointer;flex-shrink:0;"
+                    style="width:40px;height:40px;border-radius:50%;padding:0;cursor:pointer;flex-shrink:0;"
                     :style="'background:' + c + ';border:2px solid ' + (currentAccent===c ? '#fff' : 'transparent') + ';'"></button>
           </template>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
           <label style="font-size:10px;color:var(--muted);">Personalizzato</label>
           <input type="color" x-model="currentAccent" @input="applyAccent($event.target.value)"
-                 style="padding:2px;height:44px;flex:1;border:1px solid var(--border);border-radius:4px;background:var(--panel);cursor:pointer;">
+                 style="padding:2px;height:32px;width:48px;border:1px solid var(--border);border-radius:4px;background:var(--panel);cursor:pointer;">
         </div>
       </div>
     </template>
