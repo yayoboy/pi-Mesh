@@ -23,7 +23,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # --- SPAZIO INIZIALE ---
-DISK_BEFORE=$(df / --output=used | tail -1)
+DISK_BEFORE="$(df / --output=used | tail -1)"
 
 echo "▶ [1/3] Disabilito servizi inutili..."
 echo ""
@@ -70,12 +70,12 @@ for pkg in "${PKGS[@]}"; do
 done
 
 if [[ ${#TO_REMOVE[@]} -gt 0 ]]; then
-  apt-get purge -y "${TO_REMOVE[@]}" 2>&1 | grep -E "Removing|Purging" | while read -r line; do
+  while IFS= read -r line; do
     ok "$line"
-  done
-  apt-get autoremove -y --purge 2>&1 | grep -E "Removing|Purging" | while read -r line; do
+  done < <(apt-get purge -y "${TO_REMOVE[@]}" 2>&1 | grep -E "Removing|Purging")
+  while IFS= read -r line; do
     ok "$line"
-  done
+  done < <(apt-get autoremove -y --purge 2>&1 | grep -E "Removing|Purging")
 fi
 
 echo ""
@@ -86,7 +86,7 @@ apt-get clean
 ok "Cache apt pulita"
 
 # --- RIEPILOGO ---
-DISK_AFTER=$(df / --output=used | tail -1)
+DISK_AFTER="$(df / --output=used | tail -1)"
 FREED=$(( (DISK_BEFORE - DISK_AFTER) / 1024 ))
 
 echo ""
