@@ -463,6 +463,45 @@
       </div>
     </template>
 
+    <!-- MAPPA -->
+    <template x-if="section === 'mappa'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:10px;">Mappa</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <!-- Tile locali toggle -->
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <div style="font-size:11px;font-weight:600;">Tile locali</div>
+              <div style="font-size:10px;color:var(--muted);">Usa tile offline invece del CDN</div>
+            </div>
+            <button @click="mappa.local_tiles = !mappa.local_tiles; saveMappa()"
+                    :disabled="!mappa.tiles_present"
+                    :style="mappa.local_tiles ? 'background:#1a3a2a;border-color:#22c55e;color:#22c55e' : 'background:var(--panel);border-color:var(--border);color:var(--muted)'"
+                    style="border:1px solid;border-radius:12px;padding:3px 10px;font-size:10px;cursor:pointer"
+                    x-text="mappa.local_tiles ? 'ON' : 'OFF'"></button>
+          </div>
+
+          <!-- Regione -->
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:11px;color:var(--muted);">Regione</span>
+            <span style="font-size:11px;" x-text="mappa.region || '—'"></span>
+          </div>
+
+          <!-- Stato tile -->
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:11px;color:var(--muted);">Tile locali</span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:4px;"
+                  :style="mappa.tiles_present ? 'background:#1a3a2a;color:#22c55e' : 'background:var(--panel);color:var(--muted)'"
+                  x-text="mappa.tiles_present ? '✓ presenti' : '✗ assenti'"></span>
+          </div>
+
+          <p x-show="!mappa.tiles_present" style="font-size:10px;color:var(--muted);">
+            Esegui <code style="background:var(--panel);padding:2px 4px;border-radius:2px;">scripts/manage-tiles.sh</code> dal Mac/PC per trasferire le tile al Pi.
+          </p>
+        </div>
+      </div>
+    </template>
+
   </div><!-- /CONTENT -->
 
 </div><!-- /x-data -->
@@ -479,12 +518,14 @@ function configPage() {
       { id: 'theme',    label: 'Tema' },
       { id: 'wifi',     label: 'WiFi' },
       { id: 'rtc',      label: 'RTC' },
+      { id: 'mappa',    label: 'Mappa' },
     ],
 
     node: { long_name: '', short_name: '', role: 'CLIENT', cached: true },
     lora: { region: 'EU_868', modem_preset: 'LONG_FAST', cached: true },
     channels: [],
     channelsCached: true,
+    mappa: { local_tiles: false, region: 'italia', tiles_present: false, cached: false, saving: false },
 
     loaded: { node: false, lora: false, channels: false },
     saving: { node: false, lora: false, channels: false },
@@ -501,6 +542,7 @@ function configPage() {
       if (s === 'channels' && this.channels.length === 0) await this.loadChannels()
       if (s === 'gpio')                                   await this.loadGpio()
       if (s === 'rtc')                                    await this.loadRtc()
+      if (s === 'mappa')                                  await this.loadMappa()
     },
 
     async loadNode() {
@@ -704,6 +746,26 @@ function configPage() {
         this.rtcCopied = true
         setTimeout(() => { this.rtcCopied = false }, 2000)
       })
+    },
+
+    async loadMappa() {
+      if (this.mappa.cached) return
+      const r = await fetch('/api/config/map')
+      const d = await r.json()
+      this.mappa.local_tiles  = d.local_tiles
+      this.mappa.region       = d.region
+      this.mappa.tiles_present = d.tiles_present
+      this.mappa.cached = true
+    },
+
+    async saveMappa() {
+      this.mappa.saving = true
+      await fetch('/api/config/map', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ local_tiles: this.mappa.local_tiles })
+      })
+      this.mappa.saving = false
     },
 
     // WiFi
