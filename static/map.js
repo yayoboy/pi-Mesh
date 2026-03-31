@@ -536,7 +536,7 @@ function initMapIfNeeded() {
     : L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', Object.assign({ attribution: '© Esri' }, tileOpts))
   activeLayer    = osmLayer
   osmLayer.addTo(leafletMap)
-  L.control.zoom({ position: 'bottomright' }).addTo(leafletMap)
+  L.control.zoom({ position: 'bottomleft' }).addTo(leafletMap)
 
   hopLinesLayer.addTo(leafletMap)
   customMarkersLayer.addTo(leafletMap)
