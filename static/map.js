@@ -553,6 +553,13 @@ function initMapIfNeeded() {
   // Invalidate size after delay to ensure container is visible
   setTimeout(function() { leafletMap.invalidateSize() }, 200)
 
+  // WebKit2GTK converts touch drag to wheel events — intercept and pan instead of zoom
+  leafletMap.getContainer().addEventListener('wheel', function(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    leafletMap.panBy([e.deltaX, e.deltaY], { animate: false })
+  }, { passive: false })
+
   var trNode = new URLSearchParams(window.location.search).get('traceroute')
   if (trNode) {
     fetch('/api/nodes/' + encodeURIComponent(trNode) + '/traceroute')
