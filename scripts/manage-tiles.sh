@@ -125,7 +125,10 @@ done
 
 # ─── rsync to Pi ────────────────────────────────────────────────────────────
 echo "  📡 Trasferisco tile al Pi..."
-rsync -av --progress "$TILES_DIR/" "${PI_USER}@${PI_HOST}:${PI_PATH}/"
+rsync -av --progress "$TILES_DIR/" "${PI_USER}@${PI_HOST}:${PI_PATH}/" || {
+  echo "  ❌ Rsync fallito. Verifica connessione SSH e permessi."
+  exit 1
+}
 echo "  ✓ Tile copiate"
 echo ""
 
