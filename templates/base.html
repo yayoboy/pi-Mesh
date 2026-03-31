@@ -43,7 +43,7 @@
   </main>
 
   <!-- Tabbar fissa in basso -->
-  <nav class="flex items-stretch shrink-0" style="height:32px;background:var(--panel);border-top:1px solid var(--border);">
+  <nav id="tabbar" class="flex items-stretch shrink-0" style="height:32px;background:var(--panel);border-top:1px solid var(--border);">
 
     {% set tabs = [
       ('nodes',    '/nodes',    'Nodi',    'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z'),
@@ -56,10 +56,11 @@
 
     {% for key, href, label, icon_path in tabs %}
     <a href="{{ href }}"
-       class="flex-1 flex flex-col items-center justify-center gap-0.5 text-center no-underline
-              {% if active_tab == key %}tab-active{% endif %}"
+       class="tab flex-1 flex flex-col items-center justify-center gap-0.5 text-center no-underline
+              {% if active_tab == key %}tab-active active{% endif %}"
+       data-tab="{{ key }}"
        style="color:{% if active_tab == key %}var(--accent){% else %}var(--muted){% endif %};
-              font-size:9px;font-weight:500;text-decoration:none;">
+              font-size:9px;font-weight:500;text-decoration:none;touch-action:manipulation;">
       <svg width="16" height="16" fill="none"
            stroke="{% if active_tab == key %}var(--accent){% else %}var(--muted){% endif %}"
            stroke-width="1.8" viewBox="0 0 24 24">
