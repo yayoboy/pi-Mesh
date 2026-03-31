@@ -30,7 +30,8 @@ def _write_env(key: str, value: str) -> None:
     """Write or update a KEY=value line in config.env."""
     path = CONFIG_ENV_PATH
     try:
-        lines = open(path).readlines()
+        with open(path) as f:
+            lines = f.readlines()
     except FileNotFoundError:
         lines = []
     found = False
