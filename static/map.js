@@ -512,7 +512,8 @@ function initMapIfNeeded() {
   leafletMap = L.map('map-container', {
     center: center, zoom: zoom, zoomControl: false,
     maxZoom: zoomMax,
-    tap: true,
+    tap: false,
+    tapTolerance: 15,
   })
 
   // Save view on move/zoom
