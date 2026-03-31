@@ -13,6 +13,9 @@ import meshtasticd_client
 router = APIRouter()
 templates = Jinja2Templates(directory='templates')
 
+# Module-level constant for config file path
+CONFIG_ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.env')
+
 # I2C address lookup table
 _I2C_KNOWN = {
     '0x76': 'BME280', '0x77': 'BMP280/BME280',
@@ -21,6 +24,27 @@ _I2C_KNOWN = {
     '0x44': 'SHT31', '0x45': 'SHT31',
     '0x38': 'AHT20', '0x40': 'HTU21D',
 }
+
+
+def _write_env(key: str, value: str) -> None:
+    """Write or update a KEY=value line in config.env."""
+    path = CONFIG_ENV_PATH
+    try:
+        lines = open(path).readlines()
+    except FileNotFoundError:
+        lines = []
+    found = False
+    new_lines = []
+    for line in lines:
+        if line.startswith(f'{key}=') or line.startswith(f'{key} ='):
+            new_lines.append(f'{key}={value}\n')
+            found = True
+        else:
+            new_lines.append(line)
+    if not found:
+        new_lines.append(f'{key}={value}\n')
+    with open(path, 'w') as f:
+        f.writelines(new_lines)
 
 
 @router.get('/config', response_class=HTMLResponse)
@@ -305,3 +329,25 @@ async def rtc_status():
         'device': device,
         'time': time_str,
     }
+
+
+class MapConfigRequest(BaseModel):
+    local_tiles: bool
+
+
+@router.get('/api/config/map')
+async def get_map_config():
+    tiles_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static', 'tiles', 'osm')
+    tiles_present = os.path.isdir(tiles_dir) and bool(os.listdir(tiles_dir))
+    return {
+        'local_tiles': cfg.MAP_LOCAL_TILES,
+        'region': cfg.MAP_REGION,
+        'tiles_present': tiles_present,
+    }
+
+
+@router.post('/api/config/map')
+async def post_map_config(body: MapConfigRequest):
+    _write_env('MAP_LOCAL_TILES', '1' if body.local_tiles else '0')
+    cfg.MAP_LOCAL_TILES = body.local_tiles
+    return {'local_tiles': cfg.MAP_LOCAL_TILES, 'region': cfg.MAP_REGION}

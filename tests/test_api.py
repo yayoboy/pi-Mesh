@@ -456,3 +456,25 @@ async def test_map_page_uses_region_bounds(mock_client):
     assert r.status_code == 200
     expected_lat = str(cfg.REGION_BOUNDS[cfg.MAP_REGION]['lat_min'])
     assert expected_lat in r.text
+
+
+@pytest.mark.asyncio
+async def test_get_map_config_returns_fields(client):
+    resp = await client.get('/api/config/map')
+    assert resp.status_code == 200
+    data = resp.json()
+    assert 'local_tiles' in data
+    assert 'region' in data
+    assert 'tiles_present' in data
+    assert isinstance(data['local_tiles'], bool)
+
+
+@pytest.mark.asyncio
+async def test_post_map_config_updates_local_tiles(client, tmp_path, monkeypatch):
+    import routers.config_router as cr
+    env_file = tmp_path / 'config.env'
+    env_file.write_text('MAP_LOCAL_TILES=0\nMAP_REGION=italia\n')
+    monkeypatch.setattr(cr, 'CONFIG_ENV_PATH', str(env_file))
+    resp = await client.post('/api/config/map', json={'local_tiles': True})
+    assert resp.status_code == 200
+    assert 'MAP_LOCAL_TILES=1' in env_file.read_text()
