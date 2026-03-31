@@ -513,7 +513,8 @@ function initMapIfNeeded() {
     center: center, zoom: zoom, zoomControl: false,
     maxZoom: zoomMax,
     tap: false,
-    tapTolerance: 15,
+    touchZoom: false,
+    boxZoom: false,
   })
 
   // Save view on move/zoom
