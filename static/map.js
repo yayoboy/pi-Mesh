@@ -514,6 +514,7 @@ function initMapIfNeeded() {
     maxZoom: zoomMax,
     tap: false,
     touchZoom: false,
+    scrollWheelZoom: false,
     boxZoom: false,
   })
 
