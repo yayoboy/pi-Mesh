@@ -273,6 +273,27 @@ async function navigateTo(tabName) {
     const html      = await response.text()
     const parser    = new DOMParser()
     const doc       = parser.parseFromString(html, 'text/html')
+    // Inject missing <link rel=stylesheet> from fetched page's <head>
+    doc.querySelectorAll('head link[rel=stylesheet]').forEach(link => {
+      if (!document.querySelector(`link[href="${link.getAttribute('href')}"]`)) {
+        document.head.appendChild(link.cloneNode(true))
+      }
+    })
+
+    // Inject missing <script src> from fetched page's <head> (e.g. Leaflet)
+    await new Promise(resolve => {
+      const headScripts = Array.from(doc.querySelectorAll('head script[src]'))
+        .filter(s => !document.querySelector(`script[src="${s.getAttribute('src')}"]`))
+      if (!headScripts.length) { resolve(); return }
+      let loaded = 0
+      headScripts.forEach(oldS => {
+        const s = document.createElement('script')
+        s.src = oldS.src
+        s.onload = s.onerror = () => { if (++loaded === headScripts.length) resolve() }
+        document.head.appendChild(s)
+      })
+    })
+
     const newContent = doc.getElementById('content')
     if (newContent) {
       document.getElementById('content').innerHTML = newContent.innerHTML
