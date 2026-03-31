@@ -10,11 +10,6 @@ import config as cfg
 router = APIRouter()
 templates = Jinja2Templates(directory='templates')
 
-DEFAULT_BOUNDS = {
-    'lat_min': 35.0, 'lat_max': 47.5,
-    'lon_min': 6.5,  'lon_max': 18.5,
-}
-
 
 class MarkerCreate(BaseModel):
     label: str
@@ -26,9 +21,10 @@ class MarkerCreate(BaseModel):
 @router.get('/map', response_class=HTMLResponse)
 async def map_page(request: Request):
     nodes = meshtasticd_client.get_nodes()
+    bounds = cfg.REGION_BOUNDS.get(cfg.MAP_REGION, cfg.REGION_BOUNDS['italia'])
     return templates.TemplateResponse(request, 'map.html', {
         'active_tab': 'map',
-        'bounds':     DEFAULT_BOUNDS,
+        'bounds':     bounds,
         'zoom_min':   7,
         'zoom_max':   16,
         'nodes_data': nodes,

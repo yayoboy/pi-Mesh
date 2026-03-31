@@ -436,3 +436,14 @@ async def test_rtc_status_configured_with_device(mock_client):
     assert data['model'] == 'ds3231'
     assert data['device'] == '/dev/rtc0'
     assert '2026-03-31' in data['time']
+
+
+@pytest.mark.asyncio
+async def test_map_page_uses_region_bounds(mock_client):
+    from main import app
+    import config as cfg
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+        r = await ac.get('/map')
+    assert r.status_code == 200
+    expected_lat = str(cfg.REGION_BOUNDS[cfg.MAP_REGION]['lat_min'])
+    assert expected_lat in r.text
