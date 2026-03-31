@@ -44,6 +44,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+templates = Jinja2Templates(directory='templates')
+templates.env.globals['map_local_tiles'] = '1' if cfg.MAP_LOCAL_TILES else '0'
+
 app.mount('/static', StaticFiles(directory='static'), name='static')
 
 app.include_router(nodes.router)

@@ -52,6 +52,15 @@ async def test_messages_page_returns_200(mock_client):
 
 
 @pytest.mark.asyncio
+async def test_base_html_injects_map_local_tiles(mock_client):
+    from main import app
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
+        resp = await ac.get('/nodes')
+    assert resp.status_code == 200
+    assert 'window.MAP_LOCAL_TILES' in resp.text
+
+
+@pytest.mark.asyncio
 async def test_get_single_node_returns_node(mock_client):
     from main import app
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:

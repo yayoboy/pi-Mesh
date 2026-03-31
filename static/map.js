@@ -525,7 +525,7 @@ function initMapIfNeeded() {
   })
 
   var tileOpts       = { maxZoom: zoomMax }
-  var localTiles     = document.documentElement.dataset.localTiles === '1'
+  var localTiles     = window.MAP_LOCAL_TILES === '1'
   osmLayer       = localTiles
     ? L.tileLayer('/static/tiles/osm/{z}/{x}/{y}', tileOpts)
     : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', Object.assign({ attribution: '© OSM' }, tileOpts))
