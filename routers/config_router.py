@@ -9,6 +9,7 @@ from pydantic import BaseModel
 import config as cfg
 import database
 import meshtasticd_client
+import usb_storage
 
 router = APIRouter()
 templates = Jinja2Templates(directory='templates')
@@ -332,6 +333,18 @@ async def rtc_status():
     }
 
 
+@router.post('/api/system/reboot')
+async def system_reboot():
+    subprocess.Popen(['sudo', 'reboot'])
+    return {'ok': True, 'action': 'reboot'}
+
+
+@router.post('/api/system/shutdown')
+async def system_shutdown():
+    subprocess.Popen(['sudo', 'shutdown', '-h', 'now'])
+    return {'ok': True, 'action': 'shutdown'}
+
+
 class MapConfigRequest(BaseModel):
     local_tiles: bool
 
@@ -352,3 +365,57 @@ async def post_map_config(body: MapConfigRequest):
     _write_env('MAP_LOCAL_TILES', '1' if body.local_tiles else '0')
     cfg.MAP_LOCAL_TILES = body.local_tiles
     return {'local_tiles': cfg.MAP_LOCAL_TILES, 'region': cfg.MAP_REGION}
+
+
+class AlertConfigRequest(BaseModel):
+    node_offline_min: int
+    battery_low: int
+    ram_high: int
+
+
+@router.get('/api/config/alerts')
+async def get_alert_config():
+    return {
+        'node_offline_min': cfg.ALERT_NODE_OFFLINE_MIN,
+        'battery_low': cfg.ALERT_BATTERY_LOW,
+        'ram_high': cfg.ALERT_RAM_HIGH,
+    }
+
+
+@router.post('/api/config/alerts')
+async def post_alert_config(body: AlertConfigRequest):
+    _write_env('ALERT_NODE_OFFLINE_MIN', str(body.node_offline_min))
+    _write_env('ALERT_BATTERY_LOW', str(body.battery_low))
+    _write_env('ALERT_RAM_HIGH', str(body.ram_high))
+    cfg.ALERT_NODE_OFFLINE_MIN = body.node_offline_min
+    cfg.ALERT_BATTERY_LOW = body.battery_low
+    cfg.ALERT_RAM_HIGH = body.ram_high
+    return {'ok': True}
+
+
+# --- USB Storage ---
+
+_TILES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static', 'tiles')
+
+
+@router.get('/api/config/usb/status')
+async def usb_status():
+    status = usb_storage.get_usb_status()
+    status['tiles_location'] = usb_storage.get_tiles_location(_TILES_DIR)
+    return status
+
+
+@router.post('/api/config/usb/move-tiles')
+async def usb_move_tiles():
+    result = usb_storage.move_tiles_to_usb(_TILES_DIR)
+    if not result['ok']:
+        return JSONResponse(result, status_code=400)
+    return result
+
+
+@router.post('/api/config/usb/restore-tiles')
+async def usb_restore_tiles():
+    result = usb_storage.restore_tiles_to_sd(_TILES_DIR)
+    if not result['ok']:
+        return JSONResponse(result, status_code=400)
+    return result

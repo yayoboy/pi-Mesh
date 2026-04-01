@@ -9,6 +9,11 @@ NODE_CACHE_TTL = float(os.getenv('NODE_CACHE_TTL', '8.0'))
 MAP_LOCAL_TILES = os.getenv('MAP_LOCAL_TILES', '0') == '1'
 MAP_REGION      = os.getenv('MAP_REGION', 'italia')
 
+# Alert thresholds
+ALERT_NODE_OFFLINE_MIN = int(os.getenv('ALERT_NODE_OFFLINE_MIN', '30'))
+ALERT_BATTERY_LOW      = int(os.getenv('ALERT_BATTERY_LOW', '20'))
+ALERT_RAM_HIGH         = int(os.getenv('ALERT_RAM_HIGH', '85'))
+
 REGION_BOUNDS: dict[str, dict[str, float]] = {
     'italia':   {'lat_min': 35.0,  'lat_max': 47.5, 'lon_min':   6.5, 'lon_max':  18.5},
     'francia':  {'lat_min': 41.3,  'lat_max': 51.1, 'lon_min':  -5.2, 'lon_max':   9.6},
