@@ -10,6 +10,7 @@ import config as cfg
 import database
 import meshtasticd_client
 import usb_storage
+import mqtt_bridge
 
 router = APIRouter()
 templates = Jinja2Templates(directory='templates')
@@ -540,3 +541,43 @@ async def usb_restore_tiles():
     if not result['ok']:
         return JSONResponse(result, status_code=400)
     return result
+
+
+class MqttConfigRequest(BaseModel):
+    enabled: bool = False
+    address: str = 'mqtt.meshtastic.org'
+    username: str = 'meshdev'
+    password: str = 'large4cats'
+    encryption_enabled: bool = False
+    json_enabled: bool = False
+    tls_enabled: bool = False
+    root: str = 'msh'
+    proxy_to_client_enabled: bool = False
+    map_reporting_enabled: bool = False
+
+
+# ── MQTT ──────────────────────────────────────────────────
+
+@router.get('/api/config/mqtt')
+async def get_mqtt_config():
+    data = await meshtasticd_client.get_mqtt_config(cfg.DB_PATH)
+    return JSONResponse(data)
+
+
+@router.post('/api/config/mqtt')
+async def save_mqtt_config(req: MqttConfigRequest):
+    try:
+        params = req.model_dump()
+        await meshtasticd_client.set_mqtt_config(params)
+        # Restart bridge with new config
+        await mqtt_bridge.restart(params)
+        return JSONResponse({'ok': True})
+    except RuntimeError as e:
+        return JSONResponse({'error': str(e)}, status_code=503)
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@router.get('/api/config/mqtt/status')
+async def get_mqtt_status():
+    return JSONResponse(mqtt_bridge.get_status())
