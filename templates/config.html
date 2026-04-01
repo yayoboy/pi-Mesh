@@ -502,6 +502,117 @@
       </div>
     </template>
 
+    <!-- USB / ARCHIVIAZIONE -->
+    <template x-if="section === 'usb'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:10px;">Archiviazione USB</div>
+
+        <!-- Loading -->
+        <div x-show="usb.loading" style="font-size:11px;color:var(--muted);">Rilevamento USB...</div>
+
+        <!-- No USB -->
+        <div x-show="!usb.loading && !usb.connected" style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <div style="width:8px;height:8px;border-radius:50%;background:#374151;"></div>
+            <span style="font-size:11px;color:var(--muted);">Nessuna USB rilevata</span>
+          </div>
+          <p style="font-size:10px;color:var(--muted);">Collega un dispositivo USB per spostare tile mappa e ridurre l'usura della SD.</p>
+          <button @click="loadUsb()" style="padding:8px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);cursor:pointer;">
+            Riprova rilevamento
+          </button>
+        </div>
+
+        <!-- USB Connected -->
+        <template x-if="!usb.loading && usb.connected">
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <template x-for="dev in usb.devices" :key="dev.dev">
+              <div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:10px;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+                  <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;"></div>
+                  <span style="font-size:12px;font-weight:600;" x-text="dev.name"></span>
+                  <span style="font-size:10px;color:var(--muted);margin-left:auto;" x-text="dev.size"></span>
+                </div>
+                <div style="display:flex;gap:12px;font-size:10px;color:var(--muted);margin-bottom:6px;">
+                  <span x-text="'FS: ' + dev.fstype"></span>
+                  <span x-text="'Libero: ' + (dev.free_mb > 1024 ? (dev.free_mb/1024).toFixed(1) + ' GB' : dev.free_mb + ' MB')"></span>
+                </div>
+                <!-- Usage bar -->
+                <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+                  <div style="height:100%;border-radius:2px;transition:width 0.3s;"
+                       :style="'width:' + (dev.total_mb ? Math.round(dev.used_mb/dev.total_mb*100) : 0) + '%;background:' + (dev.free_mb < 100 ? '#ef4444' : 'var(--accent)')"></div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Tile location -->
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
+              <div>
+                <div style="font-size:11px;font-weight:600;">Tile mappa</div>
+                <div style="font-size:10px;color:var(--muted);" x-text="usb.tiles_location === 'usb' ? 'Attualmente su USB' : 'Attualmente su SD'"></div>
+              </div>
+              <span style="font-size:10px;padding:2px 8px;border-radius:4px;"
+                    :style="usb.tiles_location === 'usb' ? 'background:#1a3a2a;color:#22c55e' : 'background:var(--panel);color:var(--muted)'"
+                    x-text="usb.tiles_location === 'usb' ? 'USB' : 'SD'"></span>
+            </div>
+
+            <!-- Move / Restore button -->
+            <button x-show="usb.tiles_location === 'sd'"
+                    @click="moveTilesToUsb()"
+                    :disabled="usb.moving"
+                    style="padding:10px;font-size:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:var(--accent);color:#fff;"
+                    x-text="usb.moving ? 'Spostamento...' : 'Sposta tile su USB'">
+            </button>
+            <button x-show="usb.tiles_location === 'usb'"
+                    @click="restoreTilesToSd()"
+                    :disabled="usb.moving"
+                    style="padding:10px;font-size:12px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-weight:600;background:var(--panel);color:var(--text);"
+                    x-text="usb.moving ? 'Ripristino...' : 'Riporta tile su SD'">
+            </button>
+
+            <button @click="loadUsb()" style="padding:6px;font-size:10px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--muted);cursor:pointer;">
+              Aggiorna stato
+            </button>
+          </div>
+        </template>
+      </div>
+    </template>
+
+    <!-- ===== ALERT ===== -->
+    <template x-if="section === 'alert'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:10px;">Soglie Alert</div>
+
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="background:var(--panel);border-radius:6px;padding:10px;">
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Nodo offline dopo (minuti)</label>
+            <input type="number" x-model.number="alert.node_offline_min" min="5" max="1440" step="5"
+                   style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:12px;color:var(--text);">
+            <div style="font-size:9px;color:var(--muted);margin-top:2px;">Notifica se un nodo non è più sentito dopo N minuti</div>
+          </div>
+
+          <div style="background:var(--panel);border-radius:6px;padding:10px;">
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Batteria scarica sotto (%)</label>
+            <input type="number" x-model.number="alert.battery_low" min="5" max="50" step="5"
+                   style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:12px;color:var(--text);">
+            <div style="font-size:9px;color:var(--muted);margin-top:2px;">Notifica quando la batteria di un nodo scende sotto questa soglia</div>
+          </div>
+
+          <div style="background:var(--panel);border-radius:6px;padding:10px;">
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">RAM alta sopra (%)</label>
+            <input type="number" x-model.number="alert.ram_high" min="50" max="95" step="5"
+                   style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:12px;color:var(--text);">
+            <div style="font-size:9px;color:var(--muted);margin-top:2px;">Notifica quando la RAM del Raspberry supera questa soglia</div>
+          </div>
+
+          <button @click="saveAlert()"
+                  :disabled="alert.saving"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;opacity:1;"
+                  :style="alert.saving && 'opacity:0.5;cursor:wait;'"
+                  x-text="alert.saving ? 'Salvataggio...' : 'Salva'"></button>
+        </div>
+      </div>
+    </template>
+
   </div><!-- /CONTENT -->
 
 </div><!-- /x-data -->
@@ -519,6 +630,8 @@ function configPage() {
       { id: 'wifi',     label: 'WiFi' },
       { id: 'rtc',      label: 'RTC' },
       { id: 'mappa',    label: 'Mappa' },
+      { id: 'usb',      label: 'USB' },
+      { id: 'alert',    label: 'Alert' },
     ],
 
     node: { long_name: '', short_name: '', role: 'CLIENT', cached: true },
@@ -526,6 +639,8 @@ function configPage() {
     channels: [],
     channelsCached: true,
     mappa: { local_tiles: false, region: 'italia', tiles_present: false, cached: false, saving: false },
+    usb: { connected: false, devices: [], tiles_location: 'sd', loading: false, moving: false },
+    alert: { node_offline_min: 30, battery_low: 20, ram_high: 85, saving: false },
 
     loaded: { node: false, lora: false, channels: false },
     saving: { node: false, lora: false, channels: false },
@@ -543,6 +658,8 @@ function configPage() {
       if (s === 'gpio')                                   await this.loadGpio()
       if (s === 'rtc')                                    await this.loadRtc()
       if (s === 'mappa')                                  await this.loadMappa()
+      if (s === 'usb')                                    await this.loadUsb()
+      if (s === 'alert') await this.loadAlert()
     },
 
     async loadNode() {
@@ -776,6 +893,78 @@ function configPage() {
       } finally {
         this.mappa.saving = false
       }
+    },
+
+    async loadUsb() {
+      this.usb.loading = true
+      try {
+        const r = await fetch('/api/config/usb/status')
+        if (r.ok) {
+          const d = await r.json()
+          this.usb.connected = d.connected
+          this.usb.devices = d.devices || []
+          this.usb.tiles_location = d.tiles_location || 'sd'
+        }
+      } catch(e) { console.error('USB status error:', e) }
+      this.usb.loading = false
+    },
+
+    async moveTilesToUsb() {
+      this.usb.moving = true
+      try {
+        const r = await fetch('/api/config/usb/move-tiles', { method: 'POST' })
+        const d = await r.json()
+        if (d.ok) {
+          this.usb.tiles_location = 'usb'
+          if (typeof showToast === 'function') showToast('Tile spostate su USB')
+        } else {
+          if (typeof showToast === 'function') showToast(d.error || 'Errore', 'warn')
+        }
+      } catch(e) { if (typeof showToast === 'function') showToast('Errore spostamento', 'warn') }
+      this.usb.moving = false
+    },
+
+    async restoreTilesToSd() {
+      this.usb.moving = true
+      try {
+        const r = await fetch('/api/config/usb/restore-tiles', { method: 'POST' })
+        const d = await r.json()
+        if (d.ok) {
+          this.usb.tiles_location = 'sd'
+          if (typeof showToast === 'function') showToast('Tile ripristinate su SD')
+        } else {
+          if (typeof showToast === 'function') showToast(d.error || 'Errore', 'warn')
+        }
+      } catch(e) { if (typeof showToast === 'function') showToast('Errore ripristino', 'warn') }
+      this.usb.moving = false
+    },
+
+    async loadAlert() {
+      try {
+        const r = await fetch('/api/config/alerts')
+        if (r.ok) {
+          const d = await r.json()
+          this.alert.node_offline_min = d.node_offline_min
+          this.alert.battery_low = d.battery_low
+          this.alert.ram_high = d.ram_high
+        }
+      } catch(e) {}
+    },
+
+    async saveAlert() {
+      this.alert.saving = true
+      try {
+        await fetch('/api/config/alerts', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            node_offline_min: this.alert.node_offline_min,
+            battery_low: this.alert.battery_low,
+            ram_high: this.alert.ram_high,
+          })
+        })
+      } catch(e) {}
+      this.alert.saving = false
     },
 
     // WiFi
