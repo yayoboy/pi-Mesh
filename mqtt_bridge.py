@@ -29,9 +29,9 @@ def set_ws_dispatch(fn):
     _ws_dispatch = fn
 
 
-def _on_connect(client, userdata, flags, rc):
+def _on_connect(client, userdata, flags, reason_code, properties=None):
     global _connected
-    if rc == 0:
+    if reason_code == 0:
         _connected = True
         logger.info('MQTT connected to %s', _config.get('address', '?'))
         # Subscribe to JSON topics
@@ -46,13 +46,13 @@ def _on_connect(client, userdata, flags, rc):
             )
     else:
         _connected = False
-        logger.error('MQTT connect failed rc=%d', rc)
+        logger.error('MQTT connect failed rc=%s', reason_code)
 
 
-def _on_disconnect(client, userdata, rc):
+def _on_disconnect(client, userdata, flags, reason_code, properties=None):
     global _connected
     _connected = False
-    logger.warning('MQTT disconnected rc=%d', rc)
+    logger.warning('MQTT disconnected rc=%s', reason_code)
     if _ws_dispatch and _loop:
         _loop.call_soon_threadsafe(
             _loop.create_task,
@@ -105,7 +105,7 @@ async def start(config: dict):
     tls = config.get('tls_enabled', False)
     port = 8883 if tls else 1883
 
-    _client = paho_mqtt.Client(client_id='pimesh-bridge', protocol=paho_mqtt.MQTTv311)
+    _client = paho_mqtt.Client(paho_mqtt.CallbackAPIVersion.VERSION2, client_id='pimesh-bridge', protocol=paho_mqtt.MQTTv311)
     _client.on_connect = _on_connect
     _client.on_disconnect = _on_disconnect
     _client.on_message = _on_message
