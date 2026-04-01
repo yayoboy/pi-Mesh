@@ -291,6 +291,127 @@ async def wifi_connect(body: WifiConnectRequest):
         return JSONResponse({'error': 'nmcli not found'}, status_code=500)
 
 
+@router.get('/api/config/wifi/status')
+async def wifi_status():
+    """Return current WiFi connection status: SSID, IP, signal, method."""
+    try:
+        result = subprocess.run(
+            ['nmcli', '-t', '-f', 'NAME,DEVICE,TYPE', 'con', 'show', '--active'],
+            capture_output=True, text=True, timeout=10
+        )
+        active_ssid = ''
+        for line in result.stdout.splitlines():
+            parts = line.split(':')
+            if len(parts) >= 3 and parts[2] == '802-11-wireless':
+                active_ssid = parts[0]
+                break
+
+        ip_addr = ''
+        method = 'auto'
+        if active_ssid:
+            r2 = subprocess.run(
+                ['nmcli', '-t', '-f', 'IP4.ADDRESS,ipv4.method', 'con', 'show', active_ssid],
+                capture_output=True, text=True, timeout=10
+            )
+            for line in r2.stdout.splitlines():
+                if line.startswith('IP4.ADDRESS'):
+                    ip_addr = line.split(':', 1)[1].strip()
+                elif line.startswith('ipv4.method'):
+                    method = line.split(':', 1)[1].strip()
+
+        return {
+            'connected': bool(active_ssid),
+            'ssid': active_ssid,
+            'ip': ip_addr,
+            'method': method,
+        }
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return {'connected': False, 'ssid': '', 'ip': '', 'method': 'auto'}
+
+
+@router.get('/api/config/wifi/saved')
+async def wifi_saved():
+    """Return list of saved WiFi connection profiles."""
+    try:
+        result = subprocess.run(
+            ['nmcli', '-t', '-f', 'NAME,TYPE', 'con', 'show'],
+            capture_output=True, text=True, timeout=10
+        )
+        saved = []
+        for line in result.stdout.splitlines():
+            parts = line.split(':')
+            if len(parts) >= 2 and parts[1] == '802-11-wireless':
+                saved.append(parts[0])
+        return saved
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+
+
+@router.delete('/api/config/wifi/saved/{name}')
+async def wifi_delete_saved(name: str):
+    """Delete a saved WiFi connection profile."""
+    try:
+        result = subprocess.run(
+            ['nmcli', 'con', 'delete', name],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            return {'ok': True}
+        return JSONResponse({'error': result.stderr.strip()}, status_code=500)
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+class WifiIpRequest(BaseModel):
+    method: str  # 'auto' or 'manual'
+    address: str = ''
+    gateway: str = ''
+    dns: str = ''
+
+
+@router.post('/api/config/wifi/ip')
+async def wifi_set_ip(body: WifiIpRequest):
+    """Set IP configuration (DHCP or static) on active WiFi connection."""
+    try:
+        result = subprocess.run(
+            ['nmcli', '-t', '-f', 'NAME,TYPE', 'con', 'show', '--active'],
+            capture_output=True, text=True, timeout=10
+        )
+        con_name = ''
+        for line in result.stdout.splitlines():
+            parts = line.split(':')
+            if len(parts) >= 2 and parts[1] == '802-11-wireless':
+                con_name = parts[0]
+                break
+        if not con_name:
+            return JSONResponse({'error': 'No active WiFi connection'}, status_code=400)
+
+        if body.method == 'auto':
+            subprocess.run(
+                ['nmcli', 'con', 'mod', con_name, 'ipv4.method', 'auto',
+                 'ipv4.addresses', '', 'ipv4.gateway', '', 'ipv4.dns', ''],
+                capture_output=True, text=True, timeout=10
+            )
+        else:
+            if not body.address or not body.gateway:
+                return JSONResponse({'error': 'Address and gateway required for static IP'}, status_code=400)
+            cmd = ['nmcli', 'con', 'mod', con_name,
+                   'ipv4.method', 'manual',
+                   'ipv4.addresses', body.address,
+                   'ipv4.gateway', body.gateway]
+            if body.dns:
+                cmd += ['ipv4.dns', body.dns]
+            subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+
+        subprocess.run(
+            ['nmcli', 'con', 'up', con_name],
+            capture_output=True, text=True, timeout=15
+        )
+        return {'ok': True}
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
 @router.get('/api/config/rtc/status')
 async def rtc_status():
     config_paths = ['/boot/firmware/config.txt', '/boot/config.txt']
