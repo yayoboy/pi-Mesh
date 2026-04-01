@@ -99,6 +99,7 @@ function initWS() {
       node:              handleNode,
       position:          handlePosition,
       telemetry:         handleTelemetry,
+      rpi_telemetry:     handleRpiTelemetry,
       sensor:            handleSensor,
       encoder:           handleEncoder,
       status:            handleStatus,
@@ -107,7 +108,7 @@ function initWS() {
       traceroute_result: handleTracerouteResult,
     }
     handlers[msg.type]?.(msg)
-    if (msg.type === 'telemetry' || msg.type === 'rpi_telemetry') {
+    if (msg.type === 'telemetry') {
       window.dispatchEvent(new CustomEvent('ws-message', { detail: msg }))
     }
   }
@@ -174,6 +175,16 @@ function handleTelemetry(msg) {
     if (msg.battery_level != null) node.battery_level = msg.battery_level
     if (msg.snr != null) node.snr = msg.snr
   }
+  // Battery low alert
+  if (msg.ttype === 'device' && msg.data && msg.data.battery_level != null) {
+    const lvl = msg.data.battery_level
+    if (lvl > 0 && lvl <= _alertConfig.battery_low) {
+      const name = nodeCache.get(msg.id)?.short_name || msg.id
+      if (shouldAlert('bat-' + msg.id, 600000)) {
+        showToast(name + ': batteria ' + lvl + '%', 'warn', 5000)
+      }
+    }
+  }
   window.dispatchEvent(new CustomEvent('telemetry-update', { detail: msg }))
 }
 
@@ -192,6 +203,15 @@ function handleAck(msg) {
 function handleTracerouteResult(msg) {
   // msg = { type: 'traceroute_result', node_id, hops: [...] }
   window.dispatchEvent(new CustomEvent('traceroute_result', { detail: msg }))
+}
+
+function handleRpiTelemetry(msg) {
+  window.dispatchEvent(new CustomEvent('ws-message', { detail: msg }))
+  if (msg.data && msg.data.ram_percent != null && msg.data.ram_percent > _alertConfig.ram_high) {
+    if (shouldAlert('ram-high', 300000)) {
+      showToast('RAM: ' + msg.data.ram_percent.toFixed(0) + '%', 'warn', 5000)
+    }
+  }
 }
 
 function handleStatus(msg) {
@@ -244,6 +264,43 @@ function fetchUnreadCount() {
     .then(r => r.json())
     .then(d => updateMsgBadge(d.count))
     .catch(() => {})
+}
+
+// ===== ALERT SYSTEM =====
+const _alertConfig = { node_offline_min: 30, battery_low: 20, ram_high: 85 }
+const _alertSent = new Map()
+
+function loadAlertConfig() {
+  fetch('/api/config/alerts')
+    .then(r => r.json())
+    .then(d => {
+      _alertConfig.node_offline_min = d.node_offline_min
+      _alertConfig.battery_low = d.battery_low
+      _alertConfig.ram_high = d.ram_high
+    })
+    .catch(() => {})
+}
+
+function shouldAlert(key, cooldownMs) {
+  const last = _alertSent.get(key) || 0
+  if (Date.now() - last < cooldownMs) return false
+  _alertSent.set(key, Date.now())
+  return true
+}
+
+function checkNodesOffline() {
+  const now = Math.floor(Date.now() / 1000)
+  const threshold = _alertConfig.node_offline_min * 60
+  nodeCache.forEach((node, id) => {
+    if (node.is_local || !node.last_heard) return
+    const age = now - node.last_heard
+    if (age > threshold && age < threshold + 120) {
+      if (shouldAlert('offline-' + id, 1800000)) {
+        const name = node.short_name || id
+        showToast(name + ' offline da ' + Math.round(age / 60) + 'min', 'warn', 5000)
+      }
+    }
+  })
 }
 
 // ===== ENCODER =====
@@ -430,6 +487,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   initWS()
   fetchUnreadCount()
+  loadAlertConfig()
+  setInterval(checkNodesOffline, 60000)
   setInterval(() => { if (wsReady && ws.readyState === WebSocket.OPEN) ws.send('ping') }, 20000)
   attachKeyboardListeners()
   // link tab bar a navigateTo
