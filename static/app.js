@@ -135,8 +135,9 @@ function handleMessage(msg) {
   messageCache.unshift(msg)
   if (messageCache.length > 200) messageCache.pop()
   window.dispatchEvent(new CustomEvent('message-new', { detail: msg }))
-  const prefix = (msg.destination && msg.destination !== '^all') ? 'DM ' : 'MSG '
-  if (typeof showToast === 'function') showToast(prefix + (msg.node_id || '') + ': ' + (msg.text || '').slice(0, 30))
+  const prefix = (msg.destination && msg.destination !== '^all') ? 'DM ' : ''
+  const sender = nodeCache.get(msg.node_id)?.short_name || msg.node_id
+  if (typeof showToast === 'function') showToast(prefix + sender + ': ' + (msg.text || '').slice(0, 30))
   if (activeTab.name !== 'messages') {
     _unreadCount++
     updateMsgBadge(_unreadCount)

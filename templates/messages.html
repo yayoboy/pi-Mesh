@@ -67,7 +67,7 @@
           <div class="msg-bubble" x-text="msg.text"></div>
           <div class="msg-meta">
             <template x-if="!msg.is_outgoing">
-              <span x-text="(window.nodeCache?.get(msg.node_id)?.short_name || msg.node_id) + ' \xb7 '"></span>
+              <span x-text="nodeName(msg.node_id) + ' \xb7 '"></span>
             </template>
             <span x-text="new Date(msg.ts * 1000).toLocaleTimeString('it', { hour:'2-digit', minute:'2-digit' })"></span>
             <template x-if="msg.rx_snr != null">
@@ -165,6 +165,10 @@ function messagesPage() {
       return window.nodeCache?.get(this.conv)?.short_name || this.conv
     },
 
+    nodeName(nodeId) {
+      return window.nodeCache?.get(nodeId)?.short_name || nodeId
+    },
+
     async init() {
       await this.loadDmThreads()
       await this.loadMessages()
@@ -172,6 +176,8 @@ function messagesPage() {
       this._onAck = (e) => this.onAck(e.detail)
       window.addEventListener('message-new', this._onMessage)
       window.addEventListener('msg-ack', this._onAck)
+      this._onNodeUpdate = () => { this.messages = [...this.messages] }
+      window.addEventListener('ws-init', this._onNodeUpdate)
       this._observer = new IntersectionObserver(([entry]) => {
         if (entry.isIntersecting) this.loadMore()
       })
@@ -185,6 +191,7 @@ function messagesPage() {
     destroy() {
       window.removeEventListener('message-new', this._onMessage)
       window.removeEventListener('msg-ack', this._onAck)
+      window.removeEventListener('ws-init', this._onNodeUpdate)
       if (this._observer) this._observer.disconnect()
     },
 
