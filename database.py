@@ -79,6 +79,15 @@ CREATE TABLE IF NOT EXISTS gpio_devices (
     action       TEXT,
     config_json  TEXT DEFAULT '{}'
 );
+
+CREATE TABLE IF NOT EXISTS telemetry (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts        INTEGER NOT NULL,
+    node_id   TEXT NOT NULL,
+    ttype     TEXT NOT NULL,
+    data_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_telemetry_node_ts ON telemetry(node_id, ts DESC);
 """
 
 
@@ -173,6 +182,64 @@ async def get_all_nodes(db_path: str) -> list[dict]:
         )
         rows = await cursor.fetchall()
     return [dict(r) for r in rows]
+
+
+async def delete_node(db_path: str, node_id: str, purge: bool = False) -> None:
+    """Delete a node from DB. If purge=True, also remove messages and telemetry."""
+    async with aiosqlite.connect(db_path) as db:
+        if purge:
+            await db.execute('DELETE FROM messages WHERE node_id = ?', (node_id,))
+            await db.execute('DELETE FROM packets WHERE from_id = ?', (node_id,))
+        await db.execute('DELETE FROM nodes WHERE id = ?', (node_id,))
+        await db.commit()
+
+
+async def save_telemetry(db_path: str, node_id: str, ttype: str, data: dict) -> int:
+    ts = int(time.time())
+    async with aiosqlite.connect(db_path) as db:
+        cursor = await db.execute(
+            'INSERT INTO telemetry (ts, node_id, ttype, data_json) VALUES (?,?,?,?)',
+            (ts, node_id, ttype, json.dumps(data))
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_telemetry(db_path: str, node_id: str | None = None,
+                        ttype: str | None = None, limit: int = 100,
+                        since: int | None = None) -> list[dict]:
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        where = []
+        params = []
+        if node_id:
+            where.append('node_id = ?')
+            params.append(node_id)
+        if ttype:
+            where.append('ttype = ?')
+            params.append(ttype)
+        if since:
+            where.append('ts > ?')
+            params.append(since)
+        clause = ('WHERE ' + ' AND '.join(where)) if where else ''
+        cursor = await db.execute(
+            f'SELECT * FROM telemetry {clause} ORDER BY ts DESC LIMIT ?',
+            params + [limit]
+        )
+        rows = await cursor.fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d['data'] = json.loads(d.pop('data_json'))
+        result.append(d)
+    return result
+
+
+async def cleanup_telemetry(db_path: str, max_age_hours: int = 72) -> None:
+    cutoff = int(time.time()) - (max_age_hours * 3600)
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute('DELETE FROM telemetry WHERE ts < ?', (cutoff,))
+        await db.commit()
 
 
 async def save_packet(db_path: str, from_id: str, packet_type: str, raw: dict) -> None:
@@ -361,6 +428,23 @@ async def mark_dm_read(db_path: str, peer_id: str) -> None:
             (peer_id, int(time.time()))
         )
         await db.commit()
+
+
+async def get_total_unread(db_path: str, local_id: str) -> int:
+    """Return total unread DM count across all peers."""
+    async with aiosqlite.connect(db_path) as db:
+        c = await db.execute('''
+            SELECT COALESCE(SUM(cnt), 0) FROM (
+                SELECT COUNT(*) as cnt
+                FROM messages m
+                LEFT JOIN dm_reads dr ON dr.peer_id = m.node_id
+                WHERE m.destination = ?
+                  AND m.node_id != ?
+                  AND m.timestamp > COALESCE(dr.last_read_ts, 0)
+            )
+        ''', (local_id, local_id))
+        row = await c.fetchone()
+        return row[0] if row else 0
 
 
 async def get_config_cache(db_path: str, section: str) -> dict | None:

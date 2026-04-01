@@ -41,6 +41,11 @@ def get_nodes() -> list[dict]:
     return list(_node_cache.values())
 
 
+def get_local_id() -> str:
+    """Return the local node ID, or empty string if not yet known."""
+    return _local_id
+
+
 def get_local_node() -> dict | None:
     for node in _node_cache.values():
         if node.get('is_local'):
@@ -355,15 +360,98 @@ def _on_receive(packet, interface) -> None:
 
     elif portnum == 'TELEMETRY_APP':
         telemetry = decoded.get('telemetry', {})
+
+        # Device metrics
         device_metrics = telemetry.get('deviceMetrics', {})
-        typed_event = {
-            'type':          'telemetry',
-            'id':            from_id,
-            'battery_level': device_metrics.get('batteryLevel'),
-            'snr':           snr,
-        }
-        if _loop is not None:
-            _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+        if device_metrics:
+            tdata = {
+                'battery_level': device_metrics.get('batteryLevel'),
+                'voltage': device_metrics.get('voltage'),
+                'channel_utilization': device_metrics.get('channelUtilization'),
+                'air_util_tx': device_metrics.get('airUtilTx'),
+                'uptime_seconds': device_metrics.get('uptimeSeconds'),
+            }
+            typed_event = {
+                'type': 'telemetry',
+                'ttype': 'device',
+                'id': from_id,
+                'data': tdata,
+            }
+            if _loop is not None:
+                _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+                fut = asyncio.run_coroutine_threadsafe(
+                    database.save_telemetry(cfg.DB_PATH, from_id, 'device', tdata), _loop
+                )
+                fut.add_done_callback(
+                    lambda f: logger.error('save_telemetry failed: %s', f.exception())
+                    if f.exception() else None
+                )
+
+        # Environment metrics
+        env_metrics = telemetry.get('environmentMetrics', {})
+        if env_metrics:
+            tdata = {
+                'temperature': env_metrics.get('temperature'),
+                'relative_humidity': env_metrics.get('relativeHumidity'),
+                'barometric_pressure': env_metrics.get('barometricPressure'),
+                'gas_resistance': env_metrics.get('gasResistance'),
+                'iaq': env_metrics.get('iaq'),
+            }
+            typed_event = {
+                'type': 'telemetry',
+                'ttype': 'environment',
+                'id': from_id,
+                'data': tdata,
+            }
+            if _loop is not None:
+                _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+                fut = asyncio.run_coroutine_threadsafe(
+                    database.save_telemetry(cfg.DB_PATH, from_id, 'environment', tdata), _loop
+                )
+                fut.add_done_callback(
+                    lambda f: logger.error('save_telemetry failed: %s', f.exception())
+                    if f.exception() else None
+                )
+
+        # Power metrics
+        power_metrics = telemetry.get('powerMetrics', {})
+        if power_metrics:
+            tdata = dict(power_metrics)
+            typed_event = {
+                'type': 'telemetry',
+                'ttype': 'power',
+                'id': from_id,
+                'data': tdata,
+            }
+            if _loop is not None:
+                _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+                fut = asyncio.run_coroutine_threadsafe(
+                    database.save_telemetry(cfg.DB_PATH, from_id, 'power', tdata), _loop
+                )
+                fut.add_done_callback(
+                    lambda f: logger.error('save_telemetry failed: %s', f.exception())
+                    if f.exception() else None
+                )
+
+        # Air quality metrics
+        air_quality = telemetry.get('airQualityMetrics', {})
+        if air_quality:
+            tdata = dict(air_quality)
+            typed_event = {
+                'type': 'telemetry',
+                'ttype': 'air_quality',
+                'id': from_id,
+                'data': tdata,
+            }
+            if _loop is not None:
+                _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+                fut = asyncio.run_coroutine_threadsafe(
+                    database.save_telemetry(cfg.DB_PATH, from_id, 'air_quality', tdata), _loop
+                )
+                fut.add_done_callback(
+                    lambda f: logger.error('save_telemetry failed: %s', f.exception())
+                    if f.exception() else None
+                )
 
     elif portnum == 'TRACEROUTE_APP':
         route_discovery = decoded.get('routeDiscovery', {})

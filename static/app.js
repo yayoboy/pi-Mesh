@@ -107,6 +107,9 @@ function initWS() {
       traceroute_result: handleTracerouteResult,
     }
     handlers[msg.type]?.(msg)
+    if (msg.type === 'telemetry' || msg.type === 'rpi_telemetry') {
+      window.dispatchEvent(new CustomEvent('ws-message', { detail: msg }))
+    }
   }
 
 }
@@ -133,6 +136,10 @@ function handleMessage(msg) {
   window.dispatchEvent(new CustomEvent('message-new', { detail: msg }))
   const prefix = (msg.destination && msg.destination !== '^all') ? 'DM ' : 'MSG '
   if (typeof showToast === 'function') showToast(prefix + (msg.node_id || '') + ': ' + (msg.text || '').slice(0, 30))
+  if (activeTab.name !== 'messages') {
+    _unreadCount++
+    updateMsgBadge(_unreadCount)
+  }
 }
 
 function handleNode(msg) {
@@ -217,6 +224,28 @@ function updateWifiBadge(connected) {
   if (el) el.style.color = connected ? 'var(--ok)' : 'var(--muted)'
 }
 
+// ===== BADGE MESSAGGI NON LETTI =====
+let _unreadCount = 0
+
+function updateMsgBadge(count) {
+  _unreadCount = count
+  const badge = document.getElementById('msg-badge')
+  if (!badge) return
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : count
+    badge.style.display = ''
+  } else {
+    badge.style.display = 'none'
+  }
+}
+
+function fetchUnreadCount() {
+  fetch('/api/messages/unread-count')
+    .then(r => r.json())
+    .then(d => updateMsgBadge(d.count))
+    .catch(() => {})
+}
+
 // ===== ENCODER =====
 function handleEncoder(msg) {
   const { encoder, action } = msg
@@ -267,6 +296,7 @@ function enc2Log(action) {
 async function navigateTo(tabName) {
   if (tabName === activeTab.name) return
   activeTab.name = tabName
+  if (tabName === 'messages') updateMsgBadge(0)
 
   try {
     const response  = await fetch('/' + tabName)
@@ -399,6 +429,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.appendChild(tc)
   }
   initWS()
+  fetchUnreadCount()
   setInterval(() => { if (wsReady && ws.readyState === WebSocket.OPEN) ws.send('ping') }, 20000)
   attachKeyboardListeners()
   // link tab bar a navigateTo

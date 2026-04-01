@@ -60,3 +60,12 @@ class MarkReadRequest(BaseModel):
 async def mark_dm_read(body: MarkReadRequest):
     await database.mark_dm_read(cfg.DB_PATH, body.peer_id)
     return {'ok': True}
+
+
+@router.get('/api/messages/unread-count')
+async def unread_count():
+    local_id = meshtasticd_client.get_local_id()
+    if not local_id:
+        return {'count': 0}
+    count = await database.get_total_unread(cfg.DB_PATH, local_id)
+    return {'count': count}

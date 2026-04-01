@@ -24,18 +24,64 @@
 </head>
 <body class="h-full flex flex-col">
 
-  <!-- Status bar (opzionale) -->
-  <div id="statusbar" class="flex items-center justify-between px-3 py-1 text-xs"
+  <!-- Status bar -->
+  <div id="statusbar" x-data="{ sysModal: '' }" class="flex items-center justify-between px-3 py-1 text-xs"
        style="background:var(--panel);border-bottom:1px solid var(--border);height:24px;">
     <span style="color:var(--muted);">pi-Mesh</span>
-    <div class="flex gap-3" style="color:var(--muted);">
+    <div class="flex gap-3 items-center" style="color:var(--muted);">
+      <!-- Reboot -->
+      <button @click="sysModal = 'reboot'" title="Riavvia" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;line-height:0;">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+      </button>
+      <!-- Shutdown -->
+      <button @click="sysModal = 'shutdown'" title="Spegni" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;line-height:0;">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5.636 5.636a9 9 0 1012.728 0M12 3v9"/>
+        </svg>
+      </button>
+      <!-- Connection -->
       <span id="sb-conn">
-        <!-- heroicon: signal -->
         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="inline">
           <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
         </svg>
       </span>
     </div>
+
+    <!-- Modal conferma sistema -->
+    <template x-teleport="body">
+      <div x-show="sysModal !== ''"
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+           class="fixed inset-0 z-50 flex items-center justify-center p-4"
+           @keydown.escape.window="sysModal = ''" style="display:none;">
+        <div @click="sysModal = ''" class="fixed inset-0" style="background:rgba(0,0,0,.65);"></div>
+        <div x-show="sysModal !== ''"
+             x-transition:enter="transition ease-out duration-150"
+             x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+             x-transition:leave="transition ease-in duration-100"
+             x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
+             class="relative z-10 w-64 rounded-lg p-5"
+             style="background:var(--panel);border:1px solid var(--border);">
+          <h3 class="text-sm font-semibold" style="color:var(--text);margin:0 0 6px;"
+              x-text="sysModal === 'reboot' ? 'Riavviare il sistema?' : 'Spegnere il sistema?'"></h3>
+          <p style="font-size:11px;color:var(--muted);margin:0 0 16px;"
+             x-text="sysModal === 'reboot' ? 'Il sistema verrà riavviato. La connessione sarà temporaneamente interrotta.' : 'Il sistema verrà spento. Per riaccenderlo sarà necessario un intervento fisico.'"></p>
+          <div class="flex gap-2 justify-end">
+            <button @click="sysModal = ''"
+                    class="rounded px-3 py-1.5 text-xs"
+                    style="background:var(--border);color:var(--text);border:none;cursor:pointer;">Annulla</button>
+            <button @click="fetch('/api/system/' + sysModal, {method:'POST'}); sysModal = '';"
+                    class="rounded px-3 py-1.5 text-xs"
+                    style="background:#dc2626;color:#fff;border:none;cursor:pointer;"
+                    x-text="sysModal === 'reboot' ? 'Riavvia' : 'Spegni'"></button>
+          </div>
+        </div>
+      </div>
+    </template>
   </div>
 
   <!-- Content area -->
@@ -67,7 +113,7 @@
            stroke-width="1.8" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="{{ icon_path }}"/>
       </svg>
-      {{ label }}
+      <span style="position:relative;">{{ label }}{% if key == 'messages' %}<span id="msg-badge" style="display:none;position:absolute;top:-6px;right:-10px;min-width:14px;height:14px;border-radius:7px;background:#ef4444;color:#fff;font-size:8px;font-weight:700;line-height:14px;text-align:center;padding:0 3px;"></span>{% endif %}</span>
     </a>
     {% endfor %}
 
