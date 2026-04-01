@@ -11,6 +11,9 @@ let hopLinesLayer
 let tracerouteLayer
 let customMarkersLayer
 let customMarkersData = []
+let breadcrumbLayer
+const breadcrumbHistory = new Map()  // node_id → [{lat, lon, ts}, ...]
+const BREADCRUMB_MAX = 20            // Max trail points per node
 let osmLayer = null
 let topoLayer = null
 let satelliteLayer = null
@@ -40,6 +43,7 @@ function makeSvgIcon(type, size, color) {
 const DEFAULT_FILTERS = {
   showOnline: true, showOffline: false,
   showHopLines: true, showCustomMarkers: true, showLocalNode: true,
+  showBreadcrumbs: true,
   maxHops: 7,
 }
 
@@ -76,6 +80,10 @@ function applyFilters() {
   else                     leafletMap.removeLayer(hopLinesLayer)
   if (f.showCustomMarkers) customMarkersLayer.addTo(leafletMap)
   else                     leafletMap.removeLayer(customMarkersLayer)
+  if (breadcrumbLayer) {
+    if (f.showBreadcrumbs) breadcrumbLayer.addTo(leafletMap)
+    else                   leafletMap.removeLayer(breadcrumbLayer)
+  }
 }
 
 function initFilters() {
@@ -146,6 +154,51 @@ function renderHopLines() {
         { color: snrColor(a.snr != null ? a.snr : b.snr), weight: 2.5, opacity: 0.75 }
       )
       hopLinesLayer.addLayer(line)
+    })
+  })
+}
+
+function recordBreadcrumb(nodeId, lat, lon) {
+  if (!lat || !lon) return
+  var history = breadcrumbHistory.get(nodeId)
+  if (!history) {
+    history = []
+    breadcrumbHistory.set(nodeId, history)
+  }
+  // Skip if same position as last point
+  var last = history[history.length - 1]
+  if (last && last.lat === lat && last.lon === lon) return
+  history.push({ lat: lat, lon: lon, ts: Date.now() / 1000 })
+  if (history.length > BREADCRUMB_MAX) history.shift()
+}
+
+function renderBreadcrumbs() {
+  if (!mapReady || !breadcrumbLayer) return
+  breadcrumbLayer.clearLayers()
+  var f = loadFilters()
+  if (!f.showBreadcrumbs) return
+  breadcrumbHistory.forEach(function(history, nodeId) {
+    if (history.length < 2) return
+    var node = nodeCache.get(nodeId)
+    if (!node || node.is_local) return
+    // Draw trail segments with fading opacity
+    for (var i = 0; i < history.length - 1; i++) {
+      var opacity = 0.2 + (0.6 * (i / (history.length - 1)))
+      var line = L.polyline(
+        [[history[i].lat, history[i].lon], [history[i + 1].lat, history[i + 1].lon]],
+        { color: '#4a9eff', weight: 2, opacity: opacity, dashArray: '4,4' }
+      )
+      breadcrumbLayer.addLayer(line)
+    }
+    // Circle at each trail point
+    history.forEach(function(pt, idx) {
+      var r = idx === history.length - 1 ? 4 : 2
+      var circle = L.circleMarker([pt.lat, pt.lon], {
+        radius: r, color: '#4a9eff', fillColor: '#4a9eff',
+        fillOpacity: 0.2 + (0.6 * (idx / (history.length - 1))),
+        weight: 1
+      })
+      breadcrumbLayer.addLayer(circle)
     })
   })
 }
@@ -492,6 +545,7 @@ function initMapIfNeeded() {
   hopLinesLayer = L.layerGroup()
   tracerouteLayer = L.layerGroup()
   customMarkersLayer = L.layerGroup()
+  breadcrumbLayer = L.layerGroup()
   var el = document.getElementById('map-container')
   if (!el) return
   var bounds = JSON.parse(el.dataset.bounds || 'null')
@@ -551,8 +605,15 @@ function initMapIfNeeded() {
 
   hopLinesLayer.addTo(leafletMap)
   customMarkersLayer.addTo(leafletMap)
+  breadcrumbLayer.addTo(leafletMap)
 
   nodeCache.forEach(function(node) { updateMapMarker(node) })
+  // Seed breadcrumb with current positions
+  nodeCache.forEach(function(node) {
+    if (node.latitude && node.longitude) {
+      recordBreadcrumb(node.id, node.latitude, node.longitude)
+    }
+  })
   mapReady = true
 
   initFilters()
@@ -647,6 +708,9 @@ window.addEventListener('position-update', function(e) {
     node.latitude   = d.latitude
     node.longitude  = d.longitude
     node.last_heard = d.last_heard
+    if (d.altitude != null) node.altitude = d.altitude
+    recordBreadcrumb(d.id, d.latitude, d.longitude)
     updateMapMarker(node)
+    renderBreadcrumbs()
   }
 })
