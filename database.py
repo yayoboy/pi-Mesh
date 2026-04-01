@@ -20,7 +20,12 @@ CREATE TABLE IF NOT EXISTS nodes (
     hw_model TEXT,
     is_local INTEGER DEFAULT 0,
     raw_json TEXT,
-    distance_km REAL
+    distance_km REAL,
+    rssi INTEGER,
+    firmware_version TEXT,
+    role TEXT,
+    public_key TEXT,
+    altitude REAL
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -112,6 +117,18 @@ async def init(db_path: str) -> None:
             logger.info('Migrating nodes table: adding distance_km column')
             await db.execute('ALTER TABLE nodes ADD COLUMN distance_km REAL')
 
+        # Migrate nodes table: add advanced fields (M5 — YAY-107)
+        for col, col_type in [
+            ('rssi', 'INTEGER'),
+            ('firmware_version', 'TEXT'),
+            ('role', 'TEXT'),
+            ('public_key', 'TEXT'),
+            ('altitude', 'REAL'),
+        ]:
+            if col not in node_cols:
+                logger.info('Migrating nodes table: adding %s column', col)
+                await db.execute(f'ALTER TABLE nodes ADD COLUMN {col} {col_type}')
+
         await db.commit()
     logger.info(f'Database initialized: {db_path}')
 
@@ -121,10 +138,10 @@ async def upsert_node(db_path: str, node: dict) -> None:
         await db.execute("""
             INSERT INTO nodes (id, short_name, long_name, latitude, longitude,
                 last_heard, snr, battery_level, hop_count, hw_model, is_local, raw_json,
-                distance_km)
+                distance_km, rssi, firmware_version, role, public_key, altitude)
             VALUES (:id, :short_name, :long_name, :latitude, :longitude,
                 :last_heard, :snr, :battery_level, :hop_count, :hw_model, :is_local, :raw_json,
-                :distance_km)
+                :distance_km, :rssi, :firmware_version, :role, :public_key, :altitude)
             ON CONFLICT(id) DO UPDATE SET
                 short_name=excluded.short_name, long_name=excluded.long_name,
                 latitude=excluded.latitude, longitude=excluded.longitude,
@@ -132,7 +149,12 @@ async def upsert_node(db_path: str, node: dict) -> None:
                 battery_level=excluded.battery_level, hop_count=excluded.hop_count,
                 hw_model=excluded.hw_model, is_local=excluded.is_local,
                 raw_json=excluded.raw_json,
-                distance_km=excluded.distance_km
+                distance_km=excluded.distance_km,
+                rssi=excluded.rssi,
+                firmware_version=excluded.firmware_version,
+                role=excluded.role,
+                public_key=excluded.public_key,
+                altitude=excluded.altitude
         """, node)
         await db.commit()
 
@@ -147,8 +169,9 @@ async def bulk_upsert_nodes(db_path: str, nodes: list[dict]) -> None:
                 '''INSERT INTO nodes
                    (id, short_name, long_name, latitude, longitude,
                     last_heard, snr, battery_level, hop_count, hw_model,
-                    is_local, raw_json, distance_km)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    is_local, raw_json, distance_km,
+                    rssi, firmware_version, role, public_key, altitude)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET
                      short_name=excluded.short_name,
                      long_name=excluded.long_name,
@@ -161,7 +184,12 @@ async def bulk_upsert_nodes(db_path: str, nodes: list[dict]) -> None:
                      hw_model=excluded.hw_model,
                      is_local=excluded.is_local,
                      raw_json=excluded.raw_json,
-                     distance_km=excluded.distance_km''',
+                     distance_km=excluded.distance_km,
+                     rssi=excluded.rssi,
+                     firmware_version=excluded.firmware_version,
+                     role=excluded.role,
+                     public_key=excluded.public_key,
+                     altitude=excluded.altitude''',
                 (
                     node.get('id'), node.get('short_name'), node.get('long_name'),
                     node.get('latitude'), node.get('longitude'),
@@ -169,6 +197,9 @@ async def bulk_upsert_nodes(db_path: str, nodes: list[dict]) -> None:
                     node.get('battery_level'), node.get('hop_count'),
                     node.get('hw_model'), node.get('is_local'),
                     node.get('raw_json'), node.get('distance_km'),
+                    node.get('rssi'), node.get('firmware_version'),
+                    node.get('role'), node.get('public_key'),
+                    node.get('altitude'),
                 )
             )
         await db.commit()
@@ -440,7 +471,7 @@ async def get_total_unread(db_path: str, local_id: str) -> int:
                 LEFT JOIN dm_reads dr ON dr.peer_id = m.node_id
                 WHERE m.destination = ?
                   AND m.node_id != ?
-                  AND m.timestamp > COALESCE(dr.last_read_ts, 0)
+                  AND m.ts > COALESCE(dr.last_read_ts, 0)
             )
         ''', (local_id, local_id))
         row = await c.fetchone()
