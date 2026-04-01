@@ -93,6 +93,33 @@
               background:var(--bg);border-left:1px solid var(--border);">
     <div style="padding:5px 10px;font-size:9px;color:var(--accent);text-transform:uppercase;
                 border-bottom:1px solid var(--border);">Filtri</div>
+        <!-- Filtri mappa -->
+        <div id="filter-panel" style="padding:8px;border-bottom:1px solid var(--border,#2a3a4a);">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--accent,#4a9eff);margin-bottom:6px;">Filtri</div>
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-online" style="accent-color:var(--accent,#4a9eff);"> Online
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-offline" style="accent-color:var(--accent,#4a9eff);"> Offline
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-hoplines" style="accent-color:var(--accent,#4a9eff);"> Linee hop
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-breadcrumbs" style="accent-color:var(--accent,#4a9eff);"> Tracce GPS
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-markers" style="accent-color:var(--accent,#4a9eff);"> Marker
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-local" style="accent-color:var(--accent,#4a9eff);"> Nodo locale
+          </label>
+          <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-top:4px;">
+            <span>Max hops:</span>
+            <input type="range" id="filter-maxhops" min="1" max="10" style="flex:1;accent-color:var(--accent,#4a9eff);">
+            <span id="filter-maxhops-val" style="min-width:14px;text-align:right;">7</span>
+          </div>
+        </div>
   </div>
 </div>
 

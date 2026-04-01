@@ -101,6 +101,7 @@ function initFilters() {
       saveFilters(nf)
       applyFilters()
       renderHopLines()
+      renderBreadcrumbs()
     }
   }
 
@@ -123,6 +124,7 @@ function initFilters() {
   bindCheckbox('filter-offline',  'showOffline')
   bindCheckbox('filter-hoplines', 'showHopLines')
   bindCheckbox('filter-markers',  'showCustomMarkers')
+  bindCheckbox('filter-breadcrumbs', 'showBreadcrumbs')
   bindCheckbox('filter-local',    'showLocalNode')
   bindRange('filter-maxhops',     'maxHops')
 }
