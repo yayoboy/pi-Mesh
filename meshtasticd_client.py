@@ -169,6 +169,43 @@ async def get_channels(db_path: str) -> list[dict]:
     return []
 
 
+async def get_mqtt_config(db_path: str) -> dict:
+    """Read MQTT module config from board, cache result."""
+    if _connected and _interface:
+        try:
+            loop = asyncio.get_event_loop()
+            def _read():
+                mc = _interface.localNode.moduleConfig.mqtt
+                return {
+                    'enabled': mc.enabled,
+                    'address': mc.address or 'mqtt.meshtastic.org',
+                    'username': mc.username or 'meshdev',
+                    'password': mc.password or 'large4cats',
+                    'encryption_enabled': mc.encryption_enabled,
+                    'json_enabled': mc.json_enabled,
+                    'tls_enabled': mc.tls_enabled,
+                    'root': mc.root or 'msh',
+                    'proxy_to_client_enabled': mc.proxy_to_client_enabled,
+                    'map_reporting_enabled': mc.map_reporting_enabled,
+                }
+            data = await loop.run_in_executor(None, _read)
+            data['cached'] = False
+            await database.set_config_cache(db_path, 'mqtt', data)
+            return data
+        except Exception as e:
+            logger.error('get_mqtt_config failed: %s', e)
+    cached = await database.get_config_cache(db_path, 'mqtt')
+    if cached:
+        cached['cached'] = True
+        return cached
+    return {
+        'enabled': False, 'address': 'mqtt.meshtastic.org', 'username': 'meshdev',
+        'password': 'large4cats', 'encryption_enabled': False, 'json_enabled': False,
+        'tls_enabled': False, 'root': 'msh', 'proxy_to_client_enabled': False,
+        'map_reporting_enabled': False, 'cached': True,
+    }
+
+
 def _do_set_node_config(long_name: str, short_name: str, role: str) -> None:
     """Sync helper — runs in command queue thread."""
     _interface.localNode.setOwner(long_name, short_name)
@@ -201,6 +238,34 @@ async def set_lora_config(region: str, preset: str) -> None:
         raise RuntimeError('Board not connected')
     _r, _p = region, preset
     await _command_queue.put(lambda: _do_set_lora_config(_r, _p))
+
+
+def _do_set_mqtt_config(params: dict) -> None:
+    """Sync helper — runs in command queue thread."""
+    from meshtastic.protobuf import module_config_pb2
+    mqtt_cfg = module_config_pb2.ModuleConfig.MQTTConfig(
+        enabled=params.get('enabled', False),
+        address=params.get('address', ''),
+        username=params.get('username', ''),
+        password=params.get('password', ''),
+        encryption_enabled=params.get('encryption_enabled', False),
+        json_enabled=params.get('json_enabled', False),
+        tls_enabled=params.get('tls_enabled', False),
+        root=params.get('root', ''),
+        proxy_to_client_enabled=params.get('proxy_to_client_enabled', False),
+        map_reporting_enabled=params.get('map_reporting_enabled', False),
+    )
+    _interface.localNode.setConfig(
+        module_config_pb2.ModuleConfig(mqtt=mqtt_cfg)
+    )
+
+
+async def set_mqtt_config(params: dict) -> None:
+    """Queue MQTT config write. Raises if board not connected."""
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    p = dict(params)
+    await _command_queue.put(lambda: _do_set_mqtt_config(p))
 
 
 def _do_set_channel(idx: int, name: str, psk_b64: str) -> None:
