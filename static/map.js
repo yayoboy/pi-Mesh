@@ -403,7 +403,17 @@ function showNodePopup(marker, node) {
     makeStatBox(distLabel, 'Dist')
   )
 
-  popup.append(header, meta, heard, stats)
+  // Advanced stat boxes: RSSI, altitude, role, firmware
+  var stats2 = document.createElement('div')
+  stats2.style.cssText = 'display:flex;gap:5px;margin-top:4px;'
+  stats2.append(
+    makeStatBox(node.rssi != null ? node.rssi + ' dBm' : '\u2014', 'RSSI'),
+    makeStatBox(node.altitude != null ? Math.round(node.altitude) + 'm' : '\u2014', 'Alt'),
+    makeStatBox(node.role || '\u2014', 'Ruolo'),
+    makeStatBox(node.firmware_version || '\u2014', 'FW')
+  )
+
+  popup.append(header, meta, heard, stats, stats2)
 
   if (!node.is_local) {
     var actions = document.createElement('div')
