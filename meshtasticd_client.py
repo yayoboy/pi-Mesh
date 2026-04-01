@@ -271,6 +271,11 @@ def _refresh_node_cache() -> None:
                 'is_local':      node_id == _local_id,
                 'raw_json':      str(info),
                 'distance_km':   None,
+                'rssi':             info.get('rxRssi'),
+                'firmware_version': user.get('firmwareVersion'),
+                'role':             user.get('role'),
+                'public_key':       user.get('publicKey'),
+                'altitude':         pos.get('altitude'),
             }
         _dirty_nodes.update(_node_cache.keys())
         _add_distances()
@@ -342,6 +347,11 @@ def _on_receive(packet, interface) -> None:
             'longitude':     None,
             'is_local':      False,
             'distance_km':   None,
+            'rssi':             packet.get('rxRssi'),
+            'firmware_version': user.get('firmwareVersion'),
+            'role':             user.get('role'),
+            'public_key':       user.get('publicKey'),
+            'altitude':         None,
         }
         if _loop is not None:
             _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
@@ -354,6 +364,7 @@ def _on_receive(packet, interface) -> None:
             'latitude':   pos.get('latitude'),
             'longitude':  pos.get('longitude'),
             'last_heard': int(time.time()),
+            'altitude':   pos.get('altitude'),
         }
         if _loop is not None:
             _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
@@ -509,6 +520,12 @@ def _on_receive(packet, interface) -> None:
             failed.append(cb)
     for cb in failed:
         unsubscribe_log(cb)
+
+    # Update rssi in node cache from incoming packet
+    rx_rssi = packet.get('rxRssi')
+    if rx_rssi is not None and from_id in _node_cache:
+        _node_cache[from_id]['rssi'] = rx_rssi
+        _dirty_nodes.add(from_id)
 
     # Refresh node cache on any packet
     if _connected and _interface:
