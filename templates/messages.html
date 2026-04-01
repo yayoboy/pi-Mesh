@@ -181,9 +181,9 @@ function messagesPage() {
       this._observer = new IntersectionObserver(([entry]) => {
         if (entry.isIntersecting) this.loadMore()
       })
-      this.$nextTick(() => {
+      setTimeout(() => {
         if (this.$refs.sentinel) this._observer.observe(this.$refs.sentinel)
-      })
+      }, 500)
       const openDm = new URLSearchParams(window.location.search).get('open_dm')
       if (openDm) await this.selectConv('dm', openDm)
     },
@@ -232,6 +232,9 @@ function messagesPage() {
 
     async loadMore() {
       if (this.loading || !this.hasMore || !this.messages.length) return
+      if (this._loadMoreCooldown) return
+      this._loadMoreCooldown = true
+      setTimeout(() => { this._loadMoreCooldown = false }, 500)
       const beforeId = this.messages[0].id
       this.loading = true
       try {
@@ -247,6 +250,7 @@ function messagesPage() {
           this.$refs.msgList.scrollTop = this.$refs.msgList.scrollHeight - prevH
         })
         this.hasMore = data.length === 50
+        if (!this.hasMore && this._observer) this._observer.disconnect()
       } finally {
         this.loading = false
       }
