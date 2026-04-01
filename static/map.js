@@ -208,31 +208,62 @@ function renderBreadcrumbs() {
 function renderTraceroutePath(hops) {
   if (!mapReady) return
   tracerouteLayer.clearLayers()
-  var latlngs = []
+  // Build array of {latlng, node} for each hop
+  var hopNodes = []
   hops.forEach(function(nodeId) {
     var n = nodeCache.get(nodeId)
-    if (n && n.latitude && n.longitude) latlngs.push([n.latitude, n.longitude])
+    if (n && n.latitude && n.longitude) {
+      hopNodes.push({ latlng: [n.latitude, n.longitude], node: n })
+    }
   })
-  if (latlngs.length < 2) return
-  L.polyline(latlngs, {
-    color: '#ffd54f', weight: 4, opacity: 0.85, dashArray: '10,6'
-  }).addTo(tracerouteLayer)
-  for (var i = 0; i < latlngs.length - 1; i++) {
+  if (hopNodes.length < 2) return
+
+  // Draw per-hop segments colored by SNR of destination node
+  for (var i = 0; i < hopNodes.length - 1; i++) {
+    var destNode = hopNodes[i + 1].node
+    var color = snrColor(destNode.snr)
+    L.polyline(
+      [hopNodes[i].latlng, hopNodes[i + 1].latlng],
+      { color: color, weight: 4, opacity: 0.85, dashArray: '10,6' }
+    ).addTo(tracerouteLayer)
+
+    // Midpoint marker with hop number
     var mid = [
-      (latlngs[i][0] + latlngs[i + 1][0]) / 2,
-      (latlngs[i][1] + latlngs[i + 1][1]) / 2,
+      (hopNodes[i].latlng[0] + hopNodes[i + 1].latlng[0]) / 2,
+      (hopNodes[i].latlng[1] + hopNodes[i + 1].latlng[1]) / 2,
     ]
-    L.circleMarker(mid, {
-      radius: 3, color: '#ffd54f', fillColor: '#ffd54f', fillOpacity: 1
-    }).addTo(tracerouteLayer)
+    var hopLabel = L.divIcon({
+      html: '<div style="width:16px;height:16px;background:' + color +
+            ';border-radius:50%;border:1px solid #fff;display:flex;align-items:center;' +
+            'justify-content:center;font-size:8px;font-weight:700;color:#fff;">' +
+            (i + 1) + '</div>',
+      className: '',
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+    })
+    L.marker(mid, { icon: hopLabel, interactive: false }).addTo(tracerouteLayer)
   }
+
+  // Node markers at hop endpoints with SNR tooltip
+  hopNodes.forEach(function(hp, idx) {
+    if (idx === 0) return  // skip source
+    var tip = (hp.node.short_name || hp.node.id) +
+      (hp.node.snr != null ? ' · SNR ' + hp.node.snr + 'dB' : '') +
+      (hp.node.rssi != null ? ' · RSSI ' + hp.node.rssi + 'dBm' : '')
+    L.circleMarker(hp.latlng, {
+      radius: 5, color: snrColor(hp.node.snr), fillColor: snrColor(hp.node.snr),
+      fillOpacity: 0.9, weight: 2
+    }).bindTooltip(tip, { permanent: false, direction: 'top', offset: [0, -8] })
+      .addTo(tracerouteLayer)
+  })
+
   tracerouteLayer.addTo(leafletMap)
   var badge    = document.getElementById('traceroute-badge')
   var badgeTxt = document.getElementById('traceroute-badge-text')
   if (badge && badgeTxt) {
     var last = nodeCache.get(hops[hops.length - 1])
     var name = (last && last.short_name) ? last.short_name : hops[hops.length - 1]
-    badgeTxt.textContent = 'Traceroute: ' + name + ' (' + (latlngs.length - 1) + ' hop)'
+    badgeTxt.textContent = 'Traceroute: ' + name + ' (' + (hopNodes.length - 1) + ' hop)'
     badge.style.display = 'flex'
   }
 }
