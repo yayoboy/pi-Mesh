@@ -439,7 +439,12 @@ async function navigateTo(tabName) {
   }
 
   document.querySelectorAll('.tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.tab === tabName)
+    const isActive = t.dataset.tab === tabName
+    t.classList.toggle('active', isActive)
+    t.classList.toggle('tab-active', isActive)
+    t.style.color = isActive ? 'var(--accent)' : 'var(--muted)'
+    const svg = t.querySelector('svg')
+    if (svg) svg.setAttribute('stroke', isActive ? 'var(--accent)' : 'var(--muted)')
   })
 
   if (tabName === 'map') {
