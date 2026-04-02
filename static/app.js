@@ -386,8 +386,15 @@ async function navigateTo(tabName) {
 
     const newContent = doc.getElementById('content')
     if (newContent) {
-      document.getElementById('content').innerHTML = newContent.innerHTML
-      await reexecScripts(document.getElementById('content'))
+      const container = document.getElementById('content')
+      container.innerHTML = newContent.innerHTML
+      await reexecScripts(container)
+      // Tell Alpine to initialize new x-data components after SPA navigation
+      if (window.Alpine) {
+        container.querySelectorAll('[x-data]').forEach(function(el) {
+          Alpine.initTree(el)
+        })
+      }
     }
   } catch (e) {
     console.error('navigateTo error:', e)

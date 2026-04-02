@@ -374,11 +374,64 @@ async def _save_incoming_message(
         _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
 
 
+def _build_log_summary(portnum: str, decoded: dict) -> str:
+    """Build a short human-readable summary from a decoded packet."""
+    try:
+        if portnum == 'TELEMETRY_APP':
+            t = decoded.get('telemetry', {})
+            dm = t.get('deviceMetrics', {})
+            em = t.get('environmentMetrics', {})
+            parts = []
+            if dm.get('batteryLevel') is not None:
+                parts.append(f"batt {dm['batteryLevel']}%")
+            if dm.get('voltage') is not None:
+                parts.append(f"{dm['voltage']:.1f}V")
+            if dm.get('channelUtilization') is not None:
+                parts.append(f"ch {dm['channelUtilization']:.1f}%")
+            if em.get('temperature') is not None:
+                parts.append(f"{em['temperature']:.1f}°C")
+            if em.get('relativeHumidity') is not None:
+                parts.append(f"{em['relativeHumidity']:.0f}%RH")
+            return ' · '.join(parts) if parts else ''
+        elif portnum == 'POSITION_APP':
+            pos = decoded.get('position', {})
+            lat, lon = pos.get('latitude'), pos.get('longitude')
+            alt = pos.get('altitude')
+            if lat is not None and lon is not None:
+                s = f"{lat:.4f}, {lon:.4f}"
+                if alt is not None:
+                    s += f" · {alt}m"
+                return s
+        elif portnum == 'NODEINFO_APP':
+            user = decoded.get('user', {})
+            name = user.get('longName') or user.get('shortName') or ''
+            hw = user.get('hwModel', '')
+            return f"{name} ({hw})" if hw else name
+        elif portnum == 'TEXT_MESSAGE_APP':
+            text = decoded.get('text', '')
+            return text[:80] if text else ''
+        elif portnum == 'ROUTING_APP':
+            err = decoded.get('routing', {}).get('errorReason', 'NONE')
+            return err if err != 'NONE' else 'ACK'
+        elif portnum == 'TRACEROUTE_APP':
+            hops = decoded.get('routeDiscovery', {}).get('route', [])
+            return f"{len(hops)} hops" if hops else 'direct'
+    except Exception:
+        pass
+    return ''
+
+
 def _on_receive(packet, interface) -> None:
     from_id   = packet.get('fromId', '?')
     portnum   = packet.get('decoded', {}).get('portnum', 'UNKNOWN')
     snr       = packet.get('rxSnr')
     hop_limit = packet.get('hopLimit')
+
+    # Emit typed event based on portnum
+    decoded = packet.get('decoded', {})
+
+    # Build a human-readable summary for the log
+    summary = _build_log_summary(portnum, decoded)
 
     # Always emit a log event
     log_event = {
@@ -388,13 +441,11 @@ def _on_receive(packet, interface) -> None:
         'portnum':   portnum,
         'snr':       snr,
         'hop_limit': hop_limit,
+        'summary':   summary,
     }
     _log_queue.append(log_event)
     if _loop is not None:
         _loop.call_soon_threadsafe(_event_queue.put_nowait, log_event)
-
-    # Emit typed event based on portnum
-    decoded = packet.get('decoded', {})
 
     if portnum == 'NODEINFO_APP':
         user = decoded.get('user', {})

@@ -61,7 +61,9 @@
         <span style="color:var(--muted);flex-shrink:0;" x-text="fmtTime(e.ts)"></span>
         <span style="color:var(--accent);flex-shrink:0;" x-text="e.from || '?'"></span>
         <span :style="'color:' + portnumColor(e.portnum)" x-text="shortPortnum(e.portnum || e.type || '')"></span>
-        <span style="color:var(--muted);margin-left:auto;flex-shrink:0;"
+        <span style="color:var(--text);opacity:0.7;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+              x-text="e.summary || ''"></span>
+        <span style="color:var(--muted);flex-shrink:0;"
               x-show="e.snr != null" x-text="e.snr != null ? e.snr + 'dB' : ''"></span>
       </div>
     </template>
@@ -102,7 +104,7 @@ function logPage() {
       return self.entries.filter(function(e) {
         if (self.activeFilters.size > 0 && e.portnum && !self.activeFilters.has(e.portnum)) return false
         if (!q) return true
-        var haystack = (e.from || '') + ' ' + (e.portnum || e.type || '') + ' ' + (e.snr || '')
+        var haystack = (e.from || '') + ' ' + (e.portnum || e.type || '') + ' ' + (e.snr || '') + ' ' + (e.summary || '')
         return haystack.toLowerCase().indexOf(q) >= 0
       })
     },
@@ -172,6 +174,7 @@ function logPage() {
       var lines = this.filtered.map(function(e) {
         var ts = e.ts ? new Date(e.ts * 1000).toISOString() : ''
         return ts + '\t' + (e.from || '?') + '\t' + (e.portnum || e.type || '') +
+          (e.summary ? '\t' + e.summary : '') +
           (e.snr != null ? '\tSNR:' + e.snr : '') +
           (e.hop_limit != null ? '\tHops:' + e.hop_limit : '')
       })
