@@ -163,6 +163,8 @@
               <div style="font-size:11px;color:var(--text);" x-text="dev.name"></div>
               <div style="font-size:10px;color:var(--muted);"
                    x-text="dev.i2c_address ? dev.type + ' · ' + dev.i2c_address : dev.type + (dev.pin_a ? ' · GPIO ' + dev.pin_a : '')"></div>
+              <div x-show="dev.action" style="font-size:9px;color:var(--accent);"
+                   x-text="dev.action ? '⚡ ' + dev.action.replace(/_/g, ' ') : ''"></div>
             </div>
             <button @click="testGpioDevice(dev.id)"
                     :disabled="!dev.enabled"
@@ -329,9 +331,37 @@
                           <label style="font-size:10px;color:var(--muted);">Azione</label>
                           <select x-model="gpioForm.action"
                                   style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+                            <option value="scroll_pages">Scorri tra pagine</option>
                             <option value="scroll_messages">Scorri messaggi</option>
+                            <option value="scroll_nodes">Scorri lista nodi</option>
                             <option value="change_channel">Cambia canale</option>
+                            <option value="zoom_map">Zoom mappa</option>
+                            <option value="brightness">Luminosità display</option>
                             <option value="volume_buzzer">Volume buzzer</option>
+                          </select>
+                        </div>
+                      </template>
+                      <template x-if="gpioForm.type === 'button'">
+                        <div style="display:flex;flex-direction:column;gap:3px;">
+                          <label style="font-size:10px;color:var(--muted);">Azione</label>
+                          <select x-model="gpioForm.action"
+                                  style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+                            <option value="next_page">Pagina successiva</option>
+                            <option value="prev_page">Pagina precedente</option>
+                            <option value="send_position">Invia posizione</option>
+                            <option value="toggle_buzzer">Toggle buzzer</option>
+                            <option value="panic">Allarme (broadcast)</option>
+                          </select>
+                        </div>
+                      </template>
+                      <template x-if="gpioForm.type === 'led'">
+                        <div style="display:flex;flex-direction:column;gap:3px;">
+                          <label style="font-size:10px;color:var(--muted);">Indicatore</label>
+                          <select x-model="gpioForm.action"
+                                  style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+                            <option value="new_message">Nuovo messaggio</option>
+                            <option value="connection_status">Stato connessione</option>
+                            <option value="gps_fix">Fix GPS</option>
                           </select>
                         </div>
                       </template>
@@ -382,7 +412,7 @@
 
     <!-- WIFI -->
     <template x-if="section === 'wifi'">
-      <div x-init="loadWifiStatus(); loadWifiSaved()">
+      <div x-init="loadWifiStatus(); loadWifiSaved(); loadApStatus()">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:10px;">WiFi Pi</div>
 
         <!-- Current status -->
@@ -402,6 +432,23 @@
               <span style="font-size:11px;color:var(--muted);">Non connesso</span>
             </div>
           </template>
+        </div>
+
+        <!-- AP Sharing -->
+        <div style="padding:8px 10px;background:var(--panel);border:1px solid var(--border);border-radius:6px;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <div style="font-size:11px;color:var(--text);font-weight:600;">Hotspot Sharing</div>
+              <div style="font-size:9px;color:var(--muted);" x-text="apActive ? 'SSID: pi-mesh-portal · ' + (apIp || '10.42.0.1') + ':8080' : 'Condividi pi-Mesh via WiFi AP'"></div>
+            </div>
+            <button @click="toggleAP()"
+                    style="padding:5px 12px;font-size:10px;border-radius:4px;cursor:pointer;border:1px solid;"
+                    :style="apActive
+                      ? 'background:#7f1d1d;color:#ef4444;border-color:#7f1d1d'
+                      : 'background:#1a3a5c;color:var(--accent);border-color:#2a5a8a'"
+                    x-text="apToggling ? '...' : (apActive ? 'Disattiva' : 'Attiva')">
+            </button>
+          </div>
         </div>
 
         <!-- Scan + connect -->
@@ -1147,6 +1194,36 @@ function configPage() {
     wifiSaved: [],
     wifiIp: { method: 'auto', address: '', gateway: '', dns: '' },
     wifiIpSaving: false,
+    apActive: false,
+    apIp: '',
+    apToggling: false,
+
+    async loadApStatus() {
+      try {
+        const r = await fetch('/api/config/ap/status')
+        if (r.ok) {
+          const d = await r.json()
+          this.apActive = d.active
+        }
+      } catch(e) {}
+    },
+
+    async toggleAP() {
+      this.apToggling = true
+      try {
+        const r = await fetch('/api/config/ap/toggle', { method: 'POST' })
+        if (r.ok) {
+          const d = await r.json()
+          this.apActive = d.active
+          this.apIp = d.ip || ''
+          if (typeof showToast === 'function') showToast(d.message || (d.active ? 'AP attivato' : 'AP disattivato'))
+        }
+      } catch(e) {
+        if (typeof showToast === 'function') showToast('Errore AP', 'warn')
+      } finally {
+        this.apToggling = false
+      }
+    },
 
     async scanWifi() {
       this.wifiScanning = true

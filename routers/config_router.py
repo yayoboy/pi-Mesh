@@ -413,6 +413,59 @@ async def wifi_set_ip(body: WifiIpRequest):
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
+@router.get('/api/config/ap/status')
+async def ap_status():
+    """Check if AP mode is active."""
+    try:
+        result = subprocess.run(
+            ['nmcli', '-t', '-f', 'NAME,TYPE,DEVICE', 'con', 'show', '--active'],
+            capture_output=True, text=True, timeout=10
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split(':')
+            if len(parts) >= 2 and 'wifi-p2p' in parts[1]:
+                return {'active': True, 'name': parts[0]}
+        # Check hostapd
+        hostapd = subprocess.run(
+            ['systemctl', 'is-active', 'hostapd'], capture_output=True, text=True, timeout=5
+        )
+        if hostapd.stdout.strip() == 'active':
+            return {'active': True, 'name': 'hostapd'}
+        return {'active': False}
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return {'active': False}
+
+
+@router.post('/api/config/ap/toggle')
+async def ap_toggle():
+    """Toggle AP mode using auto_ap.sh or nmcli hotspot."""
+    import os
+    script = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scripts', 'auto_ap.sh')
+    try:
+        # Check if AP is already running
+        hostapd = subprocess.run(
+            ['systemctl', 'is-active', 'hostapd'], capture_output=True, text=True, timeout=5
+        )
+        if hostapd.stdout.strip() == 'active':
+            # Stop AP
+            subprocess.run(['sudo', 'systemctl', 'stop', 'hostapd'], timeout=10)
+            subprocess.run(['sudo', 'systemctl', 'stop', 'dnsmasq'], timeout=10)
+            return {'active': False, 'message': 'AP disattivato'}
+        else:
+            # Try nmcli hotspot first
+            result = subprocess.run(
+                ['nmcli', 'dev', 'wifi', 'hotspot', 'ifname', 'wlan0',
+                 'ssid', 'pi-mesh-portal', 'password', 'meshtastic'],
+                capture_output=True, text=True, timeout=15
+            )
+            if result.returncode == 0:
+                return {'active': True, 'message': 'AP attivato (pi-mesh-portal)',
+                        'ssid': 'pi-mesh-portal', 'ip': '10.42.0.1'}
+            return JSONResponse({'error': result.stderr.strip()}, status_code=500)
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
 @router.get('/api/config/rtc/status')
 async def rtc_status():
     config_paths = ['/boot/firmware/config.txt', '/boot/config.txt']
