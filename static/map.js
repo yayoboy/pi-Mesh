@@ -664,7 +664,21 @@ function initMapIfNeeded() {
     leafletMap.panBy([e.deltaX, e.deltaY], { animate: false })
   }, { passive: false })
 
-  var trNode = new URLSearchParams(window.location.search).get('traceroute')
+  var params = new URLSearchParams(window.location.search)
+
+  // Focus on specific node from ?focus=nodeId
+  var focusNode = params.get('focus')
+  if (focusNode) {
+    var fn = nodeCache.get(focusNode)
+    if (fn && fn.latitude && fn.longitude) {
+      leafletMap.setView([fn.latitude, fn.longitude], Math.max(leafletMap.getZoom(), 13))
+      var fm = markerCache.get(focusNode)
+      if (fm) setTimeout(function() { showNodePopup(fm, fn) }, 400)
+    }
+  }
+
+  // Auto-load traceroute from ?traceroute=nodeId
+  var trNode = params.get('traceroute')
   if (trNode) {
     fetch('/api/nodes/' + encodeURIComponent(trNode) + '/traceroute')
       .then(function(r) { return r.json() })
