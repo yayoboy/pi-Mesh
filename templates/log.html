@@ -1,211 +1,197 @@
 {% extends "base.html" %}
 {% block content %}
-<div id="log-wrap" style="display:flex;flex-direction:column;height:100%;gap:8px;padding:8px;box-sizing:border-box">
+<div x-data="logPage()" x-init="init()" class="h-full flex flex-col overflow-hidden">
 
-  <!-- Row 1: Board / Pi tab toggle -->
-  <div style="display:flex;flex-shrink:0;border-bottom:1px solid var(--border)">
-    <button id="btn-board" class="log-tab active" onclick="showLog('board')">Board</button>
-    <button id="btn-pi"    class="log-tab"        onclick="showLog('pi')">Pi</button>
+  <!-- Header -->
+  <div class="shrink-0" style="border-bottom:1px solid var(--border);">
+    <div class="flex items-center justify-between px-3 py-2" style="font-size:11px;">
+      <span style="color:var(--accent);font-weight:600;">Log board</span>
+      <div class="flex items-center gap-3">
+        <span class="w-2 h-2 rounded-full"
+              :style="`background:${connected ? '#4caf50' : '#374151'}`"></span>
+        <span style="color:var(--muted);font-size:10px;" x-text="filtered.length + '/' + entries.length"></span>
+        <!-- Auto-scroll toggle -->
+        <button @click="autoScroll = !autoScroll" :title="autoScroll ? 'Auto-scroll ON' : 'Auto-scroll OFF'"
+                style="background:none;border:none;cursor:pointer;padding:0;"
+                :style="autoScroll ? 'color:var(--accent)' : 'color:var(--muted)'">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+          </svg>
+        </button>
+        <!-- Export -->
+        <button @click="exportLog()" title="Esporta log"
+                style="color:var(--muted);background:none;border:none;cursor:pointer;padding:0;">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+        </button>
+        <!-- Clear -->
+        <button @click="entries = []" title="Cancella log"
+                style="color:var(--muted);background:none;border:none;cursor:pointer;padding:0;">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Search + Filter bar -->
+    <div class="flex items-center gap-2 px-3 pb-2" style="font-size:10px;">
+      <input type="text" x-model.debounce.200ms="search" placeholder="Cerca..."
+             style="flex:1;background:var(--panel);border:1px solid var(--border);border-radius:4px;
+                    padding:3px 8px;color:var(--text);font-size:10px;outline:none;">
+      <template x-for="p in portnumList" :key="p">
+        <button @click="toggleFilter(p)"
+                :style="activeFilters.has(p)
+                  ? 'background:var(--accent);color:#fff;border-color:var(--accent)'
+                  : 'background:var(--panel);color:var(--muted);border-color:var(--border)'"
+                style="border:1px solid;border-radius:3px;padding:1px 5px;font-size:9px;cursor:pointer;white-space:nowrap;"
+                x-text="shortPortnum(p)">
+        </button>
+      </template>
+    </div>
   </div>
 
-  <!-- Row 2: search + icon-only filter/action buttons -->
-  <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
-    <!-- Text search -->
-    <input id="log-search" type="search" placeholder="Cerca…"
-      style="flex:1;min-width:0;font-size:11px;padding:3px 8px;border-radius:6px;
-             border:1px solid var(--border);background:var(--surface);color:var(--text);outline:none">
-
-    <!-- Level filter: ALL (3 lines), WARN+ (triangle), ERR (circle-X) -->
-    <button id="btn-all"   class="log-icon-btn active" onclick="_setLevel('all')"   title="Tutti">
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-        <line x1="2" y1="4" x2="12" y2="4"/><line x1="2" y1="7" x2="12" y2="7"/><line x1="2" y1="10" x2="12" y2="10"/>
-      </svg>
-    </button>
-    <button id="btn-warn"  class="log-icon-btn"        onclick="_setLevel('warn')"  title="WARN+">
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M7 2 L13 12 H1 Z"/><line x1="7" y1="6" x2="7" y2="9"/><circle cx="7" cy="10.5" r="0.5" fill="currentColor" stroke="none"/>
-      </svg>
-    </button>
-    <button id="btn-error" class="log-icon-btn"        onclick="_setLevel('error')" title="ERR">
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-        <circle cx="7" cy="7" r="5.5"/><line x1="5" y1="5" x2="9" y2="9"/><line x1="9" y1="5" x2="5" y2="9"/>
-      </svg>
-    </button>
-
-    <!-- Pause (two vertical bars) -->
-    <button id="btn-pause" class="log-icon-btn" onclick="_togglePause()" title="Pausa auto-scroll">
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-        <rect x="3" y="2" width="3" height="10" rx="1"/><rect x="8" y="2" width="3" height="10" rx="1"/>
-      </svg>
-    </button>
-
-    <!-- Download (arrow down) -->
-    <button class="log-icon-btn" onclick="downloadLog()" title="Scarica log">
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="7" y1="2" x2="7" y2="9"/><polyline points="4,7 7,10 10,7"/><line x1="2" y1="12" x2="12" y2="12"/>
-      </svg>
-    </button>
-
-    <!-- Clear (trash) -->
-    <button class="log-icon-btn" onclick="clearLog()" title="Pulisci log">
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="2,4 3,4 12,4"/><path d="M5 4V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1"/><path d="M11 4l-.8 7.2A1 1 0 0 1 9.2 12H4.8a1 1 0 0 1-1-.8L3 4"/>
-      </svg>
-    </button>
+  <!-- Log entries -->
+  <div class="flex-1 overflow-y-auto font-mono" style="font-size:10px;" id="log-scroll"
+       @scroll="onScroll">
+    <template x-for="(e, i) in filtered" :key="e._idx">
+      <div class="px-3 py-1 flex gap-2" style="border-bottom:1px solid rgba(26,34,51,0.5);">
+        <span style="color:var(--muted);flex-shrink:0;" x-text="fmtTime(e.ts)"></span>
+        <span style="color:var(--accent);flex-shrink:0;" x-text="e.from || '?'"></span>
+        <span :style="'color:' + portnumColor(e.portnum)" x-text="shortPortnum(e.portnum || e.type || '')"></span>
+        <span style="color:var(--text);opacity:0.7;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+              x-text="e.summary || ''"></span>
+        <span style="color:var(--muted);flex-shrink:0;"
+              x-show="e.snr != null" x-text="e.snr != null ? e.snr + 'dB' : ''"></span>
+      </div>
+    </template>
+    <template x-if="entries.length === 0">
+      <div class="flex items-center justify-center h-24" style="color:var(--muted);">
+        In attesa di pacchetti...
+      </div>
+    </template>
+    <template x-if="entries.length > 0 && filtered.length === 0">
+      <div class="flex items-center justify-center h-24" style="color:var(--muted);">
+        Nessun risultato
+      </div>
+    </template>
   </div>
-
-  <div id="log-list" style="flex:1;overflow-y:auto;font-family:monospace;font-size:11px;line-height:1.5"></div>
-
 </div>
 
-<style>
-.log-tab{
-  flex:1;background:var(--surface);color:var(--text-muted,#888);
-  border:none;border-bottom:2px solid transparent;
-  min-height:36px;font-size:12px;cursor:pointer;
-}
-.log-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
-.log-icon-btn{
-  width:32px;height:32px;flex-shrink:0;
-  display:flex;align-items:center;justify-content:center;
-  background:var(--surface);color:var(--text);
-  border:1px solid var(--border);border-radius:6px;
-  cursor:pointer;padding:0;
-}
-.log-icon-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
-.log-entry{padding:2px 4px;border-bottom:1px solid var(--border)}
-.log-entry.warn{color:#f0a030}
-.log-entry.error{color:#e05050}
-.log-entry.info{color:var(--text)}
-</style>
-
 <script>
-(function(){
-  let _src      = 'board'
-  let _level    = 'all'   // 'all' | 'warn' | 'error'
-  let _paused   = false
+function logPage() {
+  return {
+    entries: [],
+    connected: false,
+    es: null,
+    search: '',
+    activeFilters: new Set(),
+    autoScroll: true,
+    _scrollEl: null,
+    _idx: 0,
 
-  // ── helpers ──────────────────────────────────────────────────────────────
+    get portnumList() {
+      var seen = new Set()
+      this.entries.forEach(function(e) { if (e.portnum) seen.add(e.portnum) })
+      return Array.from(seen).sort()
+    },
 
-  function ts(t){ return new Date(t*1000).toLocaleTimeString('it',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) }
+    get filtered() {
+      var self = this
+      var q = self.search.toLowerCase()
+      return self.entries.filter(function(e) {
+        if (self.activeFilters.size > 0 && e.portnum && !self.activeFilters.has(e.portnum)) return false
+        if (!q) return true
+        var haystack = (e.from || '') + ' ' + (e.portnum || e.type || '') + ' ' + (e.snr || '') + ' ' + (e.summary || '')
+        return haystack.toLowerCase().indexOf(q) >= 0
+      })
+    },
 
-  function makeEntry(e){
-    const div = document.createElement('div')
-    div.className = 'log-entry ' + (e.level || 'info')
-    div.textContent = ts(e.ts) + ' [' + (e.level||'info').toUpperCase() + '] ' + e.msg
-    return div
+    init() {
+      this._scrollEl = document.getElementById('log-scroll')
+      this.connect()
+    },
+
+    connect() {
+      this.es = new EventSource('/api/log/stream')
+      this.es.onopen = () => { this.connected = true }
+      this.es.onmessage = (e) => {
+        try {
+          var entry = JSON.parse(e.data)
+          entry._idx = this._idx++
+          this.entries.unshift(entry)
+          if (this.entries.length > 500) this.entries.pop()
+          if (this.autoScroll) {
+            this.$nextTick(() => {
+              if (this._scrollEl) this._scrollEl.scrollTop = 0
+            })
+          }
+        } catch(_) {}
+      }
+      this.es.onerror = () => {
+        this.connected = false
+        this.es.close()
+        setTimeout(() => this.connect(), 5000)
+      }
+    },
+
+    onScroll() {
+      // Disable auto-scroll if user scrolls away from top
+      if (this._scrollEl && this._scrollEl.scrollTop > 50) {
+        this.autoScroll = false
+      }
+    },
+
+    toggleFilter(p) {
+      if (this.activeFilters.has(p)) {
+        this.activeFilters.delete(p)
+      } else {
+        this.activeFilters.add(p)
+      }
+      // Force reactivity
+      this.activeFilters = new Set(this.activeFilters)
+    },
+
+    shortPortnum(p) {
+      if (!p) return ''
+      return p.replace('_APP', '').replace('TELEMETRY', 'TELEM').replace('NODEINFO', 'NODE')
+    },
+
+    portnumColor(p) {
+      if (!p) return 'var(--text)'
+      if (p.indexOf('TEXT') >= 0) return '#4caf50'
+      if (p.indexOf('POSITION') >= 0) return '#4a9eff'
+      if (p.indexOf('NODEINFO') >= 0) return '#fb8c00'
+      if (p.indexOf('TELEMETRY') >= 0) return '#ab47bc'
+      if (p.indexOf('ROUTING') >= 0) return '#78909c'
+      if (p.indexOf('TRACEROUTE') >= 0) return '#ffd54f'
+      return 'var(--text)'
+    },
+
+    exportLog() {
+      var lines = this.filtered.map(function(e) {
+        var ts = e.ts ? new Date(e.ts * 1000).toISOString() : ''
+        return ts + '\t' + (e.from || '?') + '\t' + (e.portnum || e.type || '') +
+          (e.summary ? '\t' + e.summary : '') +
+          (e.snr != null ? '\tSNR:' + e.snr : '') +
+          (e.hop_limit != null ? '\tHops:' + e.hop_limit : '')
+      })
+      var blob = new Blob([lines.join('\n')], { type: 'text/plain' })
+      var a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = 'pimesh-log-' + new Date().toISOString().slice(0,10) + '.txt'
+      a.click()
+      URL.revokeObjectURL(a.href)
+    },
+
+    fmtTime(ts) {
+      if (!ts) return '--:--:--'
+      var d = new Date(ts * 1000)
+      return d.toTimeString().slice(0,8)
+    }
   }
-
-  // Apply search text + level filter to every child of log-list
-  function _applyFilters(){
-    const list = document.getElementById('log-list')
-    if(!list) return
-    const q = (document.getElementById('log-search').value || '').toLowerCase()
-    Array.from(list.children).forEach(function(el){
-      const matchLevel =
-        _level === 'all'   ? true :
-        _level === 'warn'  ? (el.classList.contains('warn') || el.classList.contains('error')) :
-        /* error */          el.classList.contains('error')
-      const matchText = q === '' || el.textContent.toLowerCase().includes(q)
-      el.style.display = (matchLevel && matchText) ? '' : 'none'
-    })
-  }
-
-  function _scrollBottom(){
-    if(_paused) return
-    const list = document.getElementById('log-list')
-    if(list) list.scrollTop = list.scrollHeight
-  }
-
-  // ── public: render / append ───────────────────────────────────────────────
-
-  function renderEntries(entries){
-    const list = document.getElementById('log-list')
-    if(!list) return
-    while(list.firstChild) list.removeChild(list.firstChild)
-    entries.forEach(function(e){ list.appendChild(makeEntry(e)) })
-    _applyFilters()
-    _scrollBottom()
-  }
-
-  function appendEntry(e){
-    const list = document.getElementById('log-list')
-    if(!list) return
-    const el = makeEntry(e)
-    list.appendChild(el)
-
-    // Apply filter to the single new element
-    const q = (document.getElementById('log-search').value || '').toLowerCase()
-    const matchLevel =
-      _level === 'all'   ? true :
-      _level === 'warn'  ? (el.classList.contains('warn') || el.classList.contains('error')) :
-                           el.classList.contains('error')
-    const matchText = q === '' || el.textContent.toLowerCase().includes(q)
-    if(!(matchLevel && matchText)) el.style.display = 'none'
-
-    _scrollBottom()
-  }
-
-  // ── level filter ──────────────────────────────────────────────────────────
-
-  window._setLevel = function(level){
-    _level = level
-    document.getElementById('btn-all').classList.toggle('active',   level === 'all')
-    document.getElementById('btn-warn').classList.toggle('active',  level === 'warn')
-    document.getElementById('btn-error').classList.toggle('active', level === 'error')
-    _applyFilters()
-  }
-
-  // ── auto-scroll toggle ────────────────────────────────────────────────────
-
-  window._togglePause = function(){
-    _paused = !_paused
-    document.getElementById('btn-pause').classList.toggle('active', _paused)
-    if(!_paused) _scrollBottom()
-  }
-
-  // ── download ──────────────────────────────────────────────────────────────
-
-  window.downloadLog = function(){
-    const list = document.getElementById('log-list')
-    if(!list) return
-    const lines = Array.from(list.children)
-      .filter(function(el){ return el.style.display !== 'none' })
-      .map(function(el){ return el.textContent })
-      .join('\n')
-    const blob = new Blob([lines], {type:'text/plain'})
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = 'log-' + _src + '-' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.txt'
-    a.click()
-    URL.revokeObjectURL(a.href)
-  }
-
-  // ── search input ──────────────────────────────────────────────────────────
-
-  var _logSearch = document.getElementById('log-search')
-  if (_logSearch) _logSearch.addEventListener('input', _applyFilters)
-
-  // ── existing public API ───────────────────────────────────────────────────
-
-  window.showLog = function(src){
-    _src = src
-    document.getElementById('btn-board').classList.toggle('active', src === 'board')
-    document.getElementById('btn-pi').classList.toggle('active',    src === 'pi')
-    fetch('/api/logs/' + src).then(function(r){ return r.json() }).then(renderEntries).catch(function(){})
-  }
-
-  window.clearLog = function(){
-    const list = document.getElementById('log-list')
-    if(list) while(list.firstChild) list.removeChild(list.firstChild)
-  }
-
-  window.addEventListener('log-entry', function(e){
-    const entry = e.detail
-    if(entry.source === _src) appendEntry(entry)
-  })
-
-  showLog('board')
-})()
+}
 </script>
 {% endblock %}

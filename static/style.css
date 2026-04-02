@@ -38,6 +38,7 @@
 
 /* ===== RESET ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: #111; height: 100%; }
 
 /* ===== BODY LANDSCAPE (default 480×320) ===== */
 body {
@@ -48,6 +49,8 @@ body {
   width: 480px;
   height: 320px;
   overflow: hidden;
+  position: relative;
+  margin: 0 auto;
   touch-action: manipulation;
   -webkit-user-select: none;
   user-select: none;
@@ -65,7 +68,7 @@ body {
 
 /* ===== LAYOUT VARIABILI ===== */
 :root {
-  --tabbar-h:    48px;
+  --tabbar-h:    36px;
   --statusbar-h: 20px;
   --body-h:      320px;
 }
@@ -105,6 +108,7 @@ body {
   background: var(--bg2);
   border-top: 1px solid var(--border);
   display: flex;
+  z-index: 9000;
 }
 .tab {
   flex: 1;
@@ -121,7 +125,7 @@ body {
   cursor: pointer;
 }
 .tab.active { color: var(--accent); }
-.tab svg { width: 20px; height: 20px; fill: currentColor; }
+.tab svg { width: 16px; height: 16px; fill: currentColor; }
 
 /* ===== BADGE CONNESSIONE ===== */
 #connection-badge { color: var(--danger); font-size: 14px; line-height: 1; }

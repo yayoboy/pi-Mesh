@@ -1,32 +1,8 @@
-fastapi
-uvicorn[standard]
-meshtastic
-pypubsub
-aiosqlite
-gpiozero
-smbus2
-
-# ── Core sensor libraries (smbus2-based, no extra deps) ───────────────────────
-RPi.bme280                          # BME280
-pi-ina219                           # INA219
-
-# ── Optional sensor libraries (install only for sensors you have) ─────────────
-# All adafruit-circuitpython-* packages require adafruit-blinka on Raspberry Pi.
-#
-# adafruit-blinka                           # Required for all Adafruit drivers below
-# bme680                                    # BME680
-# adafruit-circuitpython-bmp280             # BMP280
-# adafruit-circuitpython-bmp085             # BMP085 / BMP180
-# adafruit-circuitpython-sht31d             # SHT31
-# adafruit-circuitpython-shtc3              # SHTC3
-# adafruit-circuitpython-mcp9808            # MCP9808
-# adafruit-circuitpython-lps2x              # LPS22HB
-# adafruit-circuitpython-pm25               # PMSA003I
-# sensirion-i2c-driver                      # SEN5X (required)
-# sensirion-i2c-sen5x                       # SEN5X
-# adafruit-circuitpython-veml7700           # VEML7700
-# adafruit-circuitpython-tsl2591            # TSL2591
-# adafruit-circuitpython-rcwl9620           # RCWL-9620
-# adafruit-circuitpython-ina260             # INA260
-# adafruit-circuitpython-ina3221            # INA3221
-# adafruit-circuitpython-max1704x           # MAX17048
+fastapi>=0.115
+uvicorn>=0.29
+aiosqlite>=0.20
+meshtastic>=2.5
+jinja2>=3.1
+python-multipart>=0.0.9
+websockets>=13.0
+paho-mqtt>=2.0

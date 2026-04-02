@@ -1,55 +1,27 @@
+# config.py
 import os
 
-def parse_sensor_config(s: str) -> list:
-    result = []
-    if not s.strip():
-        return result
-    for entry in s.split(","):
-        entry = entry.strip()
-        try:
-            name, addr_str = entry.split(":")
-            result.append({"name": name.strip(), "address": int(addr_str.strip(), 16)})
-        except (ValueError, TypeError):
-            pass
-    return result
+SERIAL_PATH    = os.getenv('SERIAL_PATH', '/dev/ttyACM0')
+DB_PATH        = os.getenv('DB_PATH', 'data/mesh.db')
+LOG_LEVEL      = os.getenv('LOG_LEVEL', 'WARNING')
+NODE_CACHE_TTL = float(os.getenv('NODE_CACHE_TTL', '8.0'))
 
-# Percorsi
-SERIAL_PORT      = os.getenv("SERIAL_PORT", "/dev/ttyMESHTASTIC")
-DB_PERSISTENT    = os.getenv("DB_PERSISTENT", "/home/pi/meshtastic-pi/data/mesh.db")
-DB_RUNTIME       = "/tmp/mesh_runtime.db"
-DB_SYNC_INTERVAL = int(os.getenv("DB_SYNC_INTERVAL", "300"))
+MAP_LOCAL_TILES = os.getenv('MAP_LOCAL_TILES', '0') == '1'
+MAP_REGION      = os.getenv('MAP_REGION', 'italia')
 
-# GPIO encoder
-ENC1_A  = int(os.getenv("ENC1_A", "23"))
-ENC1_B  = int(os.getenv("ENC1_B", "24"))
-ENC1_SW = int(os.getenv("ENC1_SW", "22"))
-ENC2_A  = int(os.getenv("ENC2_A", "5"))
-ENC2_B  = int(os.getenv("ENC2_B", "6"))
-ENC2_SW = int(os.getenv("ENC2_SW", "13"))
-BUZZER_PIN = int(os.getenv("BUZZER_PIN", "0"))  # 0 = disabled
+# Alert thresholds
+ALERT_NODE_OFFLINE_MIN = int(os.getenv('ALERT_NODE_OFFLINE_MIN', '30'))
+ALERT_BATTERY_LOW      = int(os.getenv('ALERT_BATTERY_LOW', '20'))
+ALERT_RAM_HIGH         = int(os.getenv('ALERT_RAM_HIGH', '85'))
 
-# Sensori I2C
-I2C_SENSORS   = parse_sensor_config(os.getenv("I2C_SENSORS", ""))
-# I2C_AUTOSCAN=1 → scansiona il bus all'avvio; I2C_SENSORS sovrascrive i risultati per indirizzo
-I2C_AUTOSCAN  = os.getenv("I2C_AUTOSCAN", "1") not in ("0", "false", "no")
+# MQTT bridge
+MQTT_ENABLED = os.getenv('MQTT_ENABLED', '0') == '1'
 
-# Mappa
-MAP_BOUNDS = {
-    "lat_min": float(os.getenv("MAP_LAT_MIN", "41.0")),
-    "lat_max": float(os.getenv("MAP_LAT_MAX", "43.0")),
-    "lon_min": float(os.getenv("MAP_LON_MIN", "11.5")),
-    "lon_max": float(os.getenv("MAP_LON_MAX", "14.5")),
+REGION_BOUNDS: dict[str, dict[str, float]] = {
+    'italia':   {'lat_min': 35.0,  'lat_max': 47.5, 'lon_min':   6.5, 'lon_max':  18.5},
+    'francia':  {'lat_min': 41.3,  'lat_max': 51.1, 'lon_min':  -5.2, 'lon_max':   9.6},
+    'germania': {'lat_min': 47.3,  'lat_max': 55.1, 'lon_min':   5.9, 'lon_max':  15.0},
+    'spagna':   {'lat_min': 35.9,  'lat_max': 43.8, 'lon_min':  -9.3, 'lon_max':   4.3},
+    'europa':   {'lat_min': 34.0,  'lat_max': 72.0, 'lon_min': -25.0, 'lon_max':  45.0},
+    'mondo':    {'lat_min': -85.0, 'lat_max': 85.0, 'lon_min':-180.0, 'lon_max': 180.0},
 }
-MAP_ZOOM_MIN = int(os.getenv("MAP_ZOOM_MIN", "7"))
-MAP_ZOOM_MAX = int(os.getenv("MAP_ZOOM_MAX", "12"))
-
-# Display
-DISPLAY_ROTATION = int(os.getenv("DISPLAY_ROTATION", "0"))
-
-# UI
-UI_THEME   = os.getenv("UI_THEME", "dark")
-UI_ACCENT  = os.getenv("UI_ACCENT", "")
-
-# Limiti memoria
-MAX_MESSAGES_PER_CHANNEL = 200
-MAX_NODES_IN_MEMORY      = 100

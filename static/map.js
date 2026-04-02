@@ -11,6 +11,9 @@ let hopLinesLayer
 let tracerouteLayer
 let customMarkersLayer
 let customMarkersData = []
+let breadcrumbLayer
+const breadcrumbHistory = new Map()  // node_id → [{lat, lon, ts}, ...]
+const BREADCRUMB_MAX = 20            // Max trail points per node
 let osmLayer = null
 let topoLayer = null
 let satelliteLayer = null
@@ -40,6 +43,7 @@ function makeSvgIcon(type, size, color) {
 const DEFAULT_FILTERS = {
   showOnline: true, showOffline: false,
   showHopLines: true, showCustomMarkers: true, showLocalNode: true,
+  showBreadcrumbs: true,
   maxHops: 7,
 }
 
@@ -76,6 +80,10 @@ function applyFilters() {
   else                     leafletMap.removeLayer(hopLinesLayer)
   if (f.showCustomMarkers) customMarkersLayer.addTo(leafletMap)
   else                     leafletMap.removeLayer(customMarkersLayer)
+  if (breadcrumbLayer) {
+    if (f.showBreadcrumbs) breadcrumbLayer.addTo(leafletMap)
+    else                   leafletMap.removeLayer(breadcrumbLayer)
+  }
 }
 
 function initFilters() {
@@ -93,6 +101,7 @@ function initFilters() {
       saveFilters(nf)
       applyFilters()
       renderHopLines()
+      renderBreadcrumbs()
     }
   }
 
@@ -115,6 +124,7 @@ function initFilters() {
   bindCheckbox('filter-offline',  'showOffline')
   bindCheckbox('filter-hoplines', 'showHopLines')
   bindCheckbox('filter-markers',  'showCustomMarkers')
+  bindCheckbox('filter-breadcrumbs', 'showBreadcrumbs')
   bindCheckbox('filter-local',    'showLocalNode')
   bindRange('filter-maxhops',     'maxHops')
 }
@@ -150,36 +160,112 @@ function renderHopLines() {
   })
 }
 
+function recordBreadcrumb(nodeId, lat, lon) {
+  if (!lat || !lon) return
+  var history = breadcrumbHistory.get(nodeId)
+  if (!history) {
+    history = []
+    breadcrumbHistory.set(nodeId, history)
+  }
+  // Skip if same position as last point
+  var last = history[history.length - 1]
+  if (last && last.lat === lat && last.lon === lon) return
+  history.push({ lat: lat, lon: lon, ts: Date.now() / 1000 })
+  if (history.length > BREADCRUMB_MAX) history.shift()
+}
+
+function renderBreadcrumbs() {
+  if (!mapReady || !breadcrumbLayer) return
+  breadcrumbLayer.clearLayers()
+  var f = loadFilters()
+  if (!f.showBreadcrumbs) return
+  breadcrumbHistory.forEach(function(history, nodeId) {
+    if (history.length < 2) return
+    var node = nodeCache.get(nodeId)
+    if (!node || node.is_local) return
+    // Draw trail segments with fading opacity
+    for (var i = 0; i < history.length - 1; i++) {
+      var opacity = 0.2 + (0.6 * (i / (history.length - 1)))
+      var line = L.polyline(
+        [[history[i].lat, history[i].lon], [history[i + 1].lat, history[i + 1].lon]],
+        { color: '#4a9eff', weight: 2, opacity: opacity, dashArray: '4,4' }
+      )
+      breadcrumbLayer.addLayer(line)
+    }
+    // Circle at each trail point
+    history.forEach(function(pt, idx) {
+      var r = idx === history.length - 1 ? 4 : 2
+      var circle = L.circleMarker([pt.lat, pt.lon], {
+        radius: r, color: '#4a9eff', fillColor: '#4a9eff',
+        fillOpacity: 0.2 + (0.6 * (idx / (history.length - 1))),
+        weight: 1
+      })
+      breadcrumbLayer.addLayer(circle)
+    })
+  })
+}
+
 // --- Traceroute path ---
 
 function renderTraceroutePath(hops) {
   if (!mapReady) return
   tracerouteLayer.clearLayers()
-  var latlngs = []
+  // Build array of {latlng, node} for each hop
+  var hopNodes = []
   hops.forEach(function(nodeId) {
     var n = nodeCache.get(nodeId)
-    if (n && n.latitude && n.longitude) latlngs.push([n.latitude, n.longitude])
+    if (n && n.latitude && n.longitude) {
+      hopNodes.push({ latlng: [n.latitude, n.longitude], node: n })
+    }
   })
-  if (latlngs.length < 2) return
-  L.polyline(latlngs, {
-    color: '#ffd54f', weight: 4, opacity: 0.85, dashArray: '10,6'
-  }).addTo(tracerouteLayer)
-  for (var i = 0; i < latlngs.length - 1; i++) {
+  if (hopNodes.length < 2) return
+
+  // Draw per-hop segments colored by SNR of destination node
+  for (var i = 0; i < hopNodes.length - 1; i++) {
+    var destNode = hopNodes[i + 1].node
+    var color = snrColor(destNode.snr)
+    L.polyline(
+      [hopNodes[i].latlng, hopNodes[i + 1].latlng],
+      { color: color, weight: 4, opacity: 0.85, dashArray: '10,6' }
+    ).addTo(tracerouteLayer)
+
+    // Midpoint marker with hop number
     var mid = [
-      (latlngs[i][0] + latlngs[i + 1][0]) / 2,
-      (latlngs[i][1] + latlngs[i + 1][1]) / 2,
+      (hopNodes[i].latlng[0] + hopNodes[i + 1].latlng[0]) / 2,
+      (hopNodes[i].latlng[1] + hopNodes[i + 1].latlng[1]) / 2,
     ]
-    L.circleMarker(mid, {
-      radius: 3, color: '#ffd54f', fillColor: '#ffd54f', fillOpacity: 1
-    }).addTo(tracerouteLayer)
+    var hopLabel = L.divIcon({
+      html: '<div style="width:16px;height:16px;background:' + color +
+            ';border-radius:50%;border:1px solid #fff;display:flex;align-items:center;' +
+            'justify-content:center;font-size:8px;font-weight:700;color:#fff;">' +
+            (i + 1) + '</div>',
+      className: '',
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+    })
+    L.marker(mid, { icon: hopLabel, interactive: false }).addTo(tracerouteLayer)
   }
+
+  // Node markers at hop endpoints with SNR tooltip
+  hopNodes.forEach(function(hp, idx) {
+    if (idx === 0) return  // skip source
+    var tip = (hp.node.short_name || hp.node.id) +
+      (hp.node.snr != null ? ' · SNR ' + hp.node.snr + 'dB' : '') +
+      (hp.node.rssi != null ? ' · RSSI ' + hp.node.rssi + 'dBm' : '')
+    L.circleMarker(hp.latlng, {
+      radius: 5, color: snrColor(hp.node.snr), fillColor: snrColor(hp.node.snr),
+      fillOpacity: 0.9, weight: 2
+    }).bindTooltip(tip, { permanent: false, direction: 'top', offset: [0, -8] })
+      .addTo(tracerouteLayer)
+  })
+
   tracerouteLayer.addTo(leafletMap)
   var badge    = document.getElementById('traceroute-badge')
   var badgeTxt = document.getElementById('traceroute-badge-text')
   if (badge && badgeTxt) {
     var last = nodeCache.get(hops[hops.length - 1])
     var name = (last && last.short_name) ? last.short_name : hops[hops.length - 1]
-    badgeTxt.textContent = 'Traceroute: ' + name + ' (' + (latlngs.length - 1) + ' hop)'
+    badgeTxt.textContent = 'Traceroute: ' + name + ' (' + (hopNodes.length - 1) + ' hop)'
     badge.style.display = 'flex'
   }
 }
@@ -278,21 +364,14 @@ function initNodeContextMenu(marker, node) {
     }
 
     menuItem('poi', 'Invia DM', function() {
-      window.location.href = '/messages?open_dm=' + encodeURIComponent(node.id)
+      var text = window.prompt('Messaggio a ' + (node.short_name || node.id) + ':')
+      if (text && typeof nodeActions !== 'undefined') nodeActions.sendDM(node.id, text)
     })
-    menuItem('poi', 'Richiedi posizione', function() {
-      fetch('/send', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ text: '', destination: node.id, type: 'position_request' }),
-      })
+    menuItem('antenna', 'Richiedi posizione', function() {
+      if (typeof nodeActions !== 'undefined') nodeActions.requestPosition(node.id)
     })
     menuItem('route', 'Traceroute', function() {
-      fetch('/api/traceroute', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ node_id: node.id }),
-      })
+      if (typeof nodeActions !== 'undefined') nodeActions.traceroute(node.id)
     })
 
     var pt    = leafletMap.latLngToContainerPoint(marker.getLatLng())
@@ -399,16 +478,72 @@ function showNodePopup(marker, node) {
   heard.style.cssText = 'color:var(--muted,#888);font-size:9px;margin-bottom:7px;'
   heard.textContent = 'Sentito ' + formatAgo(node.last_heard)
 
-  // stat boxes: hops, SNR, battery
+  // stat boxes: hops, SNR, battery, distance
   var stats = document.createElement('div')
   stats.style.cssText = 'display:flex;gap:5px;'
+  var distLabel = node.distance_km != null ? node.distance_km.toFixed(1) + 'km' : '\u2014'
   stats.append(
     makeStatBox(node.hop_count != null ? String(node.hop_count) : '\u2014', 'Hops'),
     makeStatBox(node.snr      != null ? node.snr + ' dB'        : '\u2014', 'SNR'),
-    makeStatBox(node.battery_level != null ? node.battery_level + '%' : '\u2014', 'Batt')
+    makeStatBox(node.battery_level != null ? node.battery_level + '%' : '\u2014', 'Batt'),
+    makeStatBox(distLabel, 'Dist')
   )
 
-  popup.append(header, meta, heard, stats)
+  // Advanced stat boxes: RSSI, altitude, role, firmware
+  var stats2 = document.createElement('div')
+  stats2.style.cssText = 'display:flex;gap:5px;margin-top:4px;'
+  stats2.append(
+    makeStatBox(node.rssi != null ? node.rssi + ' dBm' : '\u2014', 'RSSI'),
+    makeStatBox(node.altitude != null ? Math.round(node.altitude) + 'm' : '\u2014', 'Alt'),
+    makeStatBox(node.role || '\u2014', 'Ruolo'),
+    makeStatBox(node.firmware_version || '\u2014', 'FW')
+  )
+
+  popup.append(header, meta, heard, stats, stats2)
+
+  if (!node.is_local) {
+    var actions = document.createElement('div')
+    actions.style.cssText = 'display:flex;gap:4px;margin-top:7px;flex-wrap:wrap;'
+
+    var trBtn = document.createElement('button')
+    trBtn.style.cssText = 'flex:1;padding:4px 6px;background:var(--panel,#12151f);border:1px solid var(--border,#2a3a4a);border-radius:3px;color:var(--text,#ccc);font-size:9px;cursor:pointer;display:flex;align-items:center;gap:3px;'
+    trBtn.textContent = 'Traceroute'
+    trBtn.onclick = function(e) {
+      e.stopPropagation()
+      popup.style.display = 'none'
+      if (typeof nodeActions !== 'undefined') {
+        nodeActions.traceroute(node.id).catch(function() {
+          if (typeof showToast === 'function') showToast('Traceroute fallito', 'warn')
+        })
+      }
+    }
+
+    var posBtn = document.createElement('button')
+    posBtn.style.cssText = trBtn.style.cssText
+    posBtn.textContent = 'Posiz.'
+    posBtn.onclick = function(e) {
+      e.stopPropagation()
+      popup.style.display = 'none'
+      if (typeof nodeActions !== 'undefined') nodeActions.requestPosition(node.id)
+    }
+
+    var dmBtn = document.createElement('button')
+    dmBtn.style.cssText = trBtn.style.cssText
+    dmBtn.textContent = 'DM'
+    dmBtn.onclick = function(e) {
+      e.stopPropagation()
+      popup.style.display = 'none'
+      var text = window.prompt('Messaggio a ' + (node.short_name || node.id) + ':')
+      if (text && typeof nodeActions !== 'undefined') {
+        nodeActions.sendDM(node.id, text).catch(function() {
+          if (typeof showToast === 'function') showToast('DM fallito', 'warn')
+        })
+      }
+    }
+
+    actions.append(trBtn, posBtn, dmBtn)
+    popup.appendChild(actions)
+  }
 
   // Position next to marker
   var pt    = leafletMap.latLngToContainerPoint(marker.getLatLng())
@@ -443,6 +578,7 @@ function initMapIfNeeded() {
   hopLinesLayer = L.layerGroup()
   tracerouteLayer = L.layerGroup()
   customMarkersLayer = L.layerGroup()
+  breadcrumbLayer = L.layerGroup()
   var el = document.getElementById('map-container')
   if (!el) return
   var bounds = JSON.parse(el.dataset.bounds || 'null')
@@ -473,7 +609,10 @@ function initMapIfNeeded() {
   leafletMap = L.map('map-container', {
     center: center, zoom: zoom, zoomControl: false,
     maxZoom: zoomMax,
-    tap: true,
+    tap: false,
+    touchZoom: false,
+    scrollWheelZoom: false,
+    boxZoom: false,
   })
 
   // Save view on move/zoom
@@ -483,17 +622,31 @@ function initMapIfNeeded() {
   })
 
   var tileOpts       = { maxZoom: zoomMax }
-  osmLayer       = L.tileLayer('/tiles/osm/{z}/{x}/{y}',       tileOpts)
-  topoLayer      = L.tileLayer('/tiles/topo/{z}/{x}/{y}',      tileOpts)
-  satelliteLayer = L.tileLayer('/tiles/satellite/{z}/{x}/{y}', tileOpts)
+  var localTiles     = window.MAP_LOCAL_TILES === '1'
+  osmLayer       = localTiles
+    ? L.tileLayer('/static/tiles/osm/{z}/{x}/{y}', tileOpts)
+    : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', Object.assign({ attribution: '© OSM' }, tileOpts))
+  topoLayer      = localTiles
+    ? L.tileLayer('/static/tiles/topo/{z}/{x}/{y}', tileOpts)
+    : L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', Object.assign({ attribution: '© OpenTopoMap' }, tileOpts))
+  satelliteLayer = localTiles
+    ? L.tileLayer('/static/tiles/satellite/{z}/{x}/{y}', tileOpts)
+    : L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', Object.assign({ attribution: '© Esri' }, tileOpts))
   activeLayer    = osmLayer
   osmLayer.addTo(leafletMap)
-  L.control.zoom({ position: 'bottomright' }).addTo(leafletMap)
+  L.control.zoom({ position: 'bottomleft' }).addTo(leafletMap)
 
   hopLinesLayer.addTo(leafletMap)
   customMarkersLayer.addTo(leafletMap)
+  breadcrumbLayer.addTo(leafletMap)
 
   nodeCache.forEach(function(node) { updateMapMarker(node) })
+  // Seed breadcrumb with current positions
+  nodeCache.forEach(function(node) {
+    if (node.latitude && node.longitude) {
+      recordBreadcrumb(node.id, node.latitude, node.longitude)
+    }
+  })
   mapReady = true
 
   initFilters()
@@ -504,9 +657,30 @@ function initMapIfNeeded() {
   // Invalidate size after delay to ensure container is visible
   setTimeout(function() { leafletMap.invalidateSize() }, 200)
 
-  var trNode = new URLSearchParams(window.location.search).get('traceroute')
+  // WebKit2GTK converts touch drag to wheel events — intercept and pan instead of zoom
+  leafletMap.getContainer().addEventListener('wheel', function(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    leafletMap.panBy([e.deltaX, e.deltaY], { animate: false })
+  }, { passive: false })
+
+  var params = new URLSearchParams(window.location.search)
+
+  // Focus on specific node from ?focus=nodeId
+  var focusNode = params.get('focus')
+  if (focusNode) {
+    var fn = nodeCache.get(focusNode)
+    if (fn && fn.latitude && fn.longitude) {
+      leafletMap.setView([fn.latitude, fn.longitude], Math.max(leafletMap.getZoom(), 13))
+      var fm = markerCache.get(focusNode)
+      if (fm) setTimeout(function() { showNodePopup(fm, fn) }, 400)
+    }
+  }
+
+  // Auto-load traceroute from ?traceroute=nodeId
+  var trNode = params.get('traceroute')
   if (trNode) {
-    fetch('/api/traceroute/' + encodeURIComponent(trNode))
+    fetch('/api/nodes/' + encodeURIComponent(trNode) + '/traceroute')
       .then(function(r) { return r.json() })
       .then(function(data) {
         if (data.results && data.results[0]) renderTraceroutePath(data.results[0].hops)
@@ -574,3 +748,16 @@ function updateMapMarker(node) {
 
 window.addEventListener('node-update',       function(e) { updateMapMarker(e.detail) })
 window.addEventListener('traceroute_result', function(e) { renderTraceroutePath(e.detail.hops) })
+window.addEventListener('position-update', function(e) {
+  var d = e.detail
+  var node = nodeCache.get(d.id)
+  if (node) {
+    node.latitude   = d.latitude
+    node.longitude  = d.longitude
+    node.last_heard = d.last_heard
+    if (d.altitude != null) node.altitude = d.altitude
+    recordBreadcrumb(d.id, d.latitude, d.longitude)
+    updateMapMarker(node)
+    renderBreadcrumbs()
+  }
+})

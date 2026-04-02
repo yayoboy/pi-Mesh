@@ -516,15 +516,25 @@ function applyAccent(color) {
 
 function selectTheme(theme) {
   _currentTheme = theme
-  document.body.className = 'theme-' + theme
-  document.documentElement.className = 'theme-' + theme
   document.getElementById('custom-theme-section').style.display = theme === 'custom' ? '' : 'none'
   document.querySelectorAll('.theme-btn').forEach(function(b) {
     b.style.outline = b.dataset.theme === theme ? '2px solid var(--accent)' : 'none'
   })
   if (theme === 'custom') {
+    // Capture current theme colors BEFORE switching class
+    var style = getComputedStyle(document.documentElement)
+    var vars = ['--bg','--bg2','--text','--muted','--border','--accent','--ok','--warn','--danger']
+    var captured = {}
+    vars.forEach(function(v) { captured[v] = style.getPropertyValue(v).trim() })
+    // Switch class
+    document.body.className = 'theme-custom'
+    document.documentElement.className = 'theme-custom'
+    // Apply captured colors as inline styles so the page doesn't go blank
+    vars.forEach(function(v) { if (captured[v]) document.documentElement.style.setProperty(v, captured[v]) })
     _loadCustomColors()
   } else {
+    document.body.className = 'theme-' + theme
+    document.documentElement.className = 'theme-' + theme
     document.documentElement.removeAttribute('style')
     if (_pendingAccent) {
       document.documentElement.style.setProperty('--accent', _pendingAccent)

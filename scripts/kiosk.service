@@ -1,0 +1,17 @@
+[Unit]
+Description=Kiosk Browser (Surf + X11)
+After=network.target pimesh.service
+Requires=pimesh.service
+
+[Service]
+User=pimesh
+PAMName=login
+Environment=DISPLAY=:0
+Environment=HOME=/home/pimesh
+ExecStartPre=/bin/sleep 3
+ExecStart=/usr/bin/xinit /home/pimesh/start-kiosk.sh -- :0 vt1 -nolisten tcp
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block content %}
+<div x-data="metricsPage()" x-init="init()" style="height:100%;overflow-y:auto;padding:10px 12px;">
+
+  <!-- RPi Section -->
+  <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Raspberry Pi</div>
+  <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">
+
+    <div style="background:var(--panel);border-radius:6px;padding:8px 10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:11px;color:var(--muted);">CPU Temp</span>
+        <span style="font-size:14px;font-weight:700;" x-text="rpi.cpu_temp != null ? rpi.cpu_temp + ' C' : '—'"></span>
+      </div>
+      <canvas x-ref="chartCpuTemp" height="40" style="width:100%;margin-top:4px;"></canvas>
+    </div>
+
+    <div style="background:var(--panel);border-radius:6px;padding:8px 10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:11px;color:var(--muted);">CPU</span>
+        <span style="font-size:14px;font-weight:700;" x-text="rpi.cpu_percent != null ? rpi.cpu_percent + '%' : '—'"></span>
+      </div>
+      <canvas x-ref="chartCpuPct" height="40" style="width:100%;margin-top:4px;"></canvas>
+    </div>
+
+    <div style="background:var(--panel);border-radius:6px;padding:8px 10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="font-size:11px;color:var(--muted);">RAM</span>
+        <span style="font-size:11px;" x-text="rpi.ram_used_mb + ' / ' + rpi.ram_total_mb + ' MB'"></span>
+      </div>
+      <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
+        <div style="height:100%;border-radius:3px;transition:width 0.5s;"
+             :style="'width:' + rpi.ram_percent + '%;background:' + (rpi.ram_percent > 85 ? '#ef4444' : 'var(--accent)')"></div>
+      </div>
+    </div>
+
+    <div style="background:var(--panel);border-radius:6px;padding:8px 10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="font-size:11px;color:var(--muted);">Disco</span>
+        <span style="font-size:11px;" x-text="rpi.disk_used_mb + ' / ' + rpi.disk_total_mb + ' MB'"></span>
+      </div>
+      <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
+        <div style="height:100%;border-radius:3px;transition:width 0.5s;"
+             :style="'width:' + rpi.disk_percent + '%;background:' + (rpi.disk_percent > 85 ? '#ef4444' : 'var(--accent)')"></div>
+      </div>
+    </div>
+
+    <div style="background:var(--panel);border-radius:6px;padding:8px 10px;display:flex;justify-content:space-between;">
+      <span style="font-size:11px;color:var(--muted);">Uptime</span>
+      <span style="font-size:11px;" x-text="formatUptime(rpi.uptime_seconds)"></span>
+    </div>
+  </div>
+
+  <!-- Board Meshtastic Section -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);">Board Meshtastic</div>
+    <div style="display:flex;gap:4px;">
+      <a href="/api/export/telemetry?format=csv" download
+         style="font-size:9px;padding:2px 8px;background:var(--panel);border:1px solid var(--border);
+                border-radius:3px;color:var(--text);text-decoration:none;cursor:pointer;">CSV</a>
+      <a href="/api/export/telemetry?format=json" download
+         style="font-size:9px;padding:2px 8px;background:var(--panel);border:1px solid var(--border);
+                border-radius:3px;color:var(--text);text-decoration:none;cursor:pointer;">JSON</a>
+    </div>
+  </div>
+
+  <div x-show="Object.keys(nodesTelemetry).length === 0" style="font-size:11px;color:var(--muted);padding:10px 0;">
+    Nessuna telemetria ricevuta
+  </div>
+
+  <template x-for="(info, nid) in nodesTelemetry" :key="nid">
+    <div style="background:var(--panel);border-radius:6px;padding:10px;margin-bottom:8px;">
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px;" x-text="info.short_name || nid"></div>
+
+      <template x-if="info.device">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:60px;background:var(--bg);border-radius:4px;padding:6px;text-align:center;">
+            <div style="font-size:12px;font-weight:700;" x-text="info.device.data.battery_level != null ? info.device.data.battery_level + '%' : '—'"></div>
+            <div style="font-size:9px;color:var(--muted);">Batt</div>
+          </div>
+          <div style="flex:1;min-width:60px;background:var(--bg);border-radius:4px;padding:6px;text-align:center;">
+            <div style="font-size:12px;font-weight:700;" x-text="info.device.data.voltage != null ? info.device.data.voltage.toFixed(2) + 'V' : '—'"></div>
+            <div style="font-size:9px;color:var(--muted);">Volt</div>
+          </div>
+          <div style="flex:1;min-width:60px;background:var(--bg);border-radius:4px;padding:6px;text-align:center;">
+            <div style="font-size:12px;font-weight:700;" x-text="info.device.data.channel_utilization != null ? info.device.data.channel_utilization.toFixed(1) + '%' : '—'"></div>
+            <div style="font-size:9px;color:var(--muted);">ChUtil</div>
+          </div>
+          <div style="flex:1;min-width:60px;background:var(--bg);border-radius:4px;padding:6px;text-align:center;">
+            <div style="font-size:12px;font-weight:700;" x-text="info.device.data.air_util_tx != null ? info.device.data.air_util_tx.toFixed(1) + '%' : '—'"></div>
+            <div style="font-size:9px;color:var(--muted);">AirTX</div>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="info.environment">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+          <div style="flex:1;min-width:60px;background:var(--bg);border-radius:4px;padding:6px;text-align:center;">
+            <div style="font-size:12px;font-weight:700;" x-text="info.environment.data.temperature != null ? info.environment.data.temperature.toFixed(1) + ' C' : '—'"></div>
+            <div style="font-size:9px;color:var(--muted);">Temp</div>
+          </div>
+          <div style="flex:1;min-width:60px;background:var(--bg);border-radius:4px;padding:6px;text-align:center;">
+            <div style="font-size:12px;font-weight:700;" x-text="info.environment.data.relative_humidity != null ? info.environment.data.relative_humidity.toFixed(0) + '%' : '—'"></div>
+            <div style="font-size:9px;color:var(--muted);">Umid</div>
+          </div>
+          <div style="flex:1;min-width:60px;background:var(--bg);border-radius:4px;padding:6px;text-align:center;">
+            <div style="font-size:12px;font-weight:700;" x-text="info.environment.data.barometric_pressure != null ? info.environment.data.barometric_pressure.toFixed(0) + ' hPa' : '—'"></div>
+            <div style="font-size:9px;color:var(--muted);">Press</div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </template>
+</div>
+
+<script>
+function metricsPage() {
+  return {
+    rpi: { cpu_temp: null, cpu_percent: null, ram_total_mb: 0, ram_used_mb: 0, ram_percent: 0,
+           disk_total_mb: 0, disk_used_mb: 0, disk_percent: 0, uptime_seconds: 0 },
+    nodesTelemetry: {},
+    _rpiHistory: { cpu_temp: [], cpu_pct: [] },
+    _interval: null,
+    _wsHandler: null,
+
+    async init() {
+      await this.loadRpi()
+      await this.loadNodeTelemetry()
+      this._interval = setInterval(() => { this.loadRpi(); this.loadNodeTelemetry() }, 30000)
+
+      this._wsHandler = (e) => {
+        const msg = e.detail
+        if (msg.type === 'rpi_telemetry') {
+          this.rpi = msg.data
+          this._pushRpiHistory(msg.data)
+        }
+        if (msg.type === 'telemetry') {
+          this._updateNodeTelemetry(msg)
+        }
+      }
+      window.addEventListener('ws-message', this._wsHandler)
+    },
+
+    destroy() {
+      clearInterval(this._interval)
+      if (this._wsHandler) window.removeEventListener('ws-message', this._wsHandler)
+    },
+
+    async loadRpi() {
+      try {
+        const r = await fetch('/api/rpi/telemetry')
+        if (r.ok) {
+          this.rpi = await r.json()
+          this._pushRpiHistory(this.rpi)
+        }
+      } catch(e) {}
+    },
+
+    async loadNodeTelemetry() {
+      try {
+        const r = await fetch('/api/telemetry/latest')
+        if (r.ok) this.nodesTelemetry = await r.json()
+      } catch(e) {}
+    },
+
+    _updateNodeTelemetry(msg) {
+      const nid = msg.id
+      if (!this.nodesTelemetry[nid]) {
+        this.nodesTelemetry[nid] = { short_name: nid }
+      }
+      if (msg.ttype === 'device') {
+        this.nodesTelemetry[nid].device = { data: msg.data }
+      } else if (msg.ttype === 'environment') {
+        this.nodesTelemetry[nid].environment = { data: msg.data }
+      }
+    },
+
+    _pushRpiHistory(data) {
+      const max = 60
+      if (data.cpu_temp != null) {
+        this._rpiHistory.cpu_temp.push(data.cpu_temp)
+        if (this._rpiHistory.cpu_temp.length > max) this._rpiHistory.cpu_temp.shift()
+        this.$nextTick(() => this._drawChart(this.$refs.chartCpuTemp, this._rpiHistory.cpu_temp, '#4a9eff'))
+      }
+      if (data.cpu_percent != null) {
+        this._rpiHistory.cpu_pct.push(data.cpu_percent)
+        if (this._rpiHistory.cpu_pct.length > max) this._rpiHistory.cpu_pct.shift()
+        this.$nextTick(() => this._drawChart(this.$refs.chartCpuPct, this._rpiHistory.cpu_pct, '#22c55e'))
+      }
+    },
+
+    _drawChart(canvas, data, color) {
+      if (!canvas || data.length < 2) return
+      const ctx = canvas.getContext('2d')
+      const w = canvas.width = canvas.offsetWidth * (window.devicePixelRatio || 1)
+      const h = canvas.height = 40 * (window.devicePixelRatio || 1)
+      ctx.clearRect(0, 0, w, h)
+      const min = Math.min(...data) - 1
+      const max = Math.max(...data) + 1
+      const range = max - min || 1
+      const step = w / (data.length - 1)
+
+      ctx.beginPath()
+      ctx.strokeStyle = color
+      ctx.lineWidth = 1.5
+      data.forEach((v, i) => {
+        const x = i * step
+        const y = h - ((v - min) / range) * h * 0.85
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+      })
+      ctx.stroke()
+
+      ctx.lineTo((data.length - 1) * step, h)
+      ctx.lineTo(0, h)
+      ctx.closePath()
+      const grad = ctx.createLinearGradient(0, 0, 0, h)
+      grad.addColorStop(0, color + '33')
+      grad.addColorStop(1, color + '05')
+      ctx.fillStyle = grad
+      ctx.fill()
+    },
+
+    formatUptime(seconds) {
+      if (!seconds) return '—'
+      const d = Math.floor(seconds / 86400)
+      const h = Math.floor((seconds % 86400) / 3600)
+      const m = Math.floor((seconds % 3600) / 60)
+      if (d > 0) return d + 'g ' + h + 'h'
+      if (h > 0) return h + 'h ' + m + 'm'
+      return m + 'm'
+    },
+  }
+}
+</script>
+{% endblock %}
