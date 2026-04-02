@@ -51,7 +51,17 @@
   </div>
 
   <!-- Board Meshtastic Section -->
-  <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Board Meshtastic</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);">Board Meshtastic</div>
+    <div style="display:flex;gap:4px;">
+      <a href="/api/export/telemetry?format=csv" download
+         style="font-size:9px;padding:2px 8px;background:var(--panel);border:1px solid var(--border);
+                border-radius:3px;color:var(--text);text-decoration:none;cursor:pointer;">CSV</a>
+      <a href="/api/export/telemetry?format=json" download
+         style="font-size:9px;padding:2px 8px;background:var(--panel);border:1px solid var(--border);
+                border-radius:3px;color:var(--text);text-decoration:none;cursor:pointer;">JSON</a>
+    </div>
+  </div>
 
   <div x-show="Object.keys(nodesTelemetry).length === 0" style="font-size:11px;color:var(--muted);padding:10px 0;">
     Nessuna telemetria ricevuta

@@ -1,7 +1,11 @@
 # routers/metrics_router.py
 import asyncio
+import csv
+import io
+import json
+from datetime import datetime, timezone
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 import config as cfg
@@ -49,3 +53,47 @@ async def get_latest_telemetry():
 @router.get('/api/rpi/telemetry')
 async def get_rpi_telemetry():
     return rpi_telemetry.get_last() or rpi_telemetry.collect()
+
+
+@router.get('/api/export/telemetry')
+async def export_telemetry(node_id: str | None = None, ttype: str | None = None,
+                           format: str = 'csv', limit: int = 1000,
+                           since: int | None = None):
+    """Export telemetry data as CSV or JSON."""
+    rows = await database.get_telemetry(
+        cfg.DB_PATH, node_id=node_id, ttype=ttype, limit=limit, since=since
+    )
+    if format == 'json':
+        return Response(
+            content=json.dumps(rows, indent=2),
+            media_type='application/json',
+            headers={'Content-Disposition': 'attachment; filename=telemetry.json'},
+        )
+    # CSV
+    buf = io.StringIO()
+    if rows:
+        # Flatten data dict into columns
+        all_keys = set()
+        for r in rows:
+            if isinstance(r.get('data'), dict):
+                all_keys.update(r['data'].keys())
+        all_keys = sorted(all_keys)
+        fields = ['ts', 'ts_iso', 'node_id', 'ttype'] + all_keys
+        writer = csv.DictWriter(buf, fieldnames=fields)
+        writer.writeheader()
+        for r in rows:
+            row = {
+                'ts': r.get('ts'),
+                'ts_iso': datetime.fromtimestamp(r['ts'], tz=timezone.utc).isoformat() if r.get('ts') else '',
+                'node_id': r.get('node_id'),
+                'ttype': r.get('ttype'),
+            }
+            data = r.get('data', {})
+            if isinstance(data, dict):
+                row.update(data)
+            writer.writerow(row)
+    return Response(
+        content=buf.getvalue(),
+        media_type='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=telemetry.csv'},
+    )
