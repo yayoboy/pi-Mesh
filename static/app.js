@@ -125,6 +125,8 @@ function handleInit(msg) {
     const el = document.getElementById('node-name')
     if (el) el.textContent = local.short_name || local.id
     updateGpsBadge(local.latitude != null && local.longitude != null)
+    updateBatteryBadge(local.battery_level)
+    updateLoraBadge(local.snr)
   }
   window.dispatchEvent(new CustomEvent('ws-init', { detail: msg }))
   fetch('/api/wifi/status').then(r => r.json()).then(s => {
@@ -155,6 +157,8 @@ function handleNode(msg) {
     const el = document.getElementById('node-name')
     if (el) el.textContent = msg.short_name || msg.id
     updateGpsBadge(msg.latitude != null && msg.longitude != null)
+    updateBatteryBadge(msg.battery_level)
+    updateLoraBadge(msg.snr)
   }
 }
 
@@ -178,6 +182,10 @@ function handleTelemetry(msg) {
   if (node) {
     if (msg.battery_level != null) node.battery_level = msg.battery_level
     if (msg.snr != null) node.snr = msg.snr
+  }
+  // Update status bar for local node
+  if (node && node.is_local && msg.ttype === 'device' && msg.data) {
+    if (msg.data.battery_level != null) updateBatteryBadge(msg.data.battery_level)
   }
   // Battery low alert
   if (msg.ttype === 'device' && msg.data && msg.data.battery_level != null) {
@@ -227,9 +235,7 @@ function handleStatus(msg) {
 }
 
 function updateConnectionStatus(connected) {
-  const badge = document.getElementById('connection-badge')
-  if (!badge) return
-  badge.classList.toggle('connected', connected)
+  updateConnectionBadge(connected)
   if (_lastConnected !== connected) {
     if (_lastConnected !== null) {
       showToast(connected ? 'Connesso' : 'Disconnesso', connected ? 'ok' : 'warn')
@@ -240,12 +246,43 @@ function updateConnectionStatus(connected) {
 
 function updateGpsBadge(hasFix) {
   const el = document.getElementById('gps-badge')
-  if (el) el.style.color = hasFix ? 'var(--ok)' : 'var(--muted)'
+  if (el) el.style.color = hasFix ? '#4caf50' : 'var(--muted)'
 }
 
-function updateWifiBadge(connected) {
-  const el = document.getElementById('wifi-badge')
-  if (el) el.style.color = connected ? 'var(--ok)' : 'var(--muted)'
+function updateBatteryBadge(level) {
+  const badge = document.getElementById('battery-badge')
+  const fill = document.getElementById('batt-fill')
+  if (!badge || !fill) return
+  if (level == null) { badge.style.color = 'var(--muted)'; fill.setAttribute('width', '0'); return }
+  var w = Math.max(0, Math.min(14, Math.round(level / 100 * 14)))
+  fill.setAttribute('width', String(w))
+  if (level > 60) badge.style.color = '#4caf50'
+  else if (level > 20) badge.style.color = '#ff9800'
+  else badge.style.color = '#f44336'
+}
+
+function updateLoraBadge(snr) {
+  const badge = document.getElementById('lora-badge')
+  if (!badge) return
+  // SNR quality: >5=excellent, 0-5=good, -5-0=fair, <-5=poor
+  var bars = 0
+  var color = 'var(--muted)'
+  if (snr != null) {
+    if (snr > 5) { bars = 4; color = '#4caf50' }
+    else if (snr > 0) { bars = 3; color = '#8bc34a' }
+    else if (snr > -5) { bars = 2; color = '#ff9800' }
+    else { bars = 1; color = '#f44336' }
+  }
+  badge.style.color = color
+  for (var i = 1; i <= 4; i++) {
+    var r = document.getElementById('sig' + i)
+    if (r) r.setAttribute('opacity', i <= bars ? '1' : '0.25')
+  }
+}
+
+function updateConnectionBadge(connected) {
+  const el = document.getElementById('connection-badge')
+  if (el) el.style.color = connected ? '#4caf50' : 'var(--muted)'
 }
 
 // ===== BADGE MESSAGGI NON LETTI =====

@@ -393,6 +393,7 @@
           <button @click="applyTheme('dark')"  style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="currentTheme==='dark'?'background:var(--accent);color:#fff;border-color:var(--accent);':'background:var(--panel);color:var(--text);'">Dark</button>
           <button @click="applyTheme('light')" style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="currentTheme==='light'?'background:var(--accent);color:#fff;border-color:var(--accent);':'background:var(--panel);color:var(--text);'">Light</button>
           <button @click="applyTheme('hc')"    style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="currentTheme==='hc'?'background:var(--accent);color:#fff;border-color:var(--accent);':'background:var(--panel);color:var(--text);'">HC</button>
+          <button @click="applyTheme('custom')" style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="currentTheme==='custom'?'background:var(--accent);color:#fff;border-color:var(--accent);':'background:var(--panel);color:var(--text);'">Custom</button>
         </div>
         <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">Colore accento</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
@@ -402,10 +403,25 @@
                     :style="'background:' + c + ';border:2px solid ' + (currentAccent===c ? '#fff' : 'transparent') + ';'"></button>
           </template>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
           <label style="font-size:10px;color:var(--muted);">Personalizzato</label>
           <input type="color" x-model="currentAccent" @input="applyAccent($event.target.value)"
                  style="padding:2px;height:32px;width:48px;border:1px solid var(--border);border-radius:4px;background:var(--panel);cursor:pointer;">
+        </div>
+
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Colori personalizzati</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+          <template x-for="v in themeVars" :key="v.key">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input type="color" :value="v.value" @input="setThemeVar(v.key, $event.target.value)"
+                     style="padding:1px;height:28px;width:36px;border:1px solid var(--border);border-radius:4px;background:var(--panel);cursor:pointer;min-height:28px;">
+              <span style="font-size:9px;color:var(--muted);" x-text="v.label"></span>
+            </div>
+          </template>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:10px;">
+          <button @click="resetThemeVars()" style="flex:1;min-height:32px;font-size:11px;border-radius:4px;cursor:pointer;background:var(--panel);color:var(--text);border:1px solid var(--border);">Reset</button>
+          <button @click="saveCustomTheme()" style="flex:1;min-height:32px;font-size:11px;border-radius:4px;cursor:pointer;background:var(--accent);color:#fff;border:none;">Salva tema</button>
         </div>
       </div>
     </template>
@@ -1033,6 +1049,14 @@ function configPage() {
     currentTheme: localStorage.getItem('pimesh-theme') || 'dark',
     currentAccent: localStorage.getItem('pimesh-accent') || '#4a9eff',
     accentSwatches: ['#4a9eff','#4caf50','#ff9800','#e91e63','#9c27b0','#00bcd4','#ff5722'],
+    themeVars: [
+      { key: '--bg',     label: 'Sfondo',     value: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#060810' },
+      { key: '--panel',  label: 'Pannello',    value: getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#0d1017' },
+      { key: '--border', label: 'Bordo',       value: getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#1a2233' },
+      { key: '--text',   label: 'Testo',       value: getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#c9d1e0' },
+      { key: '--muted',  label: 'Secondario',  value: getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#4a5568' },
+      { key: '--accent', label: 'Accento',     value: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#4a9eff' },
+    ],
 
     applyTheme(theme) {
       this.currentTheme = theme
@@ -1056,13 +1080,46 @@ function configPage() {
         root.style.setProperty('--border', '#444444')
         root.style.setProperty('--text', '#ffffff')
         root.style.setProperty('--muted', '#aaaaaa')
+      } else if (theme === 'custom') {
+        try {
+          var saved = JSON.parse(localStorage.getItem('pimesh-custom-theme') || '{}')
+          Object.keys(saved).forEach(function(k) { root.style.setProperty(k, saved[k]) })
+        } catch(e) {}
       }
+      // Sync themeVars with current computed values
+      var cs = getComputedStyle(root)
+      if (this.themeVars) this.themeVars.forEach(function(v) { v.value = cs.getPropertyValue(v.key).trim() })
     },
 
     applyAccent(color) {
       this.currentAccent = color
       localStorage.setItem('pimesh-accent', color)
       document.documentElement.style.setProperty('--accent', color)
+      var v = this.themeVars.find(v => v.key === '--accent')
+      if (v) v.value = color
+    },
+
+    setThemeVar(key, value) {
+      document.documentElement.style.setProperty(key, value)
+      var v = this.themeVars.find(v => v.key === key)
+      if (v) v.value = value
+      if (key === '--accent') { this.currentAccent = value; localStorage.setItem('pimesh-accent', value) }
+    },
+
+    resetThemeVars() {
+      this.applyTheme(this.currentTheme)
+      var cs = getComputedStyle(document.documentElement)
+      this.themeVars.forEach(function(v) {
+        v.value = cs.getPropertyValue(v.key).trim()
+      })
+    },
+
+    saveCustomTheme() {
+      var custom = {}
+      this.themeVars.forEach(function(v) { custom[v.key] = v.value })
+      localStorage.setItem('pimesh-custom-theme', JSON.stringify(custom))
+      this.currentTheme = 'custom'
+      localStorage.setItem('pimesh-theme', 'custom')
     },
 
     // RTC

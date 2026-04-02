@@ -20,6 +20,25 @@
     .tab-active svg { stroke: var(--accent); }
   </style>
   <script>window.MAP_LOCAL_TILES = "{{ map_local_tiles }}";</script>
+  <script>
+  // Restore saved theme on load
+  (function() {
+    var root = document.documentElement
+    var theme = localStorage.getItem('pimesh-theme') || 'dark'
+    var presets = {
+      dark:  { '--bg':'#060810','--panel':'#0d1017','--border':'#1a2233','--text':'#c9d1e0','--muted':'#4a5568' },
+      light: { '--bg':'#f8fafc','--panel':'#ffffff','--border':'#e2e8f0','--text':'#1a202c','--muted':'#718096' },
+      hc:    { '--bg':'#000000','--panel':'#111111','--border':'#444444','--text':'#ffffff','--muted':'#aaaaaa' }
+    }
+    var vars = presets[theme]
+    if (theme === 'custom') {
+      try { vars = JSON.parse(localStorage.getItem('pimesh-custom-theme') || '{}') } catch(e) { vars = presets.dark }
+    }
+    if (vars) Object.keys(vars).forEach(function(k) { root.style.setProperty(k, vars[k]) })
+    var accent = localStorage.getItem('pimesh-accent')
+    if (accent) root.style.setProperty('--accent', accent)
+  })()
+  </script>
   {% block head %}{% endblock %}
 </head>
 <body class="h-full flex flex-col">
@@ -27,26 +46,50 @@
   <!-- Status bar -->
   <div id="statusbar" x-data="{ sysModal: '' }" class="flex items-center justify-between px-3 py-1 text-xs"
        style="background:var(--panel);border-bottom:1px solid var(--border);height:24px;">
-    <span style="color:var(--muted);">pi-Mesh</span>
-    <div class="flex gap-3 items-center" style="color:var(--muted);">
+    <span id="node-name" style="color:var(--muted);font-size:10px;">pi-Mesh</span>
+    <div class="flex gap-3 items-center">
+      <!-- Battery -->
+      <span id="battery-badge" title="Batteria" style="color:var(--muted);line-height:0;">
+        <svg width="14" height="12" viewBox="0 0 24 14" fill="none">
+          <rect x="1" y="1" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          <rect x="19" y="4" width="3" height="6" rx="1" fill="currentColor" opacity="0.4"/>
+          <rect id="batt-fill" x="3" y="3" width="0" height="8" rx="1" fill="currentColor"/>
+        </svg>
+      </span>
+      <!-- LoRa Signal -->
+      <span id="lora-badge" title="Segnale LoRa" style="color:var(--muted);line-height:0;">
+        <svg width="14" height="12" viewBox="0 0 16 14" fill="currentColor">
+          <rect id="sig1" x="0" y="10" width="3" height="4" rx="0.5" opacity="0.25"/>
+          <rect id="sig2" x="4.5" y="7" width="3" height="7" rx="0.5" opacity="0.25"/>
+          <rect id="sig3" x="9" y="3" width="3" height="11" rx="0.5" opacity="0.25"/>
+          <rect id="sig4" x="13" y="0" width="3" height="14" rx="0.5" opacity="0.25"/>
+        </svg>
+      </span>
+      <!-- GPS -->
+      <span id="gps-badge" title="GPS" style="color:var(--muted);line-height:0;">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+          <circle cx="12" cy="9" r="2.5"/>
+        </svg>
+      </span>
+      <!-- Board Connection -->
+      <span id="connection-badge" title="Board" style="color:var(--muted);line-height:0;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+        </svg>
+      </span>
       <!-- Reboot -->
-      <button @click="sysModal = 'reboot'" title="Riavvia" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;line-height:0;">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <button @click="sysModal = 'reboot'" title="Riavvia" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:0;line-height:0;min-height:0;width:auto;">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
         </svg>
       </button>
       <!-- Shutdown -->
-      <button @click="sysModal = 'shutdown'" title="Spegni" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;line-height:0;">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <button @click="sysModal = 'shutdown'" title="Spegni" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:0;line-height:0;min-height:0;width:auto;">
+        <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M5.636 5.636a9 9 0 1012.728 0M12 3v9"/>
         </svg>
       </button>
-      <!-- Connection -->
-      <span id="sb-conn">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="inline">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
-        </svg>
-      </span>
     </div>
 
     <!-- Modal conferma sistema -->
