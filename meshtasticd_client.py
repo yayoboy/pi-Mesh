@@ -42,10 +42,7 @@ def is_connected() -> bool:
 
 
 def get_nodes() -> list[dict]:
-    """Return cached node list. Refreshes from interface if TTL expired."""
-    global _node_cache, _last_node_fetch
-    if _connected and _interface and (time.time() - _last_node_fetch) > NODE_CACHE_TTL:
-        _refresh_node_cache()
+    """Return cached node list. Cache is refreshed by background connect loop every 30s."""
     return list(_node_cache.values())
 
 

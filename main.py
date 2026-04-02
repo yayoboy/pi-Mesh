@@ -79,6 +79,7 @@ async def lifespan(app: FastAPI):
     await asyncio.gather(*_tasks, return_exceptions=True)
     await mqtt_bridge.stop()
     await meshtasticd_client.disconnect()
+    await database.close()
 
 
 app = FastAPI(lifespan=lifespan)

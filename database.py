@@ -3,8 +3,40 @@ import aiosqlite
 import json
 import logging
 import time
+from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
+
+# Persistent connection (WAL mode allows concurrent reads with single writer)
+_db: aiosqlite.Connection | None = None
+_db_path: str | None = None
+
+
+@asynccontextmanager
+async def _get_db():
+    """Async context manager returning a persistent DB connection (no close on exit)."""
+    global _db
+    if _db is not None:
+        try:
+            await _db.execute('SELECT 1')
+        except Exception:
+            _db = None
+    if _db is None:
+        _db = await aiosqlite.connect(_db_path)
+        await _db.execute('PRAGMA journal_mode=WAL')
+        await _db.execute('PRAGMA busy_timeout=5000')
+    yield _db
+
+
+async def close() -> None:
+    """Close the persistent connection."""
+    global _db
+    if _db is not None:
+        try:
+            await _db.close()
+        except Exception:
+            pass
+        _db = None
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS nodes (
@@ -98,9 +130,11 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_node_ts ON telemetry(node_id, ts DESC);
 
 async def init(db_path: str) -> None:
     """Initialize DB with WAL mode and schema. Migrates old messages table if needed."""
+    global _db_path
+    _db_path = db_path
     import os
     os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else '.', exist_ok=True)
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         await db.execute('PRAGMA journal_mode=WAL')
         # Migrate messages table if schema predates M3 (node_id column missing)
         cursor = await db.execute("PRAGMA table_info(messages)")
@@ -134,7 +168,7 @@ async def init(db_path: str) -> None:
 
 
 async def upsert_node(db_path: str, node: dict) -> None:
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         await db.execute("""
             INSERT INTO nodes (id, short_name, long_name, latitude, longitude,
                 last_heard, snr, battery_level, hop_count, hw_model, is_local, raw_json,
@@ -163,7 +197,7 @@ async def bulk_upsert_nodes(db_path: str, nodes: list[dict]) -> None:
     """Upsert multiple nodes in a single transaction."""
     if not nodes:
         return
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         for node in nodes:
             await db.execute(
                 '''INSERT INTO nodes
@@ -206,7 +240,7 @@ async def bulk_upsert_nodes(db_path: str, nodes: list[dict]) -> None:
 
 
 async def get_all_nodes(db_path: str) -> list[dict]:
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             'SELECT * FROM nodes ORDER BY is_local DESC, last_heard DESC'
@@ -217,7 +251,7 @@ async def get_all_nodes(db_path: str) -> list[dict]:
 
 async def delete_node(db_path: str, node_id: str, purge: bool = False) -> None:
     """Delete a node from DB. If purge=True, also remove messages and telemetry."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         if purge:
             await db.execute('DELETE FROM messages WHERE node_id = ?', (node_id,))
             await db.execute('DELETE FROM packets WHERE from_id = ?', (node_id,))
@@ -227,7 +261,7 @@ async def delete_node(db_path: str, node_id: str, purge: bool = False) -> None:
 
 async def save_telemetry(db_path: str, node_id: str, ttype: str, data: dict) -> int:
     ts = int(time.time())
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         cursor = await db.execute(
             'INSERT INTO telemetry (ts, node_id, ttype, data_json) VALUES (?,?,?,?)',
             (ts, node_id, ttype, json.dumps(data))
@@ -239,7 +273,7 @@ async def save_telemetry(db_path: str, node_id: str, ttype: str, data: dict) -> 
 async def get_telemetry(db_path: str, node_id: str | None = None,
                         ttype: str | None = None, limit: int = 100,
                         since: int | None = None) -> list[dict]:
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         db.row_factory = aiosqlite.Row
         where = []
         params = []
@@ -268,13 +302,13 @@ async def get_telemetry(db_path: str, node_id: str | None = None,
 
 async def cleanup_telemetry(db_path: str, max_age_hours: int = 72) -> None:
     cutoff = int(time.time()) - (max_age_hours * 3600)
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         await db.execute('DELETE FROM telemetry WHERE ts < ?', (cutoff,))
         await db.commit()
 
 
 async def save_packet(db_path: str, from_id: str, packet_type: str, raw: dict) -> None:
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         await db.execute(
             'INSERT INTO packets (ts, from_id, packet_type, raw_json) VALUES (?,?,?,?)',
             (int(time.time()), from_id, packet_type, json.dumps(raw))
@@ -283,7 +317,7 @@ async def save_packet(db_path: str, from_id: str, packet_type: str, raw: dict) -
 
 
 async def get_markers(db_path: str) -> list[dict]:
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute('SELECT * FROM custom_markers ORDER BY id')
         rows = await cursor.fetchall()
@@ -292,7 +326,7 @@ async def get_markers(db_path: str) -> list[dict]:
 
 async def create_marker(db_path: str, label: str, icon_type: str,
                         latitude: float, longitude: float) -> dict:
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         cursor = await db.execute(
             'INSERT INTO custom_markers (label, icon_type, latitude, longitude) VALUES (?,?,?,?)',
             (label, icon_type, latitude, longitude)
@@ -304,7 +338,7 @@ async def create_marker(db_path: str, label: str, icon_type: str,
 
 
 async def delete_marker(db_path: str, marker_id: int) -> bool:
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         cursor = await db.execute(
             'DELETE FROM custom_markers WHERE id = ?', (marker_id,)
         )
@@ -316,7 +350,7 @@ async def save_message(
     db_path: str, node_id: str, channel: int, text: str,
     ts: int, is_outgoing: bool, rx_snr, hop_count, destination: str
 ) -> int:
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         cursor = await db.execute(
             '''INSERT INTO messages (node_id, channel, text, ts, is_outgoing, rx_snr, hop_count, ack, destination)
                VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)''',
@@ -329,7 +363,7 @@ async def save_message(
 async def get_messages(
     db_path: str, channel: int, limit: int = 50, before_id: int | None = None
 ) -> list[dict]:
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         db.row_factory = aiosqlite.Row
         if before_id is not None:
             cursor = await db.execute(
@@ -349,7 +383,7 @@ async def get_messages(
 
 async def update_message_ack(db_path: str, node_id: str) -> None:
     """Set ack=1 on the most recent outgoing message to node_id."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         await db.execute(
             '''UPDATE messages SET ack = 1
                WHERE id = (
@@ -363,7 +397,7 @@ async def update_message_ack(db_path: str, node_id: str) -> None:
 
 
 async def clear_messages(db_path: str) -> None:
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         await db.execute('DELETE FROM messages')
         await db.execute('DELETE FROM dm_reads')
         await db.commit()
@@ -371,14 +405,14 @@ async def clear_messages(db_path: str) -> None:
 
 async def cleanup_old_messages(db_path: str, days: int = 30) -> None:
     cutoff = int(time.time()) - days * 86400
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         await db.execute('DELETE FROM messages WHERE ts < ?', (cutoff,))
         await db.commit()
 
 
 async def get_dm_threads(db_path: str, local_id: str) -> list[dict]:
     """Return list of DM conversations with unread count, newest thread first."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         db.row_factory = aiosqlite.Row
         # Get distinct peer + last message per thread
         cursor = await db.execute("""
@@ -428,7 +462,7 @@ async def get_dm_messages(
     limit: int = 50, before_id: int | None = None
 ) -> list[dict]:
     """Return messages in a DM thread (both directions), oldest first."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         db.row_factory = aiosqlite.Row
         base_where = """destination != '^all' AND (
             (node_id = ? AND destination = ?) OR
@@ -452,7 +486,7 @@ async def get_dm_messages(
 
 async def mark_dm_read(db_path: str, peer_id: str) -> None:
     """Upsert dm_reads with current timestamp for peer_id."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         await db.execute(
             '''INSERT INTO dm_reads (peer_id, last_read_ts) VALUES (?, ?)
                ON CONFLICT(peer_id) DO UPDATE SET last_read_ts = excluded.last_read_ts''',
@@ -463,7 +497,7 @@ async def mark_dm_read(db_path: str, peer_id: str) -> None:
 
 async def get_total_unread(db_path: str, local_id: str) -> int:
     """Return total unread DM count across all peers."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         c = await db.execute('''
             SELECT COALESCE(SUM(cnt), 0) FROM (
                 SELECT COUNT(*) as cnt
@@ -480,7 +514,7 @@ async def get_total_unread(db_path: str, local_id: str) -> int:
 
 async def get_config_cache(db_path: str, section: str) -> dict | None:
     """Return cached config for section, or None if not cached."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute(
             'SELECT value FROM config_cache WHERE section = ? AND key = ?',
@@ -494,7 +528,7 @@ async def get_config_cache(db_path: str, section: str) -> dict | None:
 
 async def set_config_cache(db_path: str, section: str, data: dict) -> None:
     """Upsert config cache for section."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         await db.execute(
             'INSERT INTO config_cache (section, key, value, updated_at) VALUES (?, ?, ?, ?)'
             ' ON CONFLICT(section, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at',
@@ -505,7 +539,7 @@ async def set_config_cache(db_path: str, section: str, data: dict) -> None:
 
 async def get_gpio_devices(db_path: str) -> list[dict]:
     """Return all GPIO devices."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute('SELECT * FROM gpio_devices ORDER BY id')
         return [dict(r) for r in await cur.fetchall()]
@@ -513,7 +547,7 @@ async def get_gpio_devices(db_path: str) -> list[dict]:
 
 async def add_gpio_device(db_path: str, device: dict) -> int:
     """Insert a new GPIO device. Returns new id."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         cur = await db.execute(
             '''INSERT INTO gpio_devices
                (type, name, enabled, pin_a, pin_b, pin_sw, i2c_bus, i2c_address,
@@ -528,7 +562,7 @@ async def add_gpio_device(db_path: str, device: dict) -> int:
 
 async def update_gpio_device(db_path: str, device_id: int, device: dict) -> None:
     """Update an existing GPIO device."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         await db.execute(
             '''UPDATE gpio_devices SET
                type=:type, name=:name, enabled=:enabled, pin_a=:pin_a, pin_b=:pin_b,
@@ -542,6 +576,6 @@ async def update_gpio_device(db_path: str, device_id: int, device: dict) -> None
 
 async def delete_gpio_device(db_path: str, device_id: int) -> None:
     """Delete a GPIO device."""
-    async with aiosqlite.connect(db_path) as db:
+    async with _get_db() as db:
         await db.execute('DELETE FROM gpio_devices WHERE id = ?', (device_id,))
         await db.commit()
