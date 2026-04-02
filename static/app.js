@@ -158,13 +158,15 @@ function handleNode(msg) {
 }
 
 function handlePosition(msg) {
-  // msg = { type: 'position', id, latitude, longitude, last_heard }
+  // msg = { type: 'position', id, latitude, longitude, altitude, last_heard }
   const node = nodeCache.get(msg.id)
   if (node) {
     node.latitude   = msg.latitude
     node.longitude  = msg.longitude
+    if (msg.altitude != null) node.altitude = msg.altitude
     node.last_heard = msg.last_heard
     if (node.is_local) updateGpsBadge(true)
+    window.dispatchEvent(new CustomEvent('node-update', { detail: node }))
   }
   window.dispatchEvent(new CustomEvent('position-update', { detail: msg }))
 }

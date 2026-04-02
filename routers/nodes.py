@@ -3,6 +3,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 import meshtasticd_client
+import config as cfg
+import database
 
 router = APIRouter()
 templates = Jinja2Templates(directory='templates')
@@ -18,3 +20,9 @@ async def nodes_page(request: Request):
 @router.get('/api/nodes')
 async def api_nodes():
     return meshtasticd_client.get_nodes()
+
+
+@router.delete('/api/nodes/{node_id}')
+async def delete_node(node_id: str, purge: bool = False):
+    await database.delete_node(cfg.DB_PATH, node_id, purge=purge)
+    return {'ok': True}
