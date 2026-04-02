@@ -1,4 +1,5 @@
 # routers/config_router.py
+import asyncio
 import os
 import subprocess
 from fastapi import APIRouter, Request
@@ -161,7 +162,7 @@ async def test_gpio(dev_id: int):
     if dev is None:
         return JSONResponse({'error': 'Device not found'}, status_code=404)
     try:
-        result = _test_device(dev)
+        result = await asyncio.to_thread(_test_device, dev)
         return {'ok': True, 'result': result}
     except Exception as e:
         return JSONResponse({'ok': False, 'error': str(e)}, status_code=500)
@@ -241,7 +242,8 @@ def _parse_i2cdetect(output: str) -> list[dict]:
 @router.get('/api/config/i2c-scan')
 async def i2c_scan(bus: int = 1):
     try:
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             ['i2cdetect', '-y', str(bus)],
             capture_output=True, text=True, timeout=5
         )
@@ -255,7 +257,8 @@ async def i2c_scan(bus: int = 1):
 @router.get('/api/config/wifi/scan')
 async def wifi_scan():
     try:
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             ['nmcli', '-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list'],
             capture_output=True, text=True, timeout=10
         )
@@ -281,7 +284,8 @@ class WifiConnectRequest(BaseModel):
 @router.post('/api/config/wifi/connect')
 async def wifi_connect(body: WifiConnectRequest):
     try:
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             ['nmcli', 'dev', 'wifi', 'connect', body.ssid, 'password', body.password],
             capture_output=True, text=True, timeout=30
         )
@@ -296,7 +300,8 @@ async def wifi_connect(body: WifiConnectRequest):
 async def wifi_status():
     """Return current WiFi connection status: SSID, IP, signal, method."""
     try:
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             ['nmcli', '-t', '-f', 'NAME,DEVICE,TYPE', 'con', 'show', '--active'],
             capture_output=True, text=True, timeout=10
         )
@@ -310,7 +315,8 @@ async def wifi_status():
         ip_addr = ''
         method = 'auto'
         if active_ssid:
-            r2 = subprocess.run(
+            r2 = await asyncio.to_thread(
+                subprocess.run,
                 ['nmcli', '-t', '-f', 'IP4.ADDRESS,ipv4.method', 'con', 'show', active_ssid],
                 capture_output=True, text=True, timeout=10
             )
@@ -334,7 +340,8 @@ async def wifi_status():
 async def wifi_saved():
     """Return list of saved WiFi connection profiles."""
     try:
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             ['nmcli', '-t', '-f', 'NAME,TYPE', 'con', 'show'],
             capture_output=True, text=True, timeout=10
         )
@@ -351,8 +358,13 @@ async def wifi_saved():
 @router.delete('/api/config/wifi/saved/{name}')
 async def wifi_delete_saved(name: str):
     """Delete a saved WiFi connection profile."""
+    # Validate name against actual saved profiles to prevent arbitrary deletion
+    saved = await wifi_saved()
+    if name not in saved:
+        return JSONResponse({'error': 'Profile not found'}, status_code=404)
     try:
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             ['nmcli', 'con', 'delete', name],
             capture_output=True, text=True, timeout=10
         )
@@ -374,7 +386,8 @@ class WifiIpRequest(BaseModel):
 async def wifi_set_ip(body: WifiIpRequest):
     """Set IP configuration (DHCP or static) on active WiFi connection."""
     try:
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             ['nmcli', '-t', '-f', 'NAME,TYPE', 'con', 'show', '--active'],
             capture_output=True, text=True, timeout=10
         )
@@ -388,7 +401,8 @@ async def wifi_set_ip(body: WifiIpRequest):
             return JSONResponse({'error': 'No active WiFi connection'}, status_code=400)
 
         if body.method == 'auto':
-            subprocess.run(
+            await asyncio.to_thread(
+                subprocess.run,
                 ['nmcli', 'con', 'mod', con_name, 'ipv4.method', 'auto',
                  'ipv4.addresses', '', 'ipv4.gateway', '', 'ipv4.dns', ''],
                 capture_output=True, text=True, timeout=10
@@ -402,9 +416,10 @@ async def wifi_set_ip(body: WifiIpRequest):
                    'ipv4.gateway', body.gateway]
             if body.dns:
                 cmd += ['ipv4.dns', body.dns]
-            subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True, timeout=10)
 
-        subprocess.run(
+        await asyncio.to_thread(
+            subprocess.run,
             ['nmcli', 'con', 'up', con_name],
             capture_output=True, text=True, timeout=15
         )
@@ -417,7 +432,8 @@ async def wifi_set_ip(body: WifiIpRequest):
 async def ap_status():
     """Check if AP mode is active."""
     try:
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             ['nmcli', '-t', '-f', 'NAME,TYPE,DEVICE', 'con', 'show', '--active'],
             capture_output=True, text=True, timeout=10
         )
@@ -426,7 +442,8 @@ async def ap_status():
             if len(parts) >= 2 and 'wifi-p2p' in parts[1]:
                 return {'active': True, 'name': parts[0]}
         # Check hostapd
-        hostapd = subprocess.run(
+        hostapd = await asyncio.to_thread(
+            subprocess.run,
             ['systemctl', 'is-active', 'hostapd'], capture_output=True, text=True, timeout=5
         )
         if hostapd.stdout.strip() == 'active':
@@ -439,21 +456,21 @@ async def ap_status():
 @router.post('/api/config/ap/toggle')
 async def ap_toggle():
     """Toggle AP mode using auto_ap.sh or nmcli hotspot."""
-    import os
-    script = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scripts', 'auto_ap.sh')
     try:
         # Check if AP is already running
-        hostapd = subprocess.run(
+        hostapd = await asyncio.to_thread(
+            subprocess.run,
             ['systemctl', 'is-active', 'hostapd'], capture_output=True, text=True, timeout=5
         )
         if hostapd.stdout.strip() == 'active':
             # Stop AP
-            subprocess.run(['sudo', 'systemctl', 'stop', 'hostapd'], timeout=10)
-            subprocess.run(['sudo', 'systemctl', 'stop', 'dnsmasq'], timeout=10)
+            await asyncio.to_thread(subprocess.run, ['sudo', 'systemctl', 'stop', 'hostapd'], timeout=10)
+            await asyncio.to_thread(subprocess.run, ['sudo', 'systemctl', 'stop', 'dnsmasq'], timeout=10)
             return {'active': False, 'message': 'AP disattivato'}
         else:
             # Try nmcli hotspot first
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 ['nmcli', 'dev', 'wifi', 'hotspot', 'ifname', 'wlan0',
                  'ssid', 'pi-mesh-portal', 'password', 'meshtastic'],
                 capture_output=True, text=True, timeout=15
@@ -491,7 +508,8 @@ async def rtc_status():
     time_str = None
     if device:
         try:
-            result = subprocess.run(
+            result = await asyncio.to_thread(
+                subprocess.run,
                 ['hwclock', '-r', '--rtc=/dev/rtc0'],
                 capture_output=True, text=True, timeout=5
             )

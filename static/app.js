@@ -73,7 +73,8 @@ function reexecScripts(container) {
 
 // ===== WEBSOCKET =====
 function initWS() {
-  ws = new WebSocket(`ws://${window.location.host}/ws`)
+  const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  ws = new WebSocket(`${wsProto}//${window.location.host}/ws`)
 
   ws.onopen = () => {
     wsReady = true
@@ -448,7 +449,7 @@ function appendMessage(m) {
   const meta = document.createElement('div')
   meta.className = 'msg-meta'
   const name = nodeCache.get(m.node_id)?.short_name || m.node_id
-  const ts   = new Date(m.timestamp * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
+  const ts   = new Date((m.ts || m.timestamp) * 1000).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
   meta.textContent = (m.is_outgoing ? '' : name + ' \u00b7 ') + ts + (m.rx_snr != null ? ' \u00b7 ' + m.rx_snr + 'dB' : '') + (m.hop_count != null && m.hop_count > 0 ? ' \u00b7 ' + m.hop_count + 'hop' : '')
 
   if (m.is_outgoing) {

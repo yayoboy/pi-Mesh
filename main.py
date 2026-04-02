@@ -24,10 +24,8 @@ async def _broadcast_task() -> None:
     queue = meshtasticd_client.get_event_queue()
     while True:
         try:
-            event = queue.get_nowait()
+            event = await queue.get()
             await ws_router.manager.broadcast(event)
-        except asyncio.QueueEmpty:
-            await asyncio.sleep(0.05)
         except Exception as e:
             logging.getLogger(__name__).warning(f'Broadcast task error: {e}')
             await asyncio.sleep(0.1)
@@ -56,8 +54,7 @@ async def _telemetry_cleanup_task() -> None:
 
 async def _mqtt_ws_dispatch(event_type: str, data: dict):
     """Forward MQTT events to all connected WebSocket clients."""
-    from routers.ws_router import broadcast
-    await broadcast(event_type, data)
+    await ws_router.manager.broadcast({'type': event_type, **data})
 
 
 @asynccontextmanager
@@ -65,16 +62,21 @@ async def lifespan(app: FastAPI):
     await database.init(cfg.DB_PATH)
     await database.cleanup_old_messages(cfg.DB_PATH, days=30)
     await meshtasticd_client.load_nodes_from_db()    # populate cache from DB before board connects
-    asyncio.create_task(meshtasticd_client.connect())
-    asyncio.create_task(_broadcast_task())
-    asyncio.create_task(_rpi_telemetry_task())
-    asyncio.create_task(_telemetry_cleanup_task())
+    _tasks = [
+        asyncio.create_task(meshtasticd_client.connect()),
+        asyncio.create_task(_broadcast_task()),
+        asyncio.create_task(_rpi_telemetry_task()),
+        asyncio.create_task(_telemetry_cleanup_task()),
+    ]
     # Start MQTT bridge if configured
     mqtt_cfg = await meshtasticd_client.get_mqtt_config(cfg.DB_PATH)
     if mqtt_cfg.get('enabled'):
         mqtt_bridge.set_ws_dispatch(_mqtt_ws_dispatch)
-        asyncio.create_task(mqtt_bridge.start(mqtt_cfg))
+        _tasks.append(asyncio.create_task(mqtt_bridge.start(mqtt_cfg)))
     yield
+    for t in _tasks:
+        t.cancel()
+    await asyncio.gather(*_tasks, return_exceptions=True)
     await mqtt_bridge.stop()
     await meshtasticd_client.disconnect()
 

@@ -16,13 +16,21 @@ _dirty_nodes: set[str] = set()
 _last_node_fetch: float = 0.0
 _log_queue: deque = deque(maxlen=500)
 _subscribers: list = []
-_event_queue: asyncio.Queue = asyncio.Queue()
+_event_queue: asyncio.Queue = asyncio.Queue(maxsize=500)
 _loop: asyncio.AbstractEventLoop | None = None
 _traceroute_cache: dict[str, dict] = {}
 _command_queue: asyncio.Queue = asyncio.Queue()
 
 import config as cfg
 import database
+
+
+def _enqueue_event(event: dict) -> None:
+    """Thread-safe enqueue to _event_queue, dropping if full."""
+    try:
+        _event_queue.put_nowait(event)
+    except asyncio.QueueFull:
+        pass
 
 NODE_CACHE_TTL = cfg.NODE_CACHE_TTL
 
@@ -317,12 +325,12 @@ def _refresh_node_cache() -> None:
     global _node_cache, _last_node_fetch
     try:
         raw = _interface.nodes or {}
-        _node_cache = {}
+        new_cache = {}
         for node_id, info in raw.items():
             user = info.get('user', {})
             pos  = info.get('position', {})
             metrics = info.get('deviceMetrics', {})
-            _node_cache[node_id] = {
+            new_cache[node_id] = {
                 'id':            user.get('id', node_id),
                 'short_name':    user.get('shortName', ''),
                 'long_name':     user.get('longName', ''),
@@ -342,7 +350,8 @@ def _refresh_node_cache() -> None:
                 'public_key':       user.get('publicKey'),
                 'altitude':         pos.get('altitude'),
             }
-        _dirty_nodes.update(_node_cache.keys())
+        _dirty_nodes.update(new_cache.keys())
+        _node_cache = new_cache  # atomic swap
         _add_distances()
         _last_node_fetch = time.time()
     except Exception as e:
@@ -371,7 +380,7 @@ async def _save_incoming_message(
         'destination': dest,
     }
     if _loop is not None:
-        _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+        _loop.call_soon_threadsafe(_enqueue_event,typed_event)
 
 
 def _build_log_summary(portnum: str, decoded: dict) -> str:
@@ -422,7 +431,7 @@ def _build_log_summary(portnum: str, decoded: dict) -> str:
 
 
 def _on_receive(packet, interface) -> None:
-    from_id   = packet.get('fromId', '?')
+    from_id   = packet.get('fromId') or '?'
     portnum   = packet.get('decoded', {}).get('portnum', 'UNKNOWN')
     snr       = packet.get('rxSnr')
     hop_limit = packet.get('hopLimit')
@@ -445,7 +454,7 @@ def _on_receive(packet, interface) -> None:
     }
     _log_queue.append(log_event)
     if _loop is not None:
-        _loop.call_soon_threadsafe(_event_queue.put_nowait, log_event)
+        _loop.call_soon_threadsafe(_enqueue_event,log_event)
 
     if portnum == 'NODEINFO_APP':
         user = decoded.get('user', {})
@@ -470,7 +479,7 @@ def _on_receive(packet, interface) -> None:
             'altitude':         None,
         }
         if _loop is not None:
-            _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+            _loop.call_soon_threadsafe(_enqueue_event,typed_event)
 
     elif portnum == 'POSITION_APP':
         pos = decoded.get('position', {})
@@ -483,9 +492,9 @@ def _on_receive(packet, interface) -> None:
             'altitude':   pos.get('altitude'),
         }
         if _loop is not None:
-            _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+            _loop.call_soon_threadsafe(_enqueue_event,typed_event)
 
-    elif portnum == 'TELEMETRY_APP':
+    elif portnum == 'TELEMETRY_APP' and from_id != '?':
         telemetry = decoded.get('telemetry', {})
 
         # Device metrics
@@ -505,7 +514,7 @@ def _on_receive(packet, interface) -> None:
                 'data': tdata,
             }
             if _loop is not None:
-                _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+                _loop.call_soon_threadsafe(_enqueue_event,typed_event)
                 fut = asyncio.run_coroutine_threadsafe(
                     database.save_telemetry(cfg.DB_PATH, from_id, 'device', tdata), _loop
                 )
@@ -531,7 +540,7 @@ def _on_receive(packet, interface) -> None:
                 'data': tdata,
             }
             if _loop is not None:
-                _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+                _loop.call_soon_threadsafe(_enqueue_event,typed_event)
                 fut = asyncio.run_coroutine_threadsafe(
                     database.save_telemetry(cfg.DB_PATH, from_id, 'environment', tdata), _loop
                 )
@@ -551,7 +560,7 @@ def _on_receive(packet, interface) -> None:
                 'data': tdata,
             }
             if _loop is not None:
-                _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+                _loop.call_soon_threadsafe(_enqueue_event,typed_event)
                 fut = asyncio.run_coroutine_threadsafe(
                     database.save_telemetry(cfg.DB_PATH, from_id, 'power', tdata), _loop
                 )
@@ -571,7 +580,7 @@ def _on_receive(packet, interface) -> None:
                 'data': tdata,
             }
             if _loop is not None:
-                _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+                _loop.call_soon_threadsafe(_enqueue_event,typed_event)
                 fut = asyncio.run_coroutine_threadsafe(
                     database.save_telemetry(cfg.DB_PATH, from_id, 'air_quality', tdata), _loop
                 )
@@ -594,7 +603,7 @@ def _on_receive(packet, interface) -> None:
             'hops':    hops,
         }
         if _loop is not None:
-            _loop.call_soon_threadsafe(_event_queue.put_nowait, typed_event)
+            _loop.call_soon_threadsafe(_enqueue_event,typed_event)
 
     elif portnum == 'TEXT_MESSAGE_APP':
         text    = decoded.get('text', '')
@@ -625,7 +634,7 @@ def _on_receive(packet, interface) -> None:
                 if f.exception() else None
             )
             ack_event = {'type': 'ack', 'node_id': from_id}
-            _loop.call_soon_threadsafe(_event_queue.put_nowait, ack_event)
+            _loop.call_soon_threadsafe(_enqueue_event,ack_event)
 
     # Notify log subscribers
     failed = []
@@ -643,9 +652,7 @@ def _on_receive(packet, interface) -> None:
         _node_cache[from_id]['rssi'] = rx_rssi
         _dirty_nodes.add(from_id)
 
-    # Refresh node cache on any packet
-    if _connected and _interface:
-        _refresh_node_cache()
+    # Node cache is refreshed via TTL in get_nodes() and every 30s in connect()
 
 
 async def _flush_dirty(db_path: str) -> None:
