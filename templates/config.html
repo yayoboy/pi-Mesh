@@ -436,38 +436,6 @@
           </template>
         </div>
 
-        <!-- Custom color picker modal -->
-        <template x-if="cpOpen">
-          <div style="position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:12px;">
-            <div @click="cpOpen=false" style="position:fixed;inset:0;background:rgba(0,0,0,.65);"></div>
-            <div style="position:relative;z-index:1;width:280px;border-radius:8px;padding:12px;background:var(--panel);border:1px solid var(--border);">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                <span style="font-size:11px;font-weight:600;color:var(--text);" x-text="cpLabel"></span>
-                <button @click="cpOpen=false" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0;line-height:1;">✕</button>
-              </div>
-              <!-- Current preview + hex input -->
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                <span style="width:36px;height:36px;border-radius:6px;border:1px solid var(--border);flex-shrink:0;" :style="'background:' + cpValue"></span>
-                <input type="text" :value="cpValue" maxlength="7" @input="cpSetHex($event.target.value)"
-                       style="flex:1;height:32px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:monospace;font-size:12px;padding:0 8px;text-transform:uppercase;">
-              </div>
-              <!-- Color palette grid -->
-              <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;margin-bottom:8px;">
-                <template x-for="c in cpPalette" :key="c">
-                  <button @click="cpSelect(c)" style="width:100%;aspect-ratio:1;border-radius:3px;border:none;cursor:pointer;padding:0;"
-                          :style="'background:' + c + ';' + (cpValue===c ? 'box-shadow:0 0 0 2px #fff;' : '')"></button>
-                </template>
-              </div>
-              <!-- Grayscale row -->
-              <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;">
-                <template x-for="c in cpGrays" :key="c">
-                  <button @click="cpSelect(c)" style="width:100%;aspect-ratio:1;border-radius:3px;border:1px solid var(--border);cursor:pointer;padding:0;"
-                          :style="'background:' + c + ';' + (cpValue===c ? 'box-shadow:0 0 0 2px var(--accent);' : '')"></button>
-                </template>
-              </div>
-            </div>
-          </div>
-        </template>
         <div style="display:flex;gap:6px;margin-top:10px;">
           <button @click="resetThemeVars()" style="flex:1;min-height:32px;font-size:11px;border-radius:4px;cursor:pointer;background:var(--panel);color:var(--text);border:1px solid var(--border);">Reset</button>
           <button @click="saveCustomTheme()" style="flex:1;min-height:32px;font-size:11px;border-radius:4px;cursor:pointer;background:var(--accent);color:#fff;border:none;">Salva tema</button>
@@ -912,6 +880,47 @@
         </div>
       </div>
     </template>
+
+  <!-- Color picker modal — teleported to body to escape overflow:hidden container -->
+  <template x-teleport="body">
+    <div x-show="cpOpen"
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 flex items-center justify-center p-4"
+         @keydown.escape.window="cpOpen = false" style="display:none;">
+      <div @click="cpOpen=false" class="fixed inset-0" style="background:rgba(0,0,0,.65);"></div>
+      <div x-show="cpOpen"
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
+           class="relative z-10 rounded-lg p-3" style="width:280px;background:var(--panel);border:1px solid var(--border);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <span style="font-size:11px;font-weight:600;color:var(--text);" x-text="cpLabel"></span>
+          <button @click="cpOpen=false" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0;line-height:1;">✕</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span style="width:36px;height:36px;border-radius:6px;border:1px solid var(--border);flex-shrink:0;" :style="'background:' + cpValue"></span>
+          <input type="text" :value="cpValue" maxlength="7" @input="cpSetHex($event.target.value)"
+                 style="flex:1;height:32px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:monospace;font-size:12px;padding:0 8px;text-transform:uppercase;">
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;margin-bottom:8px;">
+          <template x-for="c in cpPalette" :key="c">
+            <button @click="cpSelect(c)" style="width:100%;aspect-ratio:1;border-radius:3px;border:none;cursor:pointer;padding:0;"
+                    :style="'background:' + c + ';' + (cpValue===c ? 'box-shadow:0 0 0 2px #fff;' : '')"></button>
+          </template>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;">
+          <template x-for="c in cpGrays" :key="c">
+            <button @click="cpSelect(c)" style="width:100%;aspect-ratio:1;border-radius:3px;border:1px solid var(--border);cursor:pointer;padding:0;"
+                    :style="'background:' + c + ';' + (cpValue===c ? 'box-shadow:0 0 0 2px var(--accent);' : '')"></button>
+          </template>
+        </div>
+      </div>
+    </div>
+  </template>
 
 </div><!-- /x-data -->
 
