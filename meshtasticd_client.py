@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 # --- State ---
 _interface      = None
 _connected      = False
+_is_connecting  = False
 _local_id: str  = ''
 _node_cache: dict[str, dict] = {}
 _dirty_nodes: set[str] = set()
@@ -705,7 +706,10 @@ async def _command_worker() -> None:
 
 
 async def connect() -> None:
-    global _interface, _connected, _local_id, _loop
+    global _interface, _connected, _is_connecting, _local_id, _loop
+    if _is_connecting:
+        return
+    _is_connecting = True
     import meshtastic.serial_interface
     from pubsub import pub
     _loop = asyncio.get_event_loop()    # capture event loop for threadsafe callbacks

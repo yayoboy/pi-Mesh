@@ -11,18 +11,18 @@ const messageCache = []
 const nodeActions = {
   traceroute: (nodeId) =>
     fetch(`/api/nodes/${encodeURIComponent(nodeId)}/traceroute`, { method: 'POST' })
-      .then(r => r.json()),
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.json() }),
 
   requestPosition: (nodeId) =>
     fetch(`/api/nodes/${encodeURIComponent(nodeId)}/request-position`, { method: 'POST' })
-      .then(r => r.json()),
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.json() }),
 
   sendDM: (nodeId, text) =>
     fetch('/api/messages/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ to: nodeId, text: text, channel: 0 }),
-    }).then(r => r.json()),
+    }).then(r => { if (!r.ok) throw new Error(r.status); return r.json() }),
 
   focusOnMap: (nodeId) => {
     navigateTo('map')

@@ -181,7 +181,7 @@
                   </svg>
                   Traceroute
                 </button>
-                <button class="action-btn" @click.stop="typeof nodeActions !== 'undefined' && nodeActions.requestPosition(node.id)">
+                <button class="action-btn" @click.stop="doRequestPosition(node)">
                   <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
                   </svg>
@@ -308,7 +308,7 @@
                 </svg>
                 Traceroute
               </button>
-              <button class="action-btn" @click="typeof nodeActions !== 'undefined' && nodeActions.requestPosition(selectedNode.id)" style="flex-basis:calc(50% - 3px);">
+              <button class="action-btn" @click="doRequestPosition(selectedNode)" style="flex-basis:calc(50% - 3px);">
                 <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/>
                 </svg>
@@ -378,6 +378,39 @@
       </div>
     </div>
   </template>
+
+  <template x-teleport="body">
+    <div x-show="dmModal"
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 flex items-center justify-center p-4"
+         @keydown.escape.window="dmModal = false" style="display:none;">
+      <div @click="dmModal = false" class="fixed inset-0" style="background:rgba(0,0,0,.65);"></div>
+      <div x-show="dmModal"
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
+           class="relative z-10 w-72 rounded-lg p-5"
+           style="background:var(--panel);border:1px solid var(--border);">
+        <h3 class="text-sm font-semibold" style="color:var(--text);margin:0 0 6px;"
+            x-text="'Messaggio a ' + (dmNode?.short_name || dmNode?.id || '')"></h3>
+        <textarea x-model="dmText" rows="3" @keydown.enter.ctrl="confirmDM()"
+                  class="w-full rounded text-xs p-2" style="background:var(--bg);border:1px solid var(--border);color:var(--text);resize:none;outline:none;margin-bottom:12px;"
+                  placeholder="Scrivi un messaggio..."></textarea>
+        <div class="flex gap-2 justify-end">
+          <button @click="dmModal = false"
+                  class="rounded px-3 py-1.5 text-xs"
+                  style="background:var(--border);color:var(--text);border:none;cursor:pointer;">Annulla</button>
+          <button @click="confirmDM()"
+                  class="rounded px-3 py-1.5 text-xs"
+                  style="background:var(--accent);color:#fff;border:none;cursor:pointer;">Invia</button>
+        </div>
+      </div>
+    </div>
+  </template>
 </div>
 
 <script>
@@ -388,6 +421,9 @@ function nodesPage() {
     forgetModal: false,
     forgetPurge: false,
     forgetNodeId: null,
+    dmModal: false,
+    dmNode: null,
+    dmText: '',
 
     get selectedNode() {
       if (!this.selectedNodeId) return null
@@ -407,11 +443,23 @@ function nodesPage() {
         }
       }
       window.addEventListener('node-update', this._nodeUpdateHandler)
+      this._positionUpdateHandler = (e) => {
+        const d = e.detail
+        const idx = this.nodes.findIndex(n => n.id === d.id)
+        if (idx >= 0) {
+          if (d.latitude != null) this.nodes[idx].latitude = d.latitude
+          if (d.longitude != null) this.nodes[idx].longitude = d.longitude
+          if (d.altitude != null) this.nodes[idx].altitude = d.altitude
+          if (d.last_heard != null) this.nodes[idx].last_heard = d.last_heard
+        }
+      }
+      window.addEventListener('position-update', this._positionUpdateHandler)
     },
 
     destroy() {
       clearInterval(this._interval)
       window.removeEventListener('node-update', this._nodeUpdateHandler)
+      window.removeEventListener('position-update', this._positionUpdateHandler)
     },
 
     async fetchNodes() {
@@ -441,14 +489,25 @@ function nodesPage() {
         .catch(() => { if (typeof showToast === 'function') showToast('Traceroute fallito', 'warn') })
     },
 
-    doDM(node) {
+    doRequestPosition(node) {
       if (typeof nodeActions === 'undefined') return
-      const text = window.prompt('Messaggio a ' + (node.short_name || node.id) + ':')
-      if (text) {
-        nodeActions.sendDM(node.id, text)
-          .then(() => { if (typeof showToast === 'function') showToast('DM inviato') })
-          .catch(() => { if (typeof showToast === 'function') showToast('DM fallito', 'warn') })
-      }
+      nodeActions.requestPosition(node.id)
+        .then(() => { if (typeof showToast === 'function') showToast('Posizione richiesta') })
+        .catch(() => { if (typeof showToast === 'function') showToast('Richiesta posizione fallita', 'warn') })
+    },
+
+    doDM(node) {
+      this.dmNode = node
+      this.dmText = ''
+      this.dmModal = true
+    },
+
+    confirmDM() {
+      if (!this.dmText.trim() || typeof nodeActions === 'undefined') { this.dmModal = false; return }
+      nodeActions.sendDM(this.dmNode.id, this.dmText.trim())
+        .then(() => { if (typeof showToast === 'function') showToast('DM inviato') })
+        .catch(() => { if (typeof showToast === 'function') showToast('DM fallito', 'warn') })
+      this.dmModal = false
     },
 
     openForget(node) {
