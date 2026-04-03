@@ -948,6 +948,22 @@ function configPage() {
     },
 
     async saveNode() {
+      if (!this.node.long_name.trim()) {
+        this.status.node = '✗ Long name obbligatorio'
+        return
+      }
+      if (this.node.long_name.trim().length > 36) {
+        this.status.node = '✗ Long name max 36 caratteri'
+        return
+      }
+      if (!this.node.short_name.trim()) {
+        this.status.node = '✗ Short name obbligatorio'
+        return
+      }
+      if (this.node.short_name.trim().length > 4) {
+        this.status.node = '✗ Short name max 4 caratteri'
+        return
+      }
       this.saving.node = true
       this.status.node = ''
       try {
@@ -964,6 +980,16 @@ function configPage() {
     },
 
     async saveLora() {
+      const validRegions = ['EU_868','US','EU_433','CN']
+      const validPresets = ['LONG_FAST','LONG_SLOW','MEDIUM_FAST','SHORT_FAST']
+      if (!validRegions.includes(this.lora.region)) {
+        this.status.lora = '✗ Regione non valida'
+        return
+      }
+      if (!validPresets.includes(this.lora.modem_preset)) {
+        this.status.lora = '✗ Preset non valido'
+        return
+      }
       this.saving.lora = true
       this.status.lora = ''
       try {
@@ -982,6 +1008,14 @@ function configPage() {
     async saveChannel(idx) {
       const ch = this.channels.find(c => c.index === idx)
       if (!ch) return
+      if (ch.psk_b64 && ch.psk_b64.length > 0) {
+        try {
+          atob(ch.psk_b64)
+        } catch(e) {
+          this.status.channels = '✗ PSK non è Base64 valido'
+          return
+        }
+      }
       const r = await fetch(`/api/config/channels/${idx}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
