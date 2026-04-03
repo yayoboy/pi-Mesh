@@ -5,6 +5,10 @@ import meshtasticd_client
 import database
 import config as cfg
 import time
+import os
+import re
+import subprocess
+import usb_storage
 
 router = APIRouter()
 
@@ -63,3 +67,56 @@ async def get_node(node_id: str):
         if n['id'] == node_id:
             return n
     raise HTTPException(404, detail='node not found')
+
+
+SCREENSHOT_SUBDIR = 'pi-mesh/screenshots'
+SCREENSHOT_SD_DIR = '/boot/firmware/screenshots'
+
+
+@router.post('/api/screenshot')
+async def take_screenshot():
+    # Determine destination directory
+    usb = usb_storage.get_usb_status()
+    if usb['connected']:
+        mount = None
+        for dev in usb['devices']:
+            if dev['mountpoint']:
+                mount = dev['mountpoint']
+                break
+        if mount:
+            dest_dir = os.path.join(mount, SCREENSHOT_SUBDIR)
+            location = 'usb'
+        else:
+            dest_dir = SCREENSHOT_SD_DIR
+            location = 'sd'
+    else:
+        dest_dir = SCREENSHOT_SD_DIR
+        location = 'sd'
+
+    os.makedirs(dest_dir, exist_ok=True)
+
+    # Find next incremental number
+    existing = []
+    for f in os.listdir(dest_dir):
+        m = re.match(r'screenshot_(\d+)\.png$', f)
+        if m:
+            existing.append(int(m.group(1)))
+    next_num = max(existing) + 1 if existing else 1
+    filename = f'screenshot_{next_num:03d}.png'
+    filepath = os.path.join(dest_dir, filename)
+
+    # Capture framebuffer
+    try:
+        result = subprocess.run(
+            ['sudo', 'fbgrab', filepath],
+            capture_output=True, text=True, timeout=10
+        )
+    except FileNotFoundError:
+        return {'ok': False, 'error': 'fbgrab non installato (sudo apt install fbgrab)'}
+    except subprocess.TimeoutExpired:
+        return {'ok': False, 'error': 'fbgrab timeout'}
+
+    if result.returncode != 0:
+        return {'ok': False, 'error': result.stderr.strip() or 'cattura fallita'}
+
+    return {'ok': True, 'path': filename, 'location': location}
