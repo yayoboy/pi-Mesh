@@ -7,6 +7,7 @@ import config as cfg
 import time
 import os
 import re
+import asyncio as _asyncio
 import subprocess
 import usb_storage
 

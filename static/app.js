@@ -60,16 +60,19 @@ function showToast(msg, type, duration) {
 }
 
 // ===== SCREENSHOT =====
+let _screenshotBusy = false
 function takeScreenshot() {
+  if (_screenshotBusy) return
+  _screenshotBusy = true
   const btn = document.getElementById('screenshot-btn')
+  const prevColor = btn ? btn.style.color : ''
   fetch('/api/screenshot', { method: 'POST' })
     .then(r => r.json())
     .then(data => {
       if (data.ok) {
-        // Flash effect on icon
         if (btn) {
           btn.style.color = '#ffffff'
-          setTimeout(() => { btn.style.color = '' }, 200)
+          setTimeout(() => { btn.style.color = prevColor }, 200)
         }
         const loc = data.location === 'usb' ? 'USB' : 'SD'
         showToast(data.path + ' (' + loc + ')', 'success')
@@ -80,6 +83,7 @@ function takeScreenshot() {
     .catch(() => {
       showToast('Errore screenshot', 'error')
     })
+    .finally(() => { _screenshotBusy = false })
 }
 
 // ===== UTILITY =====
