@@ -71,7 +71,7 @@ async def get_node(node_id: str):
 
 
 SCREENSHOT_SUBDIR = 'pi-mesh/screenshots'
-SCREENSHOT_SD_DIR = '/boot/firmware/screenshots'
+SCREENSHOT_SD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'screenshots')
 
 _screenshot_lock = _asyncio.Lock()
 
