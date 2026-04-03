@@ -25,7 +25,16 @@ const nodeActions = {
     }).then(r => r.json()),
 
   focusOnMap: (nodeId) => {
-    window.location.href = `/map?focus=${encodeURIComponent(nodeId)}`
+    navigateTo('map')
+    // After map loads, center on the node
+    setTimeout(() => {
+      const node = nodeCache.get(nodeId)
+      if (node && node.latitude && node.longitude && typeof leafletMap !== 'undefined' && leafletMap) {
+        leafletMap.setView([node.latitude, node.longitude], Math.max(leafletMap.getZoom(), 13))
+        const marker = markerCache.get(nodeId)
+        if (marker) setTimeout(() => showNodePopup(marker, node), 300)
+      }
+    }, 500)
   },
 }
 
@@ -48,6 +57,29 @@ function showToast(msg, type, duration) {
     el.classList.remove('show')
     setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el) }, 300)
   }, duration)
+}
+
+// ===== SCREENSHOT =====
+function takeScreenshot() {
+  const btn = document.getElementById('screenshot-btn')
+  fetch('/api/screenshot', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        // Flash effect on icon
+        if (btn) {
+          btn.style.color = '#ffffff'
+          setTimeout(() => { btn.style.color = '' }, 200)
+        }
+        const loc = data.location === 'usb' ? 'USB' : 'SD'
+        showToast(data.path + ' (' + loc + ')', 'success')
+      } else {
+        showToast('Errore: ' + data.error, 'error')
+      }
+    })
+    .catch(() => {
+      showToast('Errore screenshot', 'error')
+    })
 }
 
 // ===== UTILITY =====
@@ -150,15 +182,24 @@ function handleMessage(msg) {
 function handleNode(msg) {
   // msg = { type: 'node', id, short_name, long_name, hw_model, ... }
   const isNew = !nodeCache.has(msg.id)
-  nodeCache.set(msg.id, msg)
-  if (isNew && !msg.is_local) showToast('Nuovo nodo: ' + (msg.short_name || msg.id))
-  window.dispatchEvent(new CustomEvent('node-update', { detail: msg }))
-  if (msg.is_local) {
+  if (isNew) {
+    nodeCache.set(msg.id, msg)
+  } else {
+    // Merge: only overwrite with non-null values to preserve position data
+    const existing = nodeCache.get(msg.id)
+    for (const [k, v] of Object.entries(msg)) {
+      if (v != null) existing[k] = v
+    }
+  }
+  const node = nodeCache.get(msg.id)
+  if (isNew && !node.is_local) showToast('Nuovo nodo: ' + (node.short_name || node.id))
+  window.dispatchEvent(new CustomEvent('node-update', { detail: node }))
+  if (node.is_local) {
     const el = document.getElementById('node-name')
-    if (el) el.textContent = msg.short_name || msg.id
-    updateGpsBadge(msg.latitude != null && msg.longitude != null)
-    updateBatteryBadge(msg.battery_level)
-    updateLoraBadge(msg.snr)
+    if (el) el.textContent = node.short_name || node.id
+    updateGpsBadge(node.latitude != null && node.longitude != null)
+    updateBatteryBadge(node.battery_level)
+    updateLoraBadge(node.snr)
   }
 }
 
