@@ -103,11 +103,11 @@ async def get_node_config(db_path: str) -> dict:
         try:
             loop = asyncio.get_event_loop()
             def _read():
-                lc = _interface.localNode.localConfig.device
+                dc = _interface.localNode.localConfig.device
                 return {
-                    'long_name': lc.long_name,
-                    'short_name': lc.short_name,
-                    'role': lc.Role.Name(lc.role),
+                    'long_name': _interface.getLongName(),
+                    'short_name': _interface.getShortName(),
+                    'role': dc.Role.Name(dc.role),
                 }
             data = await loop.run_in_executor(None, _read)
             data['cached'] = False
