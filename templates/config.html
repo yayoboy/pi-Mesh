@@ -29,6 +29,22 @@
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Porta seriale</label>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <select x-model="serialPort" @change="saveSerialPort()"
+                      style="flex:1;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+                <template x-for="p in serialPorts" :key="p">
+                  <option :value="p" x-text="p"></option>
+                </template>
+              </select>
+              <button @click="scanSerialPorts()" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:4px;padding:6px 8px;font-size:10px;cursor:pointer;white-space:nowrap;">
+                Scan
+              </button>
+            </div>
+            <div x-show="status.serial" x-text="status.serial" style="font-size:10px;"
+                 :style="status.serial && status.serial.startsWith('✓') ? 'color:#4caf50' : 'color:#ef4444'"></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
             <label style="font-size:10px;color:var(--muted);">Long name</label>
             <input x-model="node.long_name" maxlength="36"
                    style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
@@ -55,6 +71,10 @@
                   style="padding:10px;font-size:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;"
                   :style="node.cached ? 'background:var(--border);color:var(--muted);cursor:not-allowed;' : 'background:var(--accent);color:#fff;'"
                   x-text="saving.node ? 'Salvataggio...' : (node.cached ? 'Board non connessa' : 'Salva nodo')">
+          </button>
+          <button @click="factoryModal = true"
+                  style="padding:10px;font-size:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#ef4444;color:#fff;margin-top:4px;">
+            Factory Reset
           </button>
           <div x-show="status.node" x-text="status.node" style="font-size:10px;"
                :style="status.node && status.node.startsWith('✓') ? 'color:#4caf50' : 'color:#ef4444'"></div>
@@ -871,6 +891,28 @@
 
   </div><!-- /CONTENT -->
 
+    <!-- Factory Reset Modal -->
+    <template x-if="factoryModal">
+      <div style="position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;" @click.self="factoryModal = false">
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:20px;max-width:280px;width:90%;">
+          <div style="font-size:13px;font-weight:700;color:#ef4444;margin-bottom:10px;">Factory Reset</div>
+          <div style="font-size:11px;color:var(--text);margin-bottom:16px;line-height:1.5;">
+            Questo cancellerà tutte le impostazioni del nodo Meshtastic e ripristinerà i valori di fabbrica. L'operazione non è reversibile.
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button @click="factoryModal = false"
+                    style="flex:1;padding:10px;font-size:12px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:var(--panel);color:var(--text);">
+              Annulla
+            </button>
+            <button @click="doFactoryReset()"
+                    style="flex:1;padding:10px;font-size:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#ef4444;color:#fff;">
+              Conferma Reset
+            </button>
+          </div>
+        </div>
+      </div>
+    </template>
+
 </div><!-- /x-data -->
 
 <script>
@@ -892,6 +934,9 @@ function configPage() {
     ],
 
     node: { long_name: '', short_name: '', role: 'CLIENT', cached: true },
+    serialPort: '',
+    serialPorts: [],
+    factoryModal: false,
     lora: { region: 'EU_868', modem_preset: 'LONG_FAST', cached: true },
     channels: [],
     channelsCached: true,
@@ -906,10 +951,11 @@ function configPage() {
 
     loaded: { node: false, lora: false, channels: false },
     saving: { node: false, lora: false, channels: false },
-    status: { node: '', lora: '', channels: '', gpio: '', wifi: '', mqtt: '' },
+    status: { node: '', lora: '', channels: '', gpio: '', wifi: '', mqtt: '', serial: '' },
 
     async init() {
       await this.loadNode()
+      await this.scanSerialPorts()
     },
 
     async selectSection(s) {
@@ -977,6 +1023,43 @@ function configPage() {
       } finally {
         this.saving.node = false
       }
+    },
+
+    async scanSerialPorts() {
+      try {
+        const r = await fetch('/api/config/serial/ports')
+        const d = await r.json()
+        this.serialPorts = d.ports
+        this.serialPort = d.current
+      } catch(e) { this.status.serial = '✗ scan fallito' }
+    },
+
+    async saveSerialPort() {
+      try {
+        const r = await fetch('/api/config/serial/port', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({port: this.serialPort})
+        })
+        const d = await r.json()
+        if (d.ok) {
+          this.status.serial = '✓ Porta cambiata — riavvio necessario'
+        } else {
+          this.status.serial = '✗ ' + (d.error || 'errore')
+        }
+      } catch(e) { this.status.serial = '✗ errore' }
+    },
+
+    async doFactoryReset() {
+      this.factoryModal = false
+      try {
+        const r = await fetch('/api/system/factory-reset', {method:'POST'})
+        const d = await r.json()
+        if (d.ok) {
+          this.status.node = '✓ Factory reset completato'
+        } else {
+          this.status.node = '✗ ' + (d.error || 'errore')
+        }
+      } catch(e) { this.status.node = '✗ reset fallito' }
     },
 
     async saveLora() {

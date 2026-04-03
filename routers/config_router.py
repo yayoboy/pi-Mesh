@@ -526,6 +526,32 @@ async def rtc_status():
     }
 
 
+@router.get('/api/config/serial/ports')
+async def list_serial_ports():
+    """List available serial ports for Meshtastic board connection."""
+    import glob
+    patterns = ['/dev/ttyACM*', '/dev/ttyUSB*', '/dev/ttyAMA*']
+    ports = []
+    for pat in patterns:
+        ports.extend(glob.glob(pat))
+    ports.sort()
+    return {'ports': ports, 'current': cfg.SERIAL_PATH}
+
+
+class SerialPortRequest(BaseModel):
+    port: str
+
+
+@router.post('/api/config/serial/port')
+async def set_serial_port(body: SerialPortRequest):
+    """Change the serial port and persist to config.env."""
+    if not os.path.exists(body.port):
+        return JSONResponse({'error': f'Porta {body.port} non trovata'}, status_code=400)
+    _write_env('SERIAL_PATH', body.port)
+    cfg.SERIAL_PATH = body.port
+    return {'ok': True, 'port': body.port, 'restart_required': True}
+
+
 @router.post('/api/system/reboot')
 async def system_reboot():
     subprocess.Popen(['sudo', 'reboot'])
@@ -536,6 +562,18 @@ async def system_reboot():
 async def system_shutdown():
     subprocess.Popen(['sudo', 'shutdown', '-h', 'now'])
     return {'ok': True, 'action': 'shutdown'}
+
+
+@router.post('/api/system/factory-reset')
+async def factory_reset():
+    """Factory reset the Meshtastic node."""
+    if not meshtasticd_client.is_connected():
+        return JSONResponse({'error': 'Board non connessa'}, status_code=503)
+    try:
+        await meshtasticd_client.factory_reset()
+        return {'ok': True}
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
 
 
 class MapConfigRequest(BaseModel):

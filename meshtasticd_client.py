@@ -464,16 +464,10 @@ def _on_receive(packet, interface) -> None:
             'last_heard':    int(time.time()),
             'snr':           snr,
             'hop_count':     hop_limit,
-            'battery_level': None,
-            'latitude':      None,
-            'longitude':     None,
-            'is_local':      False,
-            'distance_km':   None,
             'rssi':             packet.get('rxRssi'),
             'firmware_version': user.get('firmwareVersion'),
             'role':             user.get('role'),
             'public_key':       user.get('publicKey'),
-            'altitude':         None,
         }
         if _loop is not None:
             _loop.call_soon_threadsafe(_enqueue_event,typed_event)
@@ -679,6 +673,22 @@ async def load_nodes_from_db(db_path: str | None = None) -> None:
     for row in rows:
         _node_cache[row['id']] = row
     logger.info(f'Loaded {len(rows)} nodes from DB into cache')
+
+
+def _do_factory_reset() -> None:
+    """Sync helper — factory reset the node."""
+    if _interface:
+        _interface.localNode.setOwner('')  # reset owner
+        _interface.localNode.beginSettingsTransaction()
+        _interface.localNode.commitSettingsTransaction()
+        logger.warning('Factory reset executed')
+
+
+async def factory_reset() -> None:
+    """Queue factory reset command."""
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    await _command_queue.put(_do_factory_reset)
 
 
 async def _command_worker() -> None:
