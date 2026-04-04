@@ -16,7 +16,7 @@ import rpi_telemetry
 
 logging.basicConfig(level=getattr(logging, cfg.LOG_LEVEL, logging.WARNING))
 
-from routers import nodes, map_router, log_router, commands, ws_router, messages_router, config_router, metrics_router
+from routers import nodes, map_router, log_router, commands, ws_router, messages_router, config_router, metrics_router, canned_router
 
 
 async def _broadcast_task() -> None:
@@ -97,6 +97,7 @@ app.include_router(config_router.router)
 app.include_router(metrics_router.router)
 app.include_router(commands.router)
 app.include_router(ws_router.router)
+app.include_router(canned_router.router)
 
 
 @app.get('/')
