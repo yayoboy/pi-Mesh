@@ -150,8 +150,26 @@
        style="display:none;position:absolute;top:0;right:0;bottom:0;width:160px;z-index:700;
               flex-direction:column;overflow:hidden;
               background:var(--bg);border-left:1px solid var(--border);">
-    <div style="padding:5px 10px;font-size:9px;color:var(--accent);text-transform:uppercase;
-                border-bottom:1px solid var(--border);">Filtri</div>
+    <div style="display:flex;border-bottom:1px solid var(--border);">
+      <button id="panel-tab-filters"
+              onclick="setPanelTab('filters')"
+              style="flex:1;padding:5px 0;font-size:9px;border:none;cursor:pointer;
+                     color:var(--accent);background:var(--panel);border-bottom:2px solid var(--accent);">
+        Filtri
+      </button>
+      <button id="panel-tab-topology"
+              onclick="setPanelTab('topology')"
+              style="flex:1;padding:5px 0;font-size:9px;border:none;cursor:pointer;
+                     color:var(--muted);background:transparent;border-bottom:2px solid transparent;">
+        Topo
+      </button>
+      <button id="panel-tab-waypoints"
+              onclick="setPanelTab('waypoints')"
+              style="flex:1;padding:5px 0;font-size:9px;border:none;cursor:pointer;
+                     color:var(--muted);background:transparent;border-bottom:2px solid transparent;">
+        WP
+      </button>
+    </div>
         <!-- Filtri mappa -->
         <div id="filter-panel" style="padding:8px;border-bottom:1px solid var(--border,#2a3a4a);">
           <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--accent,#4a9eff);margin-bottom:6px;">Filtri</div>
@@ -168,6 +186,12 @@
             <input type="checkbox" id="filter-breadcrumbs" style="accent-color:var(--accent,#4a9eff);"> Tracce GPS
           </label>
           <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-waypoints" style="accent-color:var(--accent,#4a9eff);"> Waypoints
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-neighbor" style="accent-color:var(--accent,#4a9eff);"> Neighbor links
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
             <input type="checkbox" id="filter-markers" style="accent-color:var(--accent,#4a9eff);"> Marker
           </label>
           <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
@@ -179,6 +203,29 @@
             <span id="filter-maxhops-val" style="min-width:14px;text-align:right;">7</span>
           </div>
         </div>
+
+    <div id="panel-topology"
+         style="display:none;padding:8px;overflow-y:auto;flex:1;flex-direction:column;">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:6px;">
+        Grafo mesh
+      </div>
+      <svg id="topology-svg" width="144" height="200"
+           style="background:rgba(0,0,0,.2);border-radius:4px;display:block;"></svg>
+      <button onclick="renderTopologyGraph()"
+              style="margin-top:6px;width:100%;padding:4px 0;font-size:9px;
+                     background:none;border:1px solid var(--border);border-radius:3px;
+                     color:var(--muted);cursor:pointer;">
+        Aggiorna
+      </button>
+    </div>
+
+    <div id="panel-waypoints"
+         style="display:none;padding:8px;overflow-y:auto;flex:1;flex-direction:column;">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:6px;">
+        Waypoints attivi
+      </div>
+      <div id="waypoints-list" style="font-size:10px;color:var(--text);"></div>
+    </div>
   </div>
 </div>
 
@@ -186,8 +233,108 @@
 // Pre-populate nodeCache from server-rendered JSON (no initial HTTP request)
 var _serverNodes = {{ nodes_data | tojson }};
 </script>
-<script src="/static/map.js?v=13"></script>
+<script src="/static/map.js?v=14"></script>
 <script>
+function setPanelTab(tab) {
+  var tabs = ['filters', 'topology', 'waypoints']
+  tabs.forEach(function(t) {
+    var btn = document.getElementById('panel-tab-' + t)
+    var panel = t === 'filters'
+      ? document.getElementById('filter-panel')
+      : document.getElementById('panel-' + t)
+    if (btn) {
+      var active = (t === tab)
+      btn.style.color      = active ? 'var(--accent)' : 'var(--muted)'
+      btn.style.background = active ? 'var(--panel)'  : 'transparent'
+      btn.style.borderBottom = active ? '2px solid var(--accent)' : '2px solid transparent'
+    }
+    if (panel) panel.style.display = (t === tab) ? 'block' : 'none'
+  })
+  if (tab === 'topology')  renderTopologyGraph()
+  if (tab === 'waypoints') refreshWaypointsList()
+}
+
+function renderTopologyGraph() {
+  var svg = document.getElementById('topology-svg')
+  if (!svg) return
+  fetch('/api/neighbor-info').then(function(r) { return r.json() }).then(function(links) {
+    while (svg.firstChild) svg.removeChild(svg.firstChild)
+    var nodeIds = {}
+    links.forEach(function(l) { nodeIds[l.from_id] = 1; nodeIds[l.neighbor_id] = 1 })
+    var ids = Object.keys(nodeIds)
+    if (ids.length === 0) {
+      var t = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+      t.setAttribute('x', '72'); t.setAttribute('y', '100')
+      t.setAttribute('text-anchor', 'middle')
+      t.setAttribute('fill', '#666'); t.setAttribute('font-size', '10')
+      t.textContent = 'Nessun dato'
+      svg.appendChild(t)
+      return
+    }
+    var W = 144, H = 200, cx = W / 2, cy = H / 2, r = Math.min(cx, cy) - 20
+    var pos = {}
+    ids.forEach(function(id, i) {
+      var angle = (2 * Math.PI * i / ids.length) - Math.PI / 2
+      pos[id] = {x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle)}
+    })
+    links.forEach(function(l) {
+      var a = pos[l.from_id], b = pos[l.neighbor_id]
+      if (!a || !b) return
+      var line = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+      line.setAttribute('x1', a.x); line.setAttribute('y1', a.y)
+      line.setAttribute('x2', b.x); line.setAttribute('y2', b.y)
+      line.setAttribute('stroke', snrColor(l.snr))
+      line.setAttribute('stroke-width', '1.5')
+      line.setAttribute('opacity', '0.7')
+      svg.appendChild(line)
+    })
+    ids.forEach(function(id) {
+      var p = pos[id]
+      var node = nodeCache ? nodeCache.get(id) : null
+      var isLocal = node && node.is_local
+      var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+      circle.setAttribute('cx', p.x); circle.setAttribute('cy', p.y)
+      circle.setAttribute('r', isLocal ? 8 : 6)
+      circle.setAttribute('fill', isLocal ? '#2196f3' : '#333')
+      circle.setAttribute('stroke', '#fff'); circle.setAttribute('stroke-width', '1')
+      svg.appendChild(circle)
+      var label = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+      label.setAttribute('x', p.x); label.setAttribute('y', p.y + 3)
+      label.setAttribute('text-anchor', 'middle')
+      label.setAttribute('fill', '#ccc'); label.setAttribute('font-size', '7')
+      label.textContent = isLocal ? 'ME' : id.slice(-4)
+      svg.appendChild(label)
+    })
+  })
+}
+
+function refreshWaypointsList() {
+  fetch('/api/waypoints').then(function(r) { return r.json() }).then(function(data) {
+    var el = document.getElementById('waypoints-list')
+    if (!el) return
+    while (el.firstChild) el.removeChild(el.firstChild)
+    if (data.length === 0) {
+      var empty = document.createElement('div')
+      empty.style.color = 'var(--muted)'
+      empty.textContent = 'Nessun waypoint'
+      el.appendChild(empty)
+      return
+    }
+    data.forEach(function(wp) {
+      var item = document.createElement('div')
+      item.style.cssText = 'border-bottom:1px solid var(--border);padding:4px 0;'
+      var name = document.createElement('b')
+      name.textContent = wp.name || '?'
+      item.appendChild(name)
+      var meta = document.createElement('div')
+      meta.style.cssText = 'font-size:9px;color:var(--muted);'
+      meta.textContent = wp.from_id
+      item.appendChild(meta)
+      el.appendChild(item)
+    })
+  })
+}
+
 document.getElementById('panel-toggle').onclick = function() {
   var p = document.getElementById('right-panel')
   p.style.display = p.style.display === 'flex' ? 'none' : 'flex'
