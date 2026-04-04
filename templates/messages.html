@@ -89,6 +89,9 @@
     <!-- Send form -->
     <div style="padding:6px 8px;border-top:1px solid var(--border);flex-shrink:0;">
       <form @submit.prevent="send()" style="display:flex;gap:4px;">
+        <button type="button" @click="cannedOpen=true"
+                style="width:32px;min-height:32px;padding:0;background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;font-size:14px;flex-shrink:0;"
+                title="Messaggi predefiniti">⚡</button>
         <input x-ref="input" type="text" placeholder="Messaggio..." autocomplete="off"
                style="flex:1;min-height:32px;font-size:12px;">
         <button type="submit" style="width:40px;min-height:32px;padding:0;">
@@ -97,6 +100,29 @@
           </svg>
         </button>
       </form>
+    </div>
+  </div>
+
+  <!-- CANNED MESSAGES MODAL -->
+  <div x-show="cannedOpen" @click.self="cannedOpen=false"
+       style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:flex-end;justify-content:center;">
+    <div style="background:var(--bg);border-radius:10px 10px 0 0;width:100%;max-width:480px;max-height:60vh;overflow-y:auto;padding:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <span style="font-size:12px;font-weight:700;color:var(--accent);">⚡ Messaggi rapidi</span>
+        <button @click="cannedOpen=false"
+                style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;line-height:1;">✕</button>
+      </div>
+      <template x-if="cannedMessages.length === 0">
+        <div style="color:var(--muted);font-size:11px;text-align:center;padding:16px 0;">
+          Nessun messaggio predefinito. Aggiungili in Config → Canned.
+        </div>
+      </template>
+      <template x-for="m in cannedMessages" :key="m.id">
+        <div @click="sendCanned(m.text)"
+             style="padding:10px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;cursor:pointer;font-size:12px;color:var(--text);"
+             x-text="m.text">
+        </div>
+      </template>
     </div>
   </div>
 
@@ -154,6 +180,8 @@ function messagesPage() {
     hasMore: false,
     loading: false,
     showConfirm: false,
+    cannedOpen: false,
+    cannedMessages: [],
     _onMessage: null,
     _onAck: null,
     _observer: null,
@@ -186,6 +214,7 @@ function messagesPage() {
       }, 500)
       const openDm = new URLSearchParams(window.location.search).get('open_dm')
       if (openDm) await this.selectConv('dm', openDm)
+      await this.loadCanned()
     },
 
     destroy() {
@@ -259,6 +288,17 @@ function messagesPage() {
     async loadDmThreads() {
       const r = await fetch('/api/dm/threads')
       if (r.ok) this.dmThreads = await r.json()
+    },
+
+    async loadCanned() {
+      const r = await fetch('/api/canned-messages')
+      if (r.ok) this.cannedMessages = await r.json()
+    },
+
+    async sendCanned(text) {
+      this.$refs.input.value = text
+      this.cannedOpen = false
+      await this.send()
     },
 
     async send() {
