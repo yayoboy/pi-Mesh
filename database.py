@@ -131,6 +131,35 @@ CREATE TABLE IF NOT EXISTS canned_messages (
     text TEXT NOT NULL,
     sort_order INTEGER DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS waypoints (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    lat REAL,
+    lon REAL,
+    icon TEXT DEFAULT 'default',
+    description TEXT,
+    expire INTEGER,
+    from_id TEXT,
+    ts INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS neighbor_info (
+    from_id TEXT NOT NULL,
+    neighbor_id TEXT NOT NULL,
+    snr REAL,
+    ts INTEGER,
+    PRIMARY KEY (from_id, neighbor_id)
+);
+
+CREATE TABLE IF NOT EXISTS sensor_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts INTEGER NOT NULL,
+    from_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    data_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sensor_events_node_ts ON sensor_events(from_id, ts DESC);
 """
 
 
@@ -344,6 +373,70 @@ async def update_canned_message(msg_id: int, text: str, sort_order: int) -> None
 async def delete_canned_message(msg_id: int) -> None:
     async with _get_db() as db:
         await db.execute('DELETE FROM canned_messages WHERE id=?', (msg_id,))
+        await db.commit()
+
+
+async def upsert_waypoint(wp: dict) -> None:
+    async with _get_db() as db:
+        await db.execute('''
+            INSERT INTO waypoints (id, name, lat, lon, icon, description, expire, from_id, ts)
+            VALUES (:id, :name, :lat, :lon, :icon, :description, :expire, :from_id, :ts)
+            ON CONFLICT(id) DO UPDATE SET
+              name=excluded.name, lat=excluded.lat, lon=excluded.lon,
+              icon=excluded.icon, description=excluded.description,
+              expire=excluded.expire, ts=excluded.ts
+        ''', wp)
+        await db.commit()
+
+
+async def get_waypoints(active_only: bool = True) -> list:
+    async with _get_db() as db:
+        now = int(time.time())
+        if active_only:
+            cur = await db.execute(
+                'SELECT id,name,lat,lon,icon,description,expire,from_id,ts FROM waypoints WHERE expire=0 OR expire>?',
+                (now,)
+            )
+        else:
+            cur = await db.execute(
+                'SELECT id,name,lat,lon,icon,description,expire,from_id,ts FROM waypoints'
+            )
+        rows = await cur.fetchall()
+        keys = ('id','name','lat','lon','icon','description','expire','from_id','ts')
+        return [dict(zip(keys, r)) for r in rows]
+
+
+async def delete_waypoint(wp_id: int) -> None:
+    async with _get_db() as db:
+        await db.execute('DELETE FROM waypoints WHERE id=?', (wp_id,))
+        await db.commit()
+
+
+async def upsert_neighbor_info(from_id: str, neighbor_id: str, snr: float) -> None:
+    async with _get_db() as db:
+        await db.execute('''
+            INSERT INTO neighbor_info (from_id, neighbor_id, snr, ts)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(from_id, neighbor_id) DO UPDATE SET snr=excluded.snr, ts=excluded.ts
+        ''', (from_id, neighbor_id, snr, int(time.time())))
+        await db.commit()
+
+
+async def get_neighbor_info() -> list:
+    async with _get_db() as db:
+        cur = await db.execute(
+            'SELECT from_id, neighbor_id, snr, ts FROM neighbor_info ORDER BY ts DESC'
+        )
+        rows = await cur.fetchall()
+        return [{'from_id': r[0], 'neighbor_id': r[1], 'snr': r[2], 'ts': r[3]} for r in rows]
+
+
+async def save_sensor_event(from_id: str, etype: str, data: dict) -> None:
+    async with _get_db() as db:
+        await db.execute(
+            'INSERT INTO sensor_events (ts, from_id, type, data_json) VALUES (?,?,?,?)',
+            (int(time.time()), from_id, etype, json.dumps(data))
+        )
         await db.commit()
 
 
