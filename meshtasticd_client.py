@@ -843,6 +843,21 @@ def _build_log_summary(portnum: str, decoded: dict) -> str:
         elif portnum == 'TRACEROUTE_APP':
             hops = decoded.get('routeDiscovery', {}).get('route', [])
             return f"{len(hops)} hops" if hops else 'direct'
+        elif portnum == 'WAYPOINT_APP':
+            wp = decoded.get('waypoint', {})
+            name = wp.get('name', '')
+            return f"Waypoint: {name}" if name else 'Waypoint'
+        elif portnum == 'NEIGHBORINFO_APP':
+            neighbors = decoded.get('neighborinfo', {}).get('neighbors', [])
+            return f"{len(neighbors)} neighbor(s)"
+        elif portnum == 'DETECTION_SENSOR_APP':
+            ds = decoded.get('detectionSensor', {})
+            triggered = ds.get('triggered', False)
+            name = ds.get('name', 'sensor')
+            return f"{name}: triggered" if triggered else f"{name}: cleared"
+        elif portnum == 'PAXCOUNTER_APP':
+            px = decoded.get('paxcounter', {})
+            return f"BLE: {px.get('ble', 0)} WiFi: {px.get('wifi', 0)}"
     except Exception:
         pass
     return ''
@@ -1047,6 +1062,80 @@ def _on_receive(packet, interface) -> None:
             )
             ack_event = {'type': 'ack', 'node_id': from_id}
             _loop.call_soon_threadsafe(_enqueue_event,ack_event)
+
+    elif portnum == 'WAYPOINT_APP':
+        wp_raw = decoded.get('waypoint', {})
+        lat = wp_raw.get('latitudeI', 0) / 1e7 if wp_raw.get('latitudeI') else None
+        lon = wp_raw.get('longitudeI', 0) / 1e7 if wp_raw.get('longitudeI') else None
+        wp = {
+            'id':          wp_raw.get('id', int(time.time())),
+            'name':        wp_raw.get('name', ''),
+            'lat':         lat,
+            'lon':         lon,
+            'icon':        wp_raw.get('icon', 'default'),
+            'description': wp_raw.get('description', ''),
+            'expire':      wp_raw.get('expire', 0),
+            'from_id':     from_id,
+            'ts':          int(time.time()),
+        }
+        if lat is not None and lon is not None and _loop is not None:
+            fut = asyncio.run_coroutine_threadsafe(
+                database.upsert_waypoint(wp), _loop
+            )
+            fut.add_done_callback(
+                lambda f: logger.error('upsert_waypoint failed: %s', f.exception())
+                if f.exception() else None
+            )
+            _loop.call_soon_threadsafe(_enqueue_event, {'type': 'waypoint', **wp})
+
+    elif portnum == 'NEIGHBORINFO_APP':
+        ni = decoded.get('neighborinfo', {})
+        neighbors = ni.get('neighbors', [])
+        for nb in neighbors:
+            neighbor_id = f"!{nb.get('nodeId', 0):08x}"
+            snr = float(nb.get('snr', 0.0))
+            if _loop is not None:
+                fut = asyncio.run_coroutine_threadsafe(
+                    database.upsert_neighbor_info(from_id, neighbor_id, snr), _loop
+                )
+                fut.add_done_callback(
+                    lambda f: logger.error('upsert_neighbor_info failed: %s', f.exception())
+                    if f.exception() else None
+                )
+        typed_event = {
+            'type':      'neighbor_info',
+            'from_id':   from_id,
+            'neighbors': [{'node_id': f"!{nb.get('nodeId',0):08x}", 'snr': float(nb.get('snr', 0.0))}
+                          for nb in neighbors],
+        }
+        if _loop is not None:
+            _loop.call_soon_threadsafe(_enqueue_event, typed_event)
+
+    elif portnum == 'DETECTION_SENSOR_APP':
+        ds = decoded.get('detectionSensor', {})
+        data = {'triggered': ds.get('triggered', False), 'name': ds.get('name', '')}
+        if _loop is not None:
+            fut = asyncio.run_coroutine_threadsafe(
+                database.save_sensor_event(from_id, 'detection', data), _loop
+            )
+            fut.add_done_callback(
+                lambda f: logger.error('save_sensor_event failed: %s', f.exception())
+                if f.exception() else None
+            )
+            _loop.call_soon_threadsafe(_enqueue_event, {'type': 'sensor', 'from_id': from_id, 'data': data})
+
+    elif portnum == 'PAXCOUNTER_APP':
+        px = decoded.get('paxcounter', {})
+        data = {'ble': px.get('ble', 0), 'wifi': px.get('wifi', 0)}
+        if _loop is not None:
+            fut = asyncio.run_coroutine_threadsafe(
+                database.save_sensor_event(from_id, 'paxcounter', data), _loop
+            )
+            fut.add_done_callback(
+                lambda f: logger.error('save_sensor_event failed: %s', f.exception())
+                if f.exception() else None
+            )
+            _loop.call_soon_threadsafe(_enqueue_event, {'type': 'paxcounter', 'from_id': from_id, 'data': data})
 
     # Notify log subscribers
     failed = []
