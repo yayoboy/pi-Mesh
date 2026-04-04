@@ -143,6 +143,8 @@ function initWS() {
       log:               handleLog,
       ack:               handleAck,
       traceroute_result: handleTracerouteResult,
+      waypoint:          handleWaypoint,
+      neighbor_info:     handleNeighborInfo,
     }
     handlers[msg.type]?.(msg)
     if (msg.type === 'telemetry') {
@@ -260,6 +262,14 @@ function handleAck(msg) {
 function handleTracerouteResult(msg) {
   // msg = { type: 'traceroute_result', node_id, hops: [...] }
   window.dispatchEvent(new CustomEvent('traceroute_result', { detail: msg }))
+}
+
+function handleWaypoint(msg) {
+  window.dispatchEvent(new CustomEvent('waypoint', { detail: msg }))
+}
+
+function handleNeighborInfo(msg) {
+  window.dispatchEvent(new CustomEvent('neighbor_info', { detail: msg }))
 }
 
 function handleRpiTelemetry(msg) {
