@@ -123,7 +123,6 @@ A touch-friendly web dashboard for [Meshtastic](https://meshtastic.org/) LoRa me
 cd ~
 git clone https://github.com/yayoboy/pi-Mesh.git
 cd pi-Mesh
-
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
