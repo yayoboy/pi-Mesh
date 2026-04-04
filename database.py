@@ -125,6 +125,12 @@ CREATE TABLE IF NOT EXISTS telemetry (
     data_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_telemetry_node_ts ON telemetry(node_id, ts DESC);
+
+CREATE TABLE IF NOT EXISTS canned_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL,
+    sort_order INTEGER DEFAULT 0
+);
 """
 
 
@@ -304,6 +310,40 @@ async def cleanup_telemetry(db_path: str, max_age_hours: int = 72) -> None:
     cutoff = int(time.time()) - (max_age_hours * 3600)
     async with _get_db() as db:
         await db.execute('DELETE FROM telemetry WHERE ts < ?', (cutoff,))
+        await db.commit()
+
+
+async def get_canned_messages() -> list:
+    async with _get_db() as db:
+        cur = await db.execute(
+            'SELECT id, text, sort_order FROM canned_messages ORDER BY sort_order, id'
+        )
+        rows = await cur.fetchall()
+        return [{'id': r[0], 'text': r[1], 'sort_order': r[2]} for r in rows]
+
+
+async def add_canned_message(text: str, sort_order: int = 0) -> int:
+    async with _get_db() as db:
+        cur = await db.execute(
+            'INSERT INTO canned_messages (text, sort_order) VALUES (?, ?)',
+            (text, sort_order)
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def update_canned_message(msg_id: int, text: str, sort_order: int) -> None:
+    async with _get_db() as db:
+        await db.execute(
+            'UPDATE canned_messages SET text=?, sort_order=? WHERE id=?',
+            (text, sort_order, msg_id)
+        )
+        await db.commit()
+
+
+async def delete_canned_message(msg_id: int) -> None:
+    async with _get_db() as db:
+        await db.execute('DELETE FROM canned_messages WHERE id=?', (msg_id,))
         await db.commit()
 
 
