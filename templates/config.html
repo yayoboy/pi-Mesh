@@ -888,6 +888,238 @@
       </div>
     </template>
 
+    <!-- EXTERNAL NOTIFICATIONS -->
+    <template x-if="section === 'extnotif'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">External Notifications</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;">
+            <input type="checkbox" x-model="extNotif.enabled"> Abilitato
+          </label>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Output Pin GPIO</label>
+            <input type="number" x-model.number="extNotif.output_pin" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:80px;">
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;">
+            <input type="checkbox" x-model="extNotif.active_high"> Active High
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;">
+            <input type="checkbox" x-model="extNotif.alert_message"> Alert su messaggio
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;">
+            <input type="checkbox" x-model="extNotif.alert_bell"> Alert su bell
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;">
+            <input type="checkbox" x-model="extNotif.use_pwm"> Usa PWM
+          </label>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Nag timeout (ms)</label>
+            <input type="number" x-model.number="extNotif.nag_timeout" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+          </div>
+          <button @click="saveModule('/api/config/module/external-notification', extNotif)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">
+            Salva
+          </button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- STORE & FORWARD -->
+    <template x-if="section === 'sf'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Store &amp; Forward</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="storeForward.enabled"> Abilitato</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="storeForward.heartbeat"> Heartbeat</label>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">History return max</label>
+            <input type="number" x-model.number="storeForward.history_return_max" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:80px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">History return window (s)</label>
+            <input type="number" x-model.number="storeForward.history_return_window" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+          </div>
+          <button @click="saveModule('/api/config/module/store-forward', storeForward)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">Salva</button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- TELEMETRY MODULE -->
+    <template x-if="section === 'telmod'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Telemetry Module</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Device update interval (s, 0=default)</label>
+            <input type="number" x-model.number="telMod.device_update_interval" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Environment update interval (s, 0=default)</label>
+            <input type="number" x-model.number="telMod.environment_update_interval" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="telMod.environment_measurement_enabled"> Environment sensors</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="telMod.air_quality_enabled"> Air quality</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="telMod.power_measurement_enabled"> Power measurement</label>
+          <button @click="saveModule('/api/config/module/telemetry', telMod)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">Salva</button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- CANNED MESSAGE MODULE -->
+    <template x-if="section === 'cannedmod'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Canned Message Module</div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:8px;">Configurazione lato board (encoder rotativo, bell). Per gestire i testi vedi Config → Canned.</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="cannedMod.rotary1_enabled"> Rotary encoder</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="cannedMod.send_bell"> Invia bell</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="cannedMod.free_text_sms_enabled"> Free text SMS</label>
+          <button @click="saveModule('/api/config/module/canned-message', cannedMod)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">Salva</button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- RANGE TEST -->
+    <template x-if="section === 'rangetest'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Range Test</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="rangeTest.enabled"> Abilitato</label>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Sender interval (s, 0=off)</label>
+            <input type="number" x-model.number="rangeTest.sender" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:80px;">
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="rangeTest.save"> Salva risultati su flash</label>
+          <button @click="saveModule('/api/config/module/range-test', rangeTest)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">Salva</button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- DETECTION SENSOR -->
+    <template x-if="section === 'detsensor'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Detection Sensor</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="detSensor.enabled"> Abilitato</label>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Nome sensore</label>
+            <input x-model="detSensor.name" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Monitor pin GPIO</label>
+            <input type="number" x-model.number="detSensor.monitor_pin" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:80px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Min broadcast (s)</label>
+            <input type="number" x-model.number="detSensor.minimum_broadcast_secs" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:80px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">State broadcast (s)</label>
+            <input type="number" x-model.number="detSensor.state_broadcast_secs" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:80px;">
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="detSensor.use_pullup"> Pull-up interno</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="detSensor.detection_triggered_high"> Triggered HIGH</label>
+          <button @click="saveModule('/api/config/module/detection-sensor', detSensor)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">Salva</button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- AMBIENT LIGHTING -->
+    <template x-if="section === 'ambilight'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Ambient Lighting (NeoPixel)</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="ambLight.led_state"> LED acceso</label>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Corrente (0-31)</label>
+            <input type="number" min="0" max="31" x-model.number="ambLight.current" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:70px;">
+          </div>
+          <div style="display:flex;gap:8px;">
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:10px;color:var(--muted);">R</label>
+              <input type="number" min="0" max="255" x-model.number="ambLight.red" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:65px;">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:10px;color:var(--muted);">G</label>
+              <input type="number" min="0" max="255" x-model.number="ambLight.green" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:65px;">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:10px;color:var(--muted);">B</label>
+              <input type="number" min="0" max="255" x-model.number="ambLight.blue" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:65px;">
+            </div>
+          </div>
+          <button @click="saveModule('/api/config/module/ambient-lighting', ambLight)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">Salva</button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- NEIGHBOR INFO -->
+    <template x-if="section === 'neighinfo'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Neighbor Info</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="neighInfo.enabled"> Abilitato</label>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Update interval (s, 0=default)</label>
+            <input type="number" x-model.number="neighInfo.update_interval" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="neighInfo.transmit_over_lora"> Trasmetti su LoRa</label>
+          <button @click="saveModule('/api/config/module/neighbor-info', neighInfo)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">Salva</button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- SERIAL MODULE -->
+    <template x-if="section === 'serial'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Serial Module</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="serialMod.enabled"> Abilitato</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="serialMod.echo"> Echo</label>
+          <div style="display:flex;gap:8px;">
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:10px;color:var(--muted);">RXD pin</label>
+              <input type="number" x-model.number="serialMod.rxd" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:70px;">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:10px;color:var(--muted);">TXD pin</label>
+              <input type="number" x-model.number="serialMod.txd" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:70px;">
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Timeout (ms)</label>
+            <input type="number" x-model.number="serialMod.timeout" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Mode</label>
+            <select x-model="serialMod.mode" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+              <option>DEFAULT</option><option>SIMPLE</option><option>PROTO</option>
+              <option>TEXTMSG</option><option>NMEA</option><option>CALTOPO</option>
+            </select>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="serialMod.override_console_serial_port"> Override console serial</label>
+          <button @click="saveModule('/api/config/module/serial', serialMod)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">Salva</button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
   </div><!-- /CONTENT -->
 
     <!-- Factory Reset Modal -->
@@ -972,6 +1204,15 @@ function configPage() {
       { id: 'alert',    label: 'Alert' },
       { id: 'mqtt',     label: 'MQTT' },
       { id: 'canned',   label: 'Canned' },
+      { id: 'extnotif', label: 'ExtNotif' },
+      { id: 'sf',       label: 'S&F' },
+      { id: 'telmod',   label: 'Telemetry' },
+      { id: 'cannedmod',label: 'CannedMod' },
+      { id: 'rangetest',label: 'RangeTest' },
+      { id: 'detsensor',label: 'DetSensor' },
+      { id: 'ambilight',label: 'AmbLight' },
+      { id: 'neighinfo', label: 'Neighbor' },
+      { id: 'serial',   label: 'Serial' },
     ],
 
     node: { long_name: '', short_name: '', role: 'CLIENT', cached: true },
@@ -992,6 +1233,9 @@ function configPage() {
     cannedMessages: [],
     cannedNew: '',
     cannedStatus: '',
+    extNotif: {}, storeForward: {}, telMod: {}, cannedMod: {},
+    rangeTest: {}, detSensor: {}, ambLight: {}, neighInfo: {}, serialMod: {},
+    moduleStatus: '',
 
     loaded: { node: false, lora: false, channels: false },
     saving: { node: false, lora: false, channels: false },
@@ -1014,6 +1258,15 @@ function configPage() {
       if (s === 'alert') await this.loadAlert()
       if (s === 'mqtt') { await this.loadMqtt(); await this.loadMqttStatus() }
       if (s === 'canned') await this.loadCanned()
+      if (s === 'extnotif')  await this.loadExtNotif()
+      if (s === 'sf')        await this.loadStoreForward()
+      if (s === 'telmod')    await this.loadTelMod()
+      if (s === 'cannedmod') await this.loadCannedMod()
+      if (s === 'rangetest') await this.loadRangeTest()
+      if (s === 'detsensor') await this.loadDetSensor()
+      if (s === 'ambilight') await this.loadAmbLight()
+      if (s === 'neighinfo') await this.loadNeighInfo()
+      if (s === 'serial')    await this.loadSerialMod()
     },
 
     async loadNode() {
@@ -1632,6 +1885,53 @@ function configPage() {
     async deleteCanned(id) {
       await fetch(`/api/canned-messages/${id}`, { method: 'DELETE' })
       await this.loadCanned()
+    },
+
+    async saveModule(endpoint, data) {
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+      })
+      this.moduleStatus = r.ok ? '✓ Salvato' : '✗ Errore'
+      setTimeout(() => { this.moduleStatus = '' }, 2000)
+    },
+
+    async loadExtNotif() {
+      const r = await fetch('/api/config/module/external-notification')
+      if (r.ok) this.extNotif = await r.json()
+    },
+    async loadStoreForward() {
+      const r = await fetch('/api/config/module/store-forward')
+      if (r.ok) this.storeForward = await r.json()
+    },
+    async loadTelMod() {
+      const r = await fetch('/api/config/module/telemetry')
+      if (r.ok) this.telMod = await r.json()
+    },
+    async loadCannedMod() {
+      const r = await fetch('/api/config/module/canned-message')
+      if (r.ok) this.cannedMod = await r.json()
+    },
+    async loadRangeTest() {
+      const r = await fetch('/api/config/module/range-test')
+      if (r.ok) this.rangeTest = await r.json()
+    },
+    async loadDetSensor() {
+      const r = await fetch('/api/config/module/detection-sensor')
+      if (r.ok) this.detSensor = await r.json()
+    },
+    async loadAmbLight() {
+      const r = await fetch('/api/config/module/ambient-lighting')
+      if (r.ok) this.ambLight = await r.json()
+    },
+    async loadNeighInfo() {
+      const r = await fetch('/api/config/module/neighbor-info')
+      if (r.ok) this.neighInfo = await r.json()
+    },
+    async loadSerialMod() {
+      const r = await fetch('/api/config/module/serial')
+      if (r.ok) this.serialMod = await r.json()
     },
   }
 }
