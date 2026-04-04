@@ -246,6 +246,30 @@ async def set_lora_config(region: str, preset: str) -> None:
     await _command_queue.put(lambda: _do_set_lora_config(_r, _p))
 
 
+async def send_waypoint(name: str, lat: float, lon: float,
+                        icon: str, description: str, expire: int) -> None:
+    """Send a waypoint via serial interface."""
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    import random
+    wp_id = random.randint(1, 0x7FFFFFFF)
+    _n, _la, _lo, _ic, _de, _ex, _id = name, lat, lon, icon, description, expire, wp_id
+
+    def _do():
+        from meshtastic.protobuf import mesh_pb2
+        wp = mesh_pb2.Waypoint(
+            id=_id,
+            name=_n,
+            description=_de,
+            expire=_ex,
+            latitude_i=int(_la * 1e7),
+            longitude_i=int(_lo * 1e7),
+        )
+        _interface.sendWaypoint(wp)
+
+    await _command_queue.put(_do)
+
+
 def _do_set_mqtt_config(params: dict) -> None:
     """Sync helper — runs in command queue thread."""
     from meshtastic.protobuf import module_config_pb2
