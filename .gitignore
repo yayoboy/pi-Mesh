@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 *.pyo
 .env
+config.env
+config.env.local
 data/*.db
 data/*.db-wal
 data/*.db-shm
@@ -11,3 +13,6 @@ static/tiles/osm/
 static/tiles/topo/
 static/tiles/satellite/
 .worktrees/
+PROGRESS.md
+docs/superpowers/
+*.DS_Store

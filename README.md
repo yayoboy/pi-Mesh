@@ -131,7 +131,7 @@ pip install -r requirements.txt
 ### 2 — Configure
 
 ```bash
-cp config.env config.env.local
+cp config.env.example config.env.local
 nano config.env.local
 ```
 
