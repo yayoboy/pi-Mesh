@@ -270,6 +270,63 @@ async def send_waypoint(name: str, lat: float, lon: float,
     await _command_queue.put(_do)
 
 
+async def send_admin(dest_node_id: str, operation: str, payload: dict | None = None) -> None:
+    """Send an admin command to a remote node via mesh.
+
+    Supported operations:
+      'request_position'  — ask node to send its GPS position
+      'request_telemetry' — ask node to send device telemetry
+      'reboot'            — reboot the remote node
+      'factory_reset'     — factory reset the remote node (DESTRUCTIVE)
+    """
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _dest = dest_node_id
+    _op = operation
+
+    def _do():
+        from meshtastic.protobuf import admin_pb2, portnums_pb2
+        try:
+            dest_num = int(_dest.lstrip('!'), 16)
+        except ValueError:
+            raise RuntimeError(f'Invalid node id: {_dest}')
+
+        if _op == 'request_position':
+            _interface.localNode.sendPosition(destinationId=_dest, wantResponse=True)
+        elif _op == 'request_telemetry':
+            # Send empty admin message to trigger telemetry response
+            admin_msg = admin_pb2.AdminMessage()
+            admin_msg.get_device_metadata_request = True
+            _interface.sendData(
+                admin_msg.SerializeToString(),
+                destinationId=_dest,
+                portNum=portnums_pb2.PortNum.ADMIN_APP,
+                wantAck=True,
+            )
+        elif _op == 'reboot':
+            admin_msg = admin_pb2.AdminMessage()
+            admin_msg.reboot_seconds = 2
+            _interface.sendData(
+                admin_msg.SerializeToString(),
+                destinationId=_dest,
+                portNum=portnums_pb2.PortNum.ADMIN_APP,
+                wantAck=True,
+            )
+        elif _op == 'factory_reset':
+            admin_msg = admin_pb2.AdminMessage()
+            admin_msg.factory_reset = 1
+            _interface.sendData(
+                admin_msg.SerializeToString(),
+                destinationId=_dest,
+                portNum=portnums_pb2.PortNum.ADMIN_APP,
+                wantAck=True,
+            )
+        else:
+            raise RuntimeError(f'Unknown admin operation: {_op}')
+
+    await _command_queue.put(_do)
+
+
 def _do_set_mqtt_config(params: dict) -> None:
     """Sync helper — runs in command queue thread."""
     from meshtastic.protobuf import module_config_pb2
