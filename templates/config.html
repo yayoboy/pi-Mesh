@@ -857,6 +857,37 @@
       </div>
     </template>
 
+
+    <!-- CANNED MESSAGES -->
+    <template x-if="section === 'canned'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">
+          Messaggi rapidi
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <input x-model="cannedNew" placeholder="Testo messaggio..."
+                 @keydown.enter.prevent="addCanned()"
+                 style="flex:1;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+          <button @click="addCanned()"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 12px;font-size:12px;cursor:pointer;">
+            + Aggiungi
+          </button>
+        </div>
+        <div x-show="cannedStatus" x-text="cannedStatus"
+             style="font-size:10px;color:#4caf50;margin-bottom:8px;"></div>
+        <template x-if="cannedMessages.length === 0">
+          <div style="color:var(--muted);font-size:11px;">Nessun messaggio predefinito.</div>
+        </template>
+        <template x-for="m in cannedMessages" :key="m.id">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;">
+            <span x-text="m.text" style="flex:1;font-size:12px;color:var(--text);"></span>
+            <button @click="deleteCanned(m.id)"
+                    style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;line-height:1;">✕</button>
+          </div>
+        </template>
+      </div>
+    </template>
+
   </div><!-- /CONTENT -->
 
     <!-- Factory Reset Modal -->
@@ -940,6 +971,7 @@ function configPage() {
       { id: 'usb',      label: 'USB' },
       { id: 'alert',    label: 'Alert' },
       { id: 'mqtt',     label: 'MQTT' },
+      { id: 'canned',   label: 'Canned' },
     ],
 
     node: { long_name: '', short_name: '', role: 'CLIENT', cached: true },
@@ -957,6 +989,9 @@ function configPage() {
             proxy_to_client_enabled: false, map_reporting_enabled: false, cached: true },
     mqttStatus: { available: false, connected: false, broker: '', enabled: false },
     mqttSaving: false,
+    cannedMessages: [],
+    cannedNew: '',
+    cannedStatus: '',
 
     loaded: { node: false, lora: false, channels: false },
     saving: { node: false, lora: false, channels: false },
@@ -978,6 +1013,7 @@ function configPage() {
       if (s === 'usb')                                    await this.loadUsb()
       if (s === 'alert') await this.loadAlert()
       if (s === 'mqtt') { await this.loadMqtt(); await this.loadMqttStatus() }
+      if (s === 'canned') await this.loadCanned()
     },
 
     async loadNode() {
@@ -1570,6 +1606,32 @@ function configPage() {
       } finally {
         this.mqttSaving = false
       }
+    },
+
+    async loadCanned() {
+      const r = await fetch('/api/canned-messages')
+      if (r.ok) this.cannedMessages = await r.json()
+    },
+
+    async addCanned() {
+      const text = this.cannedNew.trim()
+      if (!text) return
+      const r = await fetch('/api/canned-messages', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ text, sort_order: this.cannedMessages.length })
+      })
+      if (r.ok) {
+        this.cannedNew = ''
+        await this.loadCanned()
+        this.cannedStatus = '✓ Aggiunto'
+        setTimeout(() => { this.cannedStatus = '' }, 2000)
+      }
+    },
+
+    async deleteCanned(id) {
+      await fetch(`/api/canned-messages/${id}`, { method: 'DELETE' })
+      await this.loadCanned()
     },
   }
 }
