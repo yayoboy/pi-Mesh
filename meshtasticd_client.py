@@ -274,6 +274,426 @@ async def set_mqtt_config(params: dict) -> None:
     await _command_queue.put(lambda: _do_set_mqtt_config(p))
 
 
+async def get_external_notification_config(db_path: str) -> dict:
+    if _connected and _interface:
+        try:
+            loop = asyncio.get_event_loop()
+            def _read():
+                mc = _interface.localNode.moduleConfig.external_notification
+                return {
+                    'enabled': mc.enabled,
+                    'output_pin': mc.output_pin,
+                    'active_high': mc.active_high,
+                    'alert_message': mc.alert_message,
+                    'alert_bell': mc.alert_bell,
+                    'use_pwm': mc.use_pwm,
+                    'nag_timeout': mc.nag_timeout,
+                }
+            data = await loop.run_in_executor(None, _read)
+            data['cached'] = False
+            await database.set_config_cache(db_path, 'external_notification', data)
+            return data
+        except Exception as e:
+            logger.error('get_external_notification_config failed: %s', e)
+    cached = await database.get_config_cache(db_path, 'external_notification')
+    if cached:
+        cached['cached'] = True
+        return cached
+    return {'enabled': False, 'output_pin': 0, 'active_high': False,
+            'alert_message': False, 'alert_bell': False, 'use_pwm': False,
+            'nag_timeout': 0, 'cached': True}
+
+
+def _do_set_external_notification_config(params: dict) -> None:
+    from meshtastic.protobuf import module_config_pb2
+    cfg = module_config_pb2.ModuleConfig.ExternalNotificationConfig(
+        enabled=params.get('enabled', False),
+        output_pin=params.get('output_pin', 0),
+        active_high=params.get('active_high', False),
+        alert_message=params.get('alert_message', False),
+        alert_bell=params.get('alert_bell', False),
+        use_pwm=params.get('use_pwm', False),
+        nag_timeout=params.get('nag_timeout', 0),
+    )
+    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(external_notification=cfg))
+
+
+async def set_external_notification_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_external_notification_config(_p))
+
+
+async def get_store_forward_config(db_path: str) -> dict:
+    if _connected and _interface:
+        try:
+            loop = asyncio.get_event_loop()
+            def _read():
+                mc = _interface.localNode.moduleConfig.store_forward
+                return {
+                    'enabled': mc.enabled,
+                    'heartbeat': mc.heartbeat,
+                    'history_return_max': mc.history_return_max,
+                    'history_return_window': mc.history_return_window,
+                }
+            data = await loop.run_in_executor(None, _read)
+            data['cached'] = False
+            await database.set_config_cache(db_path, 'store_forward', data)
+            return data
+        except Exception as e:
+            logger.error('get_store_forward_config failed: %s', e)
+    cached = await database.get_config_cache(db_path, 'store_forward')
+    if cached:
+        cached['cached'] = True
+        return cached
+    return {'enabled': False, 'heartbeat': False,
+            'history_return_max': 0, 'history_return_window': 0, 'cached': True}
+
+
+def _do_set_store_forward_config(params: dict) -> None:
+    from meshtastic.protobuf import module_config_pb2
+    cfg = module_config_pb2.ModuleConfig.StoreAndForwardConfig(
+        enabled=params.get('enabled', False),
+        heartbeat=params.get('heartbeat', False),
+        history_return_max=params.get('history_return_max', 0),
+        history_return_window=params.get('history_return_window', 0),
+    )
+    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(store_forward=cfg))
+
+
+async def set_store_forward_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_store_forward_config(_p))
+
+
+async def get_telemetry_module_config(db_path: str) -> dict:
+    if _connected and _interface:
+        try:
+            loop = asyncio.get_event_loop()
+            def _read():
+                mc = _interface.localNode.moduleConfig.telemetry
+                return {
+                    'device_update_interval': mc.device_update_interval,
+                    'environment_update_interval': mc.environment_update_interval,
+                    'environment_measurement_enabled': mc.environment_measurement_enabled,
+                    'air_quality_enabled': mc.air_quality_enabled,
+                    'power_measurement_enabled': mc.power_measurement_enabled,
+                }
+            data = await loop.run_in_executor(None, _read)
+            data['cached'] = False
+            await database.set_config_cache(db_path, 'telemetry_module', data)
+            return data
+        except Exception as e:
+            logger.error('get_telemetry_module_config failed: %s', e)
+    cached = await database.get_config_cache(db_path, 'telemetry_module')
+    if cached:
+        cached['cached'] = True
+        return cached
+    return {'device_update_interval': 0, 'environment_update_interval': 0,
+            'environment_measurement_enabled': False, 'air_quality_enabled': False,
+            'power_measurement_enabled': False, 'cached': True}
+
+
+def _do_set_telemetry_module_config(params: dict) -> None:
+    from meshtastic.protobuf import module_config_pb2
+    cfg = module_config_pb2.ModuleConfig.TelemetryConfig(
+        device_update_interval=params.get('device_update_interval', 0),
+        environment_update_interval=params.get('environment_update_interval', 0),
+        environment_measurement_enabled=params.get('environment_measurement_enabled', False),
+        air_quality_enabled=params.get('air_quality_enabled', False),
+        power_measurement_enabled=params.get('power_measurement_enabled', False),
+    )
+    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(telemetry=cfg))
+
+
+async def set_telemetry_module_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_telemetry_module_config(_p))
+
+
+async def get_canned_message_module_config(db_path: str) -> dict:
+    if _connected and _interface:
+        try:
+            loop = asyncio.get_event_loop()
+            def _read():
+                mc = _interface.localNode.moduleConfig.canned_message
+                return {
+                    'rotary1_enabled': mc.rotary1_enabled,
+                    'send_bell': mc.send_bell,
+                    'free_text_sms_enabled': mc.free_text_sms_enabled,
+                }
+            data = await loop.run_in_executor(None, _read)
+            data['cached'] = False
+            await database.set_config_cache(db_path, 'canned_message_module', data)
+            return data
+        except Exception as e:
+            logger.error('get_canned_message_module_config failed: %s', e)
+    cached = await database.get_config_cache(db_path, 'canned_message_module')
+    if cached:
+        cached['cached'] = True
+        return cached
+    return {'rotary1_enabled': False, 'send_bell': False,
+            'free_text_sms_enabled': False, 'cached': True}
+
+
+def _do_set_canned_message_module_config(params: dict) -> None:
+    from meshtastic.protobuf import module_config_pb2
+    cfg = module_config_pb2.ModuleConfig.CannedMessageConfig(
+        rotary1_enabled=params.get('rotary1_enabled', False),
+        send_bell=params.get('send_bell', False),
+        free_text_sms_enabled=params.get('free_text_sms_enabled', False),
+    )
+    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(canned_message=cfg))
+
+
+async def set_canned_message_module_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_canned_message_module_config(_p))
+
+
+async def get_range_test_config(db_path: str) -> dict:
+    if _connected and _interface:
+        try:
+            loop = asyncio.get_event_loop()
+            def _read():
+                mc = _interface.localNode.moduleConfig.range_test
+                return {
+                    'enabled': mc.enabled,
+                    'sender': mc.sender,
+                    'save': mc.save,
+                }
+            data = await loop.run_in_executor(None, _read)
+            data['cached'] = False
+            await database.set_config_cache(db_path, 'range_test', data)
+            return data
+        except Exception as e:
+            logger.error('get_range_test_config failed: %s', e)
+    cached = await database.get_config_cache(db_path, 'range_test')
+    if cached:
+        cached['cached'] = True
+        return cached
+    return {'enabled': False, 'sender': 0, 'save': False, 'cached': True}
+
+
+def _do_set_range_test_config(params: dict) -> None:
+    from meshtastic.protobuf import module_config_pb2
+    cfg = module_config_pb2.ModuleConfig.RangeTestConfig(
+        enabled=params.get('enabled', False),
+        sender=params.get('sender', 0),
+        save=params.get('save', False),
+    )
+    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(range_test=cfg))
+
+
+async def set_range_test_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_range_test_config(_p))
+
+
+async def get_detection_sensor_config(db_path: str) -> dict:
+    if _connected and _interface:
+        try:
+            loop = asyncio.get_event_loop()
+            def _read():
+                mc = _interface.localNode.moduleConfig.detection_sensor
+                return {
+                    'enabled': mc.enabled,
+                    'minimum_broadcast_secs': mc.minimum_broadcast_secs,
+                    'state_broadcast_secs': mc.state_broadcast_secs,
+                    'name': mc.name,
+                    'monitor_pin': mc.monitor_pin,
+                    'use_pullup': mc.use_pullup,
+                    'detection_triggered_high': mc.detection_triggered_high,
+                }
+            data = await loop.run_in_executor(None, _read)
+            data['cached'] = False
+            await database.set_config_cache(db_path, 'detection_sensor', data)
+            return data
+        except Exception as e:
+            logger.error('get_detection_sensor_config failed: %s', e)
+    cached = await database.get_config_cache(db_path, 'detection_sensor')
+    if cached:
+        cached['cached'] = True
+        return cached
+    return {'enabled': False, 'minimum_broadcast_secs': 0, 'state_broadcast_secs': 0,
+            'name': '', 'monitor_pin': 0, 'use_pullup': False,
+            'detection_triggered_high': False, 'cached': True}
+
+
+def _do_set_detection_sensor_config(params: dict) -> None:
+    from meshtastic.protobuf import module_config_pb2
+    cfg = module_config_pb2.ModuleConfig.DetectionSensorConfig(
+        enabled=params.get('enabled', False),
+        minimum_broadcast_secs=params.get('minimum_broadcast_secs', 0),
+        state_broadcast_secs=params.get('state_broadcast_secs', 0),
+        name=params.get('name', ''),
+        monitor_pin=params.get('monitor_pin', 0),
+        use_pullup=params.get('use_pullup', False),
+        detection_triggered_high=params.get('detection_triggered_high', False),
+    )
+    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(detection_sensor=cfg))
+
+
+async def set_detection_sensor_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_detection_sensor_config(_p))
+
+
+async def get_ambient_lighting_config(db_path: str) -> dict:
+    if _connected and _interface:
+        try:
+            loop = asyncio.get_event_loop()
+            def _read():
+                mc = _interface.localNode.moduleConfig.ambient_lighting
+                return {
+                    'led_state': mc.led_state,
+                    'current': mc.current,
+                    'red': mc.red,
+                    'green': mc.green,
+                    'blue': mc.blue,
+                }
+            data = await loop.run_in_executor(None, _read)
+            data['cached'] = False
+            await database.set_config_cache(db_path, 'ambient_lighting', data)
+            return data
+        except Exception as e:
+            logger.error('get_ambient_lighting_config failed: %s', e)
+    cached = await database.get_config_cache(db_path, 'ambient_lighting')
+    if cached:
+        cached['cached'] = True
+        return cached
+    return {'led_state': False, 'current': 0, 'red': 0,
+            'green': 0, 'blue': 0, 'cached': True}
+
+
+def _do_set_ambient_lighting_config(params: dict) -> None:
+    from meshtastic.protobuf import module_config_pb2
+    cfg = module_config_pb2.ModuleConfig.AmbientLightingConfig(
+        led_state=params.get('led_state', False),
+        current=params.get('current', 0),
+        red=params.get('red', 0),
+        green=params.get('green', 0),
+        blue=params.get('blue', 0),
+    )
+    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(ambient_lighting=cfg))
+
+
+async def set_ambient_lighting_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_ambient_lighting_config(_p))
+
+
+async def get_neighbor_info_module_config(db_path: str) -> dict:
+    if _connected and _interface:
+        try:
+            loop = asyncio.get_event_loop()
+            def _read():
+                mc = _interface.localNode.moduleConfig.neighbor_info
+                return {
+                    'enabled': mc.enabled,
+                    'update_interval': mc.update_interval,
+                    'transmit_over_lora': mc.transmit_over_lora,
+                }
+            data = await loop.run_in_executor(None, _read)
+            data['cached'] = False
+            await database.set_config_cache(db_path, 'neighbor_info_module', data)
+            return data
+        except Exception as e:
+            logger.error('get_neighbor_info_module_config failed: %s', e)
+    cached = await database.get_config_cache(db_path, 'neighbor_info_module')
+    if cached:
+        cached['cached'] = True
+        return cached
+    return {'enabled': False, 'update_interval': 0,
+            'transmit_over_lora': False, 'cached': True}
+
+
+def _do_set_neighbor_info_module_config(params: dict) -> None:
+    from meshtastic.protobuf import module_config_pb2
+    cfg = module_config_pb2.ModuleConfig.NeighborInfoConfig(
+        enabled=params.get('enabled', False),
+        update_interval=params.get('update_interval', 0),
+        transmit_over_lora=params.get('transmit_over_lora', False),
+    )
+    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(neighbor_info=cfg))
+
+
+async def set_neighbor_info_module_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_neighbor_info_module_config(_p))
+
+
+async def get_serial_module_config(db_path: str) -> dict:
+    if _connected and _interface:
+        try:
+            loop = asyncio.get_event_loop()
+            def _read():
+                mc = _interface.localNode.moduleConfig.serial
+                return {
+                    'enabled': mc.enabled,
+                    'echo': mc.echo,
+                    'rxd': mc.rxd,
+                    'txd': mc.txd,
+                    'timeout': mc.timeout,
+                    'mode': mc.Mode.Name(mc.mode),
+                    'override_console_serial_port': mc.override_console_serial_port,
+                }
+            data = await loop.run_in_executor(None, _read)
+            data['cached'] = False
+            await database.set_config_cache(db_path, 'serial_module', data)
+            return data
+        except Exception as e:
+            logger.error('get_serial_module_config failed: %s', e)
+    cached = await database.get_config_cache(db_path, 'serial_module')
+    if cached:
+        cached['cached'] = True
+        return cached
+    return {'enabled': False, 'echo': False, 'rxd': 0, 'txd': 0,
+            'timeout': 0, 'mode': 'DEFAULT', 'override_console_serial_port': False,
+            'cached': True}
+
+
+def _do_set_serial_module_config(params: dict) -> None:
+    from meshtastic.protobuf import module_config_pb2
+    mode_val = module_config_pb2.ModuleConfig.SerialConfig.Serial_Baud.Value('DEFAULT')
+    try:
+        mode_val = module_config_pb2.ModuleConfig.SerialConfig.Mode.Value(params.get('mode', 'DEFAULT'))
+    except ValueError:
+        pass
+    cfg = module_config_pb2.ModuleConfig.SerialConfig(
+        enabled=params.get('enabled', False),
+        echo=params.get('echo', False),
+        rxd=params.get('rxd', 0),
+        txd=params.get('txd', 0),
+        timeout=params.get('timeout', 0),
+        mode=mode_val,
+        override_console_serial_port=params.get('override_console_serial_port', False),
+    )
+    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(serial=cfg))
+
+
+async def set_serial_module_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_serial_module_config(_p))
+
+
 def _do_set_channel(idx: int, name: str, psk_b64: str) -> None:
     """Sync helper — runs in command queue thread."""
     import base64
