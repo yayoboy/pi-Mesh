@@ -9,6 +9,7 @@ let mapReady = false
 const markerCache = new Map()
 let hopLinesLayer
 let tracerouteLayer
+var waypointsLayer, neighborLinksLayer
 let customMarkersLayer
 let customMarkersData = []
 let breadcrumbLayer
@@ -43,7 +44,7 @@ function makeSvgIcon(type, size, color) {
 const DEFAULT_FILTERS = {
   showOnline: true, showOffline: false,
   showHopLines: true, showCustomMarkers: true, showLocalNode: true,
-  showBreadcrumbs: true,
+  showBreadcrumbs: true, showWaypoints: true, showNeighborLinks: false,
   maxHops: 7,
 }
 
@@ -78,6 +79,10 @@ function applyFilters() {
   })
   if (f.showHopLines)      hopLinesLayer.addTo(leafletMap)
   else                     leafletMap.removeLayer(hopLinesLayer)
+  if (f.showWaypoints)     waypointsLayer.addTo(leafletMap)
+  else                     leafletMap.removeLayer(waypointsLayer)
+  if (f.showNeighborLinks) neighborLinksLayer.addTo(leafletMap)
+  else                     leafletMap.removeLayer(neighborLinksLayer)
   if (f.showCustomMarkers) customMarkersLayer.addTo(leafletMap)
   else                     leafletMap.removeLayer(customMarkersLayer)
   if (breadcrumbLayer) {
@@ -123,6 +128,8 @@ function initFilters() {
   bindCheckbox('filter-online',   'showOnline')
   bindCheckbox('filter-offline',  'showOffline')
   bindCheckbox('filter-hoplines', 'showHopLines')
+  bindCheckbox('filter-waypoints',  'showWaypoints')
+  bindCheckbox('filter-neighbor',   'showNeighborLinks')
   bindCheckbox('filter-markers',  'showCustomMarkers')
   bindCheckbox('filter-breadcrumbs', 'showBreadcrumbs')
   bindCheckbox('filter-local',    'showLocalNode')
@@ -579,6 +586,8 @@ function initMapIfNeeded() {
   tracerouteLayer = L.layerGroup()
   customMarkersLayer = L.layerGroup()
   breadcrumbLayer = L.layerGroup()
+  waypointsLayer = L.layerGroup()
+  neighborLinksLayer = L.layerGroup()
   var el = document.getElementById('map-container')
   if (!el) return
   var bounds = JSON.parse(el.dataset.bounds || 'null')
@@ -653,6 +662,8 @@ function initMapIfNeeded() {
   applyFilters()
   renderHopLines()
   loadCustomMarkers()
+  loadWaypoints()
+  loadNeighborLinks()
 
   // Invalidate size after delay to ensure container is visible
   setTimeout(function() { leafletMap.invalidateSize() }, 200)
@@ -745,6 +756,75 @@ function updateMapMarker(node) {
   applyFilters()
 }
 
+// --- Waypoints ---
+
+function renderWaypoints(waypoints) {
+  if (!waypointsLayer) return
+  waypointsLayer.clearLayers()
+  waypoints.forEach(function(wp) {
+    if (wp.lat == null || wp.lon == null) return
+    var icon = L.divIcon({
+      html: '<span style="font-size:18px;line-height:1;">&#128205;</span>',
+      className: '',
+      iconSize: [22, 22],
+      iconAnchor: [11, 22],
+    })
+    var marker = L.marker([wp.lat, wp.lon], {icon: icon})
+    var expireStr = wp.expire ? new Date(wp.expire * 1000).toLocaleString() : 'Mai'
+    var popupEl = document.createElement('div')
+    var title = document.createElement('b')
+    title.textContent = wp.name || 'Waypoint'
+    popupEl.appendChild(title)
+    if (wp.description) {
+      var desc = document.createElement('div')
+      desc.textContent = wp.description
+      popupEl.appendChild(desc)
+    }
+    var meta = document.createElement('div')
+    meta.style.fontSize = '9px'
+    meta.textContent = 'Da: ' + wp.from_id + ' — Scade: ' + expireStr
+    popupEl.appendChild(meta)
+    var delBtn = document.createElement('button')
+    delBtn.textContent = 'Elimina'
+    delBtn.style.cssText = 'margin-top:4px;font-size:10px;color:#e53935;background:none;border:1px solid #e53935;border-radius:3px;padding:2px 6px;cursor:pointer;'
+    delBtn.onclick = function() { deleteWaypoint(wp.id) }
+    popupEl.appendChild(delBtn)
+    marker.bindPopup(popupEl, {maxWidth: 180})
+    waypointsLayer.addLayer(marker)
+  })
+}
+
+function deleteWaypoint(id) {
+  fetch('/api/waypoints/' + id, {method: 'DELETE'}).then(function() { loadWaypoints() })
+}
+
+function loadWaypoints() {
+  fetch('/api/waypoints').then(function(r) { return r.json() }).then(renderWaypoints)
+}
+
+// --- Neighbor Links ---
+
+function renderNeighborLinks(links) {
+  if (!neighborLinksLayer) return
+  neighborLinksLayer.clearLayers()
+  links.forEach(function(link) {
+    var fromNode = nodeCache.get(link.from_id)
+    var toNode   = nodeCache.get(link.neighbor_id)
+    if (!fromNode || !toNode) return
+    if (fromNode.latitude == null || toNode.latitude == null) return
+    var line = L.polyline(
+      [[fromNode.latitude, fromNode.longitude], [toNode.latitude, toNode.longitude]],
+      {color: snrColor(link.snr), weight: 2, opacity: 0.65}
+    )
+    line.bindTooltip('SNR: ' + (link.snr != null ? link.snr.toFixed(1) : '?') + ' dB', {sticky: true})
+    neighborLinksLayer.addLayer(line)
+  })
+}
+
+function loadNeighborLinks() {
+  fetch('/api/neighbor-info').then(function(r) { return r.json() }).then(renderNeighborLinks)
+}
+
 // --- Listener eventi WebSocket (dispatchati da app.js) ---
 
 window.addEventListener('node-update',       function(e) { updateMapMarker(e.detail) })
@@ -762,3 +842,5 @@ window.addEventListener('position-update', function(e) {
     renderBreadcrumbs()
   }
 })
+window.addEventListener('waypoint',       function() { loadWaypoints() })
+window.addEventListener('neighbor_info',  function() { loadNeighborLinks() })
