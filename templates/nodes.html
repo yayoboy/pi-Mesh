@@ -199,6 +199,14 @@
                   </svg>
                   Mappa
                 </button>
+                <button class="action-btn" @click.stop="openAdmin(node)"
+                        style="color:#e53935;border-color:#7f1d1d;">
+                  <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  </svg>
+                  Admin
+                </button>
                 <button class="action-btn" @click.stop="openForget(node)" style="color:#ef4444;border-color:#7f1d1d;">
                   <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -326,6 +334,14 @@
                 </svg>
                 Vedi su Mappa
               </button>
+              <button class="action-btn" @click="openAdmin(selectedNode)"
+                      style="flex-basis:calc(50% - 3px);color:#e53935;border-color:#7f1d1d;">
+                <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Admin
+              </button>
               <button class="action-btn" @click="openForget(selectedNode)" style="flex-basis:calc(50% - 3px);color:#ef4444;border-color:#7f1d1d;">
                 <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -341,6 +357,96 @@
           Seleziona un nodo
         </div>
       </template>
+    </div>
+  </div>
+
+  <!-- ADMIN MODAL -->
+  <div x-show="adminModal" @click.self="closeAdmin()"
+       style="position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;
+              display:flex;align-items:center;justify-content:center;padding:16px;">
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;
+                width:100%;max-width:320px;padding:14px;">
+
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text);">Admin remoto</div>
+          <div style="font-size:10px;color:var(--muted);" x-text="adminNodeName"></div>
+        </div>
+        <button @click="closeAdmin()"
+                style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1;">✕</button>
+      </div>
+
+      <!-- Diagnostica -->
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">
+        Diagnostica
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+        <button @click="doAdmin('request-position')" :disabled="adminLoading"
+                style="font-size:10px;padding:6px 10px;background:none;border:1px solid var(--border);
+                       border-radius:4px;color:var(--text);cursor:pointer;">
+          📍 Posizione
+        </button>
+        <button @click="doAdmin('request-telemetry')" :disabled="adminLoading"
+                style="font-size:10px;padding:6px 10px;background:none;border:1px solid var(--border);
+                       border-radius:4px;color:var(--text);cursor:pointer;">
+          📊 Telemetria
+        </button>
+      </div>
+
+      <!-- Controllo -->
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">
+        Controllo
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:12px;">
+        <button @click="doAdmin('reboot')" :disabled="adminLoading"
+                style="font-size:10px;padding:6px 10px;background:none;border:1px solid #ff9800;
+                       border-radius:4px;color:#ff9800;cursor:pointer;">
+          🔄 Reboot
+        </button>
+      </div>
+
+      <!-- Distruttivo -->
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">
+        Distruttivo
+      </div>
+      <template x-if="!confirmReset">
+        <button @click="confirmReset=true"
+                style="font-size:10px;padding:6px 10px;background:none;border:1px solid #e53935;
+                       border-radius:4px;color:#e53935;cursor:pointer;">
+          💥 Factory Reset
+        </button>
+      </template>
+      <template x-if="confirmReset">
+        <div style="background:#1a0000;border:1px solid #e53935;border-radius:4px;padding:10px;">
+          <div style="font-size:10px;color:#e53935;margin-bottom:6px;">
+            Operazione irreversibile. Scrivi <b>RESET</b> per confermare:
+          </div>
+          <input x-model="confirmResetText" placeholder="RESET"
+                 style="width:100%;background:var(--panel);color:var(--text);border:1px solid #e53935;
+                        border-radius:4px;padding:6px 8px;font-size:12px;margin-bottom:6px;">
+          <div style="display:flex;gap:6px;">
+            <button @click="doFactoryReset()" :disabled="adminLoading"
+                    style="font-size:10px;padding:5px 10px;background:#e53935;color:#fff;
+                           border:none;border-radius:4px;cursor:pointer;">
+              Conferma
+            </button>
+            <button @click="confirmReset=false;confirmResetText=''"
+                    style="font-size:10px;padding:5px 10px;background:none;border:1px solid var(--border);
+                           border-radius:4px;color:var(--muted);cursor:pointer;">
+              Annulla
+            </button>
+          </div>
+        </div>
+      </template>
+
+      <!-- Status feedback -->
+      <div x-show="adminStatus" x-text="adminStatus"
+           style="margin-top:10px;font-size:10px;padding:6px 8px;background:var(--panel);
+                  border-radius:4px;font-family:monospace;"
+           :style="adminStatus.startsWith('✓') ? 'color:#4caf50' : 'color:#ef4444'">
+      </div>
+
     </div>
   </div>
 
@@ -424,6 +530,13 @@ function nodesPage() {
     dmModal: false,
     dmNode: null,
     dmText: '',
+    adminModal: false,
+    adminNodeId: null,
+    adminNodeName: '',
+    adminStatus: '',
+    adminLoading: false,
+    confirmReset: false,
+    confirmResetText: '',
 
     get selectedNode() {
       if (!this.selectedNodeId) return null
@@ -529,6 +642,46 @@ function nodesPage() {
         if (typeof showToast === 'function') showToast('Errore rimozione', 'warn')
       }
       this.forgetModal = false
+    },
+
+    openAdmin(node) {
+      this.adminNodeId = node.id
+      this.adminNodeName = node.long_name || node.short_name || node.id
+      this.adminModal = true
+      this.adminStatus = ''
+      this.confirmReset = false
+      this.confirmResetText = ''
+    },
+
+    closeAdmin() {
+      this.adminModal = false
+      this.adminNodeId = null
+      this.adminStatus = ''
+      this.confirmReset = false
+    },
+
+    async doAdmin(operation) {
+      if (!this.adminNodeId) return
+      this.adminLoading = true
+      this.adminStatus = '...'
+      try {
+        const r = await fetch(`/api/admin/${encodeURIComponent(this.adminNodeId)}/${operation}`, {method: 'POST'})
+        const data = await r.json()
+        this.adminStatus = r.ok ? '✓ Comando inviato' : ('✗ ' + (data.error || data.detail || 'Errore'))
+      } catch (e) {
+        this.adminStatus = '✗ Errore di rete'
+      }
+      this.adminLoading = false
+    },
+
+    async doFactoryReset() {
+      if (this.confirmResetText !== 'RESET') {
+        this.adminStatus = 'Scrivi RESET per confermare'
+        return
+      }
+      await this.doAdmin('factory-reset')
+      this.confirmReset = false
+      this.confirmResetText = ''
     },
   }
 }
