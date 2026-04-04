@@ -670,7 +670,7 @@ async def get_serial_module_config(db_path: str) -> dict:
 
 def _do_set_serial_module_config(params: dict) -> None:
     from meshtastic.protobuf import module_config_pb2
-    mode_val = module_config_pb2.ModuleConfig.SerialConfig.Serial_Baud.Value('DEFAULT')
+    mode_val = 0  # DEFAULT enum value
     try:
         mode_val = module_config_pb2.ModuleConfig.SerialConfig.Mode.Value(params.get('mode', 'DEFAULT'))
     except ValueError:
