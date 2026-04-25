@@ -86,27 +86,6 @@ function takeScreenshot() {
     .finally(() => { _screenshotBusy = false })
 }
 
-// ===== UTILITY =====
-function reexecScripts(container) {
-  const scripts = Array.from(container.querySelectorAll('script'))
-  let chain = Promise.resolve()
-  scripts.forEach(oldScript => {
-    chain = chain.then(() => new Promise(resolve => {
-      const s = document.createElement('script')
-      if (oldScript.src) {
-        s.src = oldScript.src
-        s.onload = resolve
-        s.onerror = resolve
-      } else {
-        s.textContent = oldScript.textContent
-      }
-      oldScript.parentNode.replaceChild(s, oldScript)
-      if (!oldScript.src) resolve()
-    }))
-  })
-  return chain
-}
-
 // ===== WEBSOCKET =====
 function initWS() {
   const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -479,10 +458,29 @@ async function navigateTo(tabName) {
 
     const newContent = doc.getElementById('content')
     if (newContent) {
+      // Extract scripts and execute them BEFORE setting innerHTML,
+      // so Alpine component functions (e.g. messagesPage) are defined
+      // before Alpine's MutationObserver sees the new x-data elements
+      const scripts = Array.from(newContent.querySelectorAll('script'))
+      scripts.forEach(s => s.remove())
+
+      for (const oldScript of scripts) {
+        const s = document.createElement('script')
+        if (oldScript.src) {
+          await new Promise(resolve => {
+            s.src = oldScript.src
+            s.onload = resolve
+            s.onerror = resolve
+            document.head.appendChild(s)
+          })
+        } else {
+          s.textContent = oldScript.textContent
+          document.head.appendChild(s)
+        }
+      }
+
       const container = document.getElementById('content')
       container.innerHTML = newContent.innerHTML
-      await reexecScripts(container)
-      // Tell Alpine to initialize new x-data components after SPA navigation
       if (window.Alpine) {
         container.querySelectorAll('[x-data]').forEach(function(el) {
           Alpine.initTree(el)

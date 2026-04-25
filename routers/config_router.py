@@ -260,18 +260,18 @@ async def wifi_scan():
     try:
         result = await asyncio.to_thread(
             subprocess.run,
-            ['nmcli', '-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list'],
-            capture_output=True, text=True, timeout=10
+            ['sudo', 'nmcli', '-t', '-f', 'SSID,SIGNAL,SECURITY', 'dev', 'wifi', 'list', '--rescan', 'yes'],
+            capture_output=True, text=True, timeout=15
         )
-        networks = []
+        best = {}
         for line in result.stdout.splitlines():
             parts = line.split(':')
-            if len(parts) >= 3 and parts[0]:
-                networks.append({
-                    'ssid': parts[0],
-                    'signal': int(parts[1]) if parts[1].isdigit() else 0,
-                    'security': parts[2],
-                })
+            if len(parts) >= 3 and parts[0] and parts[0] != '--':
+                ssid = parts[0]
+                signal = int(parts[1]) if parts[1].isdigit() else 0
+                if ssid not in best or signal > best[ssid]['signal']:
+                    best[ssid] = {'ssid': ssid, 'signal': signal, 'security': parts[2]}
+        networks = sorted(best.values(), key=lambda n: n['signal'], reverse=True)
         return networks
     except FileNotFoundError:
         return JSONResponse({'error': 'nmcli not found'}, status_code=500)
@@ -339,18 +339,35 @@ async def wifi_status():
 
 @router.get('/api/config/wifi/saved')
 async def wifi_saved():
-    """Return list of saved WiFi connection profiles."""
+    """Return list of saved WiFi connection profiles with SSID and password."""
     try:
         result = await asyncio.to_thread(
             subprocess.run,
             ['nmcli', '-t', '-f', 'NAME,TYPE', 'con', 'show'],
             capture_output=True, text=True, timeout=10
         )
-        saved = []
+        names = []
         for line in result.stdout.splitlines():
             parts = line.split(':')
             if len(parts) >= 2 and parts[1] == '802-11-wireless':
-                saved.append(parts[0])
+                names.append(parts[0])
+        saved = []
+        for name in names:
+            detail = await asyncio.to_thread(
+                subprocess.run,
+                ['sudo', 'nmcli', '-s', '-t', '-f',
+                 '802-11-wireless.ssid,802-11-wireless-security.psk',
+                 'con', 'show', name],
+                capture_output=True, text=True, timeout=5
+            )
+            ssid = name
+            psk = ''
+            for dline in detail.stdout.splitlines():
+                if dline.startswith('802-11-wireless.ssid:'):
+                    ssid = dline.split(':', 1)[1]
+                elif dline.startswith('802-11-wireless-security.psk:'):
+                    psk = dline.split(':', 1)[1]
+            saved.append({'name': name, 'ssid': ssid, 'psk': psk})
         return saved
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return []
@@ -359,9 +376,9 @@ async def wifi_saved():
 @router.delete('/api/config/wifi/saved/{name}')
 async def wifi_delete_saved(name: str):
     """Delete a saved WiFi connection profile."""
-    # Validate name against actual saved profiles to prevent arbitrary deletion
-    saved = await wifi_saved()
-    if name not in saved:
+    saved_list = await wifi_saved()
+    saved_names = [s['name'] for s in saved_list]
+    if name not in saved_names:
         return JSONResponse({'error': 'Profile not found'}, status_code=404)
     try:
         result = await asyncio.to_thread(

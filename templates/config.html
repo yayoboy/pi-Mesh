@@ -432,7 +432,7 @@
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
           <template x-for="c in accentSwatches" :key="c">
             <button @click="applyAccent(c)"
-                    style="width:40px;height:40px;border-radius:50%;padding:0;cursor:pointer;flex-shrink:0;"
+                    style="width:48px;height:48px;border-radius:50%;padding:0;cursor:pointer;flex-shrink:0;"
                     :style="'background:' + c + ';border:2px solid ' + (currentAccent===c ? '#fff' : 'transparent') + ';'"></button>
           </template>
         </div>
@@ -440,7 +440,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
           <template x-for="v in themeVars" :key="v.key">
             <div @click="openColorPicker(v.key, v.label, v.value)" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px;border-radius:4px;border:1px solid var(--border);">
-              <span style="width:28px;height:28px;border-radius:4px;flex-shrink:0;border:1px solid var(--border);" :style="'background:' + v.value"></span>
+              <span style="width:36px;height:36px;border-radius:4px;flex-shrink:0;border:1px solid var(--border);" :style="'background:' + v.value"></span>
               <div style="min-width:0;">
                 <span style="font-size:9px;color:var(--muted);display:block;" x-text="v.label"></span>
                 <span style="font-size:8px;font-family:monospace;color:var(--text);opacity:0.6;" x-text="v.value"></span>
@@ -528,11 +528,17 @@
         <template x-if="wifiSaved.length > 0">
           <div>
             <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:6px;">Reti salvate</div>
-            <div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;max-height:90px;overflow-y:auto;margin-bottom:14px;">
-              <template x-for="name in wifiSaved" :key="name">
-                <div style="padding:6px 10px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);">
-                  <span style="font-size:11px;color:var(--text);" x-text="name"></span>
-                  <button @click="deleteWifiSaved(name)" style="background:none;border:none;color:#ef4444;font-size:10px;cursor:pointer;padding:2px 6px;">Rimuovi</button>
+            <div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;max-height:150px;overflow-y:auto;margin-bottom:14px;">
+              <template x-for="net in wifiSaved" :key="net.name">
+                <div style="padding:8px 10px;border-bottom:1px solid var(--border);">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:var(--text);font-weight:600;" x-text="net.ssid"></span>
+                    <button @click="deleteWifiSaved(net.name)" style="background:none;border:none;color:#ef4444;font-size:10px;cursor:pointer;padding:2px 6px;">Rimuovi</button>
+                  </div>
+                  <div style="font-size:10px;color:var(--muted);margin-top:2px;">
+                    <span x-text="net.name !== net.ssid ? 'Profilo: ' + net.name + ' · ' : ''"></span>
+                    <span x-text="net.psk ? 'PSK: ' + net.psk : 'Aperta'"></span>
+                  </div>
                 </div>
               </template>
             </div>
@@ -1221,15 +1227,20 @@
           <input type="text" :value="cpValue" maxlength="7" @input="cpSetHex($event.target.value)"
                  style="flex:1;height:32px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:monospace;font-size:12px;padding:0 8px;text-transform:uppercase;">
         </div>
-        <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <input type="color" :value="cpValue" @input="cpSelect($event.target.value)"
+                 style="width:48px;height:48px;border:1px solid var(--border);border-radius:6px;padding:2px;cursor:pointer;background:var(--bg);">
+          <span style="font-size:10px;color:var(--muted);">Tocca per scegliere</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:8px;">
           <template x-for="c in cpPalette" :key="c">
-            <button @click="cpSelect(c)" style="width:100%;aspect-ratio:1;border-radius:3px;border:none;cursor:pointer;padding:0;"
+            <button @click="cpSelect(c)" style="width:100%;aspect-ratio:1;border-radius:4px;border:none;cursor:pointer;padding:0;min-height:32px;"
                     :style="'background:' + c + ';' + (cpValue===c ? 'box-shadow:0 0 0 2px #fff;' : '')"></button>
           </template>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;">
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">
           <template x-for="c in cpGrays" :key="c">
-            <button @click="cpSelect(c)" style="width:100%;aspect-ratio:1;border-radius:3px;border:1px solid var(--border);cursor:pointer;padding:0;"
+            <button @click="cpSelect(c)" style="width:100%;aspect-ratio:1;border-radius:4px;border:1px solid var(--border);cursor:pointer;padding:0;min-height:32px;"
                     :style="'background:' + c + ';' + (cpValue===c ? 'box-shadow:0 0 0 2px var(--accent);' : '')"></button>
           </template>
         </div>
@@ -1297,9 +1308,9 @@ function configPage() {
     async selectSection(s, groupId) {
       this.section = s
       if (groupId) this.openGroup = groupId
-      if (s === 'node'     && !this.node.long_name)      await this.loadNode()
-      if (s === 'lora'     && !this.lora.region)          await this.loadLora()
-      if (s === 'channels' && this.channels.length === 0) await this.loadChannels()
+      if (s === 'node'     && !this.loaded.node)     await this.loadNode()
+      if (s === 'lora'     && !this.loaded.lora)     await this.loadLora()
+      if (s === 'channels' && !this.loaded.channels) await this.loadChannels()
       if (s === 'gpio')                                   await this.loadGpio()
       if (s === 'rtc')                                    await this.loadRtc()
       if (s === 'mappa')                                  await this.loadMappa()
@@ -1903,7 +1914,7 @@ function configPage() {
       try {
         const r = await fetch('/api/config/wifi/saved/' + encodeURIComponent(name), { method: 'DELETE' })
         if (r.ok) {
-          this.wifiSaved = this.wifiSaved.filter(n => n !== name)
+          this.wifiSaved = this.wifiSaved.filter(n => n.name !== name)
           this.status.wifi = '✓ Rete rimossa'
         }
       } catch(e) {}
