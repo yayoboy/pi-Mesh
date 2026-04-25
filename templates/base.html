@@ -44,7 +44,7 @@
 <body class="h-full flex flex-col">
 
   <!-- Status bar -->
-  <div id="statusbar" x-data="{ sysModal: '' }" class="flex items-center justify-between px-3 py-1 text-xs"
+  <div id="statusbar" x-data="{ sysModal: '', rotateOpen: false, currentRotation: 0 }" x-init="fetch('/api/config/display').then(r=>r.json()).then(d=>{ currentRotation = d.rotation || 0 }).catch(()=>{})" class="flex items-center justify-between px-3 py-1 text-xs"
        style="background:var(--panel);border-bottom:1px solid var(--border);height:24px;">
     <span id="node-name" style="color:var(--muted);font-size:10px;">pi-Mesh</span>
     <div class="flex gap-3 items-center">
@@ -78,6 +78,19 @@
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
         </svg>
       </span>
+      <!-- Rotation -->
+      <div style="position:relative;">
+        <button @click="rotateOpen = !rotateOpen" title="Rotazione" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:0;line-height:0;min-height:0;width:auto;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :style="'transform:rotate('+currentRotation+'deg)'">
+            <path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+          </svg>
+        </button>
+        <div x-show="rotateOpen" @click.outside="rotateOpen = false" style="position:absolute;right:0;top:18px;background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:4px;z-index:1000;display:flex;flex-direction:column;gap:2px;">
+          <template x-for="deg in [0, 90, 180, 270]" :key="deg">
+            <button @click="fetch('/api/config/display',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rotation:deg})}).then(()=>{ currentRotation=deg; rotateOpen=false; fetch('/api/system/reboot',{method:'POST'}) })" :style="'background:'+(currentRotation===deg?'var(--border)':'none')+';border:none;color:var(--text);cursor:pointer;padding:2px 8px;font-size:10px;border-radius:3px;text-align:left;'" x-text="deg+'°'"></button>
+          </template>
+        </div>
+      </div>
       <!-- Screenshot -->
       <button id="screenshot-btn" onclick="takeScreenshot()" title="Screenshot" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:0;line-height:0;min-height:0;width:auto;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

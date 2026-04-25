@@ -2,6 +2,7 @@
 import asyncio
 import os
 import subprocess
+from typing import Optional
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -694,15 +695,58 @@ async def get_mqtt_status():
 
 _BACKLIGHT_SCRIPT = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scripts', 'backlight.sh')
 
+_ROTATION_CALIBRATION = {
+    0:   ('227 3936 268 3880', 0),
+    90:  ('3936 227 268 3880', 1),
+    180: ('3936 227 3880 268', 0),
+    270: ('227 3936 3880 268', 1),
+}
+
+_CALIBRATION_CONF_TEMPLATE = '''\
+Section "InputClass"
+    Identifier "calibration"
+    MatchProduct "ADS7846 Touchscreen"
+    Option "Calibration" "{cal}"
+    Option "SwapAxes" "{swap}"
+EndSection
+'''
+
+
+def _apply_rotation_to_files(rotation: int) -> None:
+    cal, swap = _ROTATION_CALIBRATION[rotation]
+    subprocess.run(
+        ['sudo', 'sed', '-i',
+         f's/dtoverlay=tft35a:rotate=[0-9]*/dtoverlay=tft35a:rotate={rotation}/',
+         '/boot/firmware/config.txt'],
+        capture_output=True, text=True, timeout=10
+    )
+    if rotation in (0, 180):
+        res = '320 480'
+    else:
+        res = '480 320'
+    subprocess.run(
+        ['sudo', 'sed', '-i',
+         f's/hdmi_cvt [0-9]* [0-9]*/hdmi_cvt {res}/',
+         '/boot/firmware/config.txt'],
+        capture_output=True, text=True, timeout=10
+    )
+    conf_content = _CALIBRATION_CONF_TEMPLATE.format(cal=cal, swap=swap)
+    proc = subprocess.run(
+        ['sudo', 'tee', '/etc/X11/xorg.conf.d/99-calibration.conf'],
+        input=conf_content, capture_output=True, text=True, timeout=10
+    )
+
 
 class DisplayConfigRequest(BaseModel):
     brightness: int
+    rotation: Optional[int] = None
 
 
 @router.get('/api/config/display')
 async def get_display_config():
-    val = await database.get_setting('display.brightness', '255')
-    return {'brightness': int(val)}
+    brightness_val = await database.get_setting('display.brightness', '255')
+    rotation_val = await database.get_setting('display.rotation', '0')
+    return {'brightness': int(brightness_val), 'rotation': int(rotation_val)}
 
 
 @router.post('/api/config/display')
@@ -717,4 +761,14 @@ async def post_display_config(body: DisplayConfigRequest):
         )
     except Exception:
         pass
+    if body.rotation is not None:
+        rotation = body.rotation
+        if rotation not in (0, 90, 180, 270):
+            return JSONResponse({'error': 'rotation must be 0, 90, 180 or 270'}, status_code=400)
+        await database.set_setting('display.rotation', str(rotation))
+        try:
+            await asyncio.to_thread(_apply_rotation_to_files, rotation)
+        except Exception:
+            pass
+        return {'ok': True, 'brightness': brightness, 'rotation': rotation, 'reboot_required': True}
     return {'ok': True, 'brightness': brightness}

@@ -744,6 +744,21 @@
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:10px;">Display</div>
         <div style="display:flex;flex-direction:column;gap:10px;">
           <div style="background:var(--panel);border-radius:6px;padding:10px;">
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:6px;">Rotazione</label>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+              <button @click="display.rotation = 0"   style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="display.rotation===0   ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : 'background:var(--panel);color:var(--text);'">0°</button>
+              <button @click="display.rotation = 90"  style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="display.rotation===90  ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : 'background:var(--panel);color:var(--text);'">90°</button>
+              <button @click="display.rotation = 180" style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="display.rotation===180 ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : 'background:var(--panel);color:var(--text);'">180°</button>
+              <button @click="display.rotation = 270" style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="display.rotation===270 ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : 'background:var(--panel);color:var(--text);'">270°</button>
+            </div>
+            <button @click="saveRotation()"
+                    :disabled="display.savingRotation"
+                    style="width:100%;min-height:32px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:var(--accent);color:#fff;border:none;"
+                    :style="display.savingRotation && 'opacity:0.5;cursor:wait;'"
+                    x-text="display.savingRotation ? 'Salvataggio...' : 'Salva e Riavvia'"></button>
+            <div x-show="display.rotationStatus" style="font-size:11px;color:var(--muted);margin-top:4px;" x-text="display.rotationStatus"></div>
+          </div>
+          <div style="background:var(--panel);border-radius:6px;padding:10px;">
             <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:6px;">Luminosità schermo</label>
             <div style="display:flex;align-items:center;gap:10px;">
               <input type="range" min="0" max="255" step="1" x-model.number="display.brightness"
@@ -1256,7 +1271,7 @@ function configPage() {
     channelsCached: true,
     mappa: { local_tiles: false, region: 'italia', tiles_present: false, cached: false, saving: false },
     usb: { connected: false, devices: [], tiles_location: 'sd', loading: false, moving: false },
-    display: { brightness: 255, saving: false, status: '' },
+    display: { brightness: 255, rotation: 0, saving: false, savingRotation: false, status: '', rotationStatus: '' },
     alert: { node_offline_min: 30, battery_low: 20, ram_high: 85, saving: false },
     mqtt: { enabled: false, address: 'mqtt.meshtastic.org', username: 'meshdev', password: 'large4cats',
             encryption_enabled: false, json_enabled: false, tls_enabled: false, root: 'msh',
@@ -1722,8 +1737,32 @@ function configPage() {
         if (r.ok) {
           const d = await r.json()
           this.display.brightness = d.brightness
+          this.display.rotation = d.rotation ?? 0
         }
       } catch(e) {}
+    },
+
+    async saveRotation() {
+      this.display.savingRotation = true
+      this.display.rotationStatus = ''
+      try {
+        const r = await fetch('/api/config/display', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ brightness: this.display.brightness, rotation: this.display.rotation })
+        })
+        const d = await r.json()
+        if (r.ok) {
+          this.display.rotationStatus = 'Il Pi si riavvierà per applicare la rotazione'
+          await fetch('/api/system/reboot', { method: 'POST' })
+        } else {
+          this.display.rotationStatus = '✗ ' + (d.error || 'Errore')
+        }
+      } catch(e) {
+        this.display.rotationStatus = '✗ Errore di rete'
+      } finally {
+        this.display.savingRotation = false
+      }
     },
 
     async saveDisplay() {
