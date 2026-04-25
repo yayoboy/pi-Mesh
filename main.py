@@ -57,10 +57,26 @@ async def _mqtt_ws_dispatch(event_type: str, data: dict):
     await ws_router.manager.broadcast({'type': event_type, **data})
 
 
+async def _apply_saved_brightness() -> None:
+    import subprocess
+    import os
+    script = os.path.join(os.path.dirname(__file__), 'scripts', 'backlight.sh')
+    val = await database.get_setting('display.brightness', '255')
+    try:
+        await asyncio.to_thread(
+            subprocess.run,
+            ['bash', script, str(val)],
+            capture_output=True, text=True, timeout=5
+        )
+    except Exception as e:
+        logging.getLogger(__name__).warning(f'Backlight restore error: {e}')
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await database.init(cfg.DB_PATH)
     await database.cleanup_old_messages(cfg.DB_PATH, days=30)
+    await _apply_saved_brightness()
     await meshtasticd_client.load_nodes_from_db()    # populate cache from DB before board connects
     _tasks = [
         asyncio.create_task(meshtasticd_client.connect()),

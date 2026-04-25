@@ -5,13 +5,26 @@
   <!-- SIDEBAR 80px -->
   <div style="width:80px;border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;background:#0a0d14;">
     <div style="padding:8px 8px 4px;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Config</div>
-    <template x-for="s in sections" :key="s.id">
-      <div @click="selectSection(s.id)"
-           style="padding:7px 8px;cursor:pointer;font-size:11px;border-left:2px solid transparent;"
-           :style="section === s.id
-             ? 'border-left-color:var(--accent);background:var(--panel);color:var(--accent);font-weight:600;'
-             : 'color:var(--muted);'">
-        <span x-text="s.label"></span>
+    <template x-for="g in groups" :key="g.id">
+      <div>
+        <div @click="openGroup = openGroup === g.id ? null : g.id"
+             style="padding:7px 8px;cursor:pointer;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;"
+             :style="openGroup === g.id ? 'color:var(--accent);' : 'color:var(--muted);'">
+          <span x-text="(openGroup === g.id ? '▾ ' : '▸ ') + g.label"></span>
+        </div>
+        <template x-if="openGroup === g.id">
+          <div>
+            <template x-for="s in g.sections" :key="s.id">
+              <div @click="selectSection(s.id, g.id)"
+                   style="padding:7px 8px 7px 16px;cursor:pointer;font-size:11px;border-left:2px solid transparent;"
+                   :style="section === s.id
+                     ? 'border-left-color:var(--accent);background:var(--panel);color:var(--accent);font-weight:600;'
+                     : 'color:var(--muted);'">
+                <span x-text="s.label"></span>
+              </div>
+            </template>
+          </div>
+        </template>
       </div>
     </template>
   </div>
@@ -725,6 +738,30 @@
       </div>
     </template>
 
+    <!-- ===== DISPLAY ===== -->
+    <template x-if="section === 'display'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:10px;">Display</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="background:var(--panel);border-radius:6px;padding:10px;">
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:6px;">Luminosità schermo</label>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <input type="range" min="0" max="255" step="1" x-model.number="display.brightness"
+                     style="flex:1;accent-color:var(--accent);">
+              <span style="font-size:12px;color:var(--text);min-width:28px;text-align:right;" x-text="display.brightness"></span>
+            </div>
+            <div style="font-size:9px;color:var(--muted);margin-top:4px;">0 = spento, 255 = massima luminosità</div>
+          </div>
+          <button @click="saveDisplay()"
+                  :disabled="display.saving"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;"
+                  :style="display.saving && 'opacity:0.5;cursor:wait;'"
+                  x-text="display.saving ? 'Salvataggio...' : 'Salva'"></button>
+          <div x-show="display.status" style="font-size:11px;color:var(--muted);" x-text="display.status"></div>
+        </div>
+      </div>
+    </template>
+
     <!-- ===== ALERT ===== -->
     <template x-if="section === 'alert'">
       <div>
@@ -1191,28 +1228,23 @@
 function configPage() {
   return {
     section: 'node',
-    sections: [
-      { id: 'node',     label: 'Nodo' },
-      { id: 'lora',     label: 'LoRa' },
-      { id: 'channels', label: 'Canali' },
-      { id: 'gpio',     label: 'GPIO' },
-      { id: 'theme',    label: 'Tema' },
-      { id: 'wifi',     label: 'WiFi' },
-      { id: 'rtc',      label: 'RTC' },
-      { id: 'mappa',    label: 'Mappa' },
-      { id: 'usb',      label: 'USB' },
-      { id: 'alert',    label: 'Alert' },
-      { id: 'mqtt',     label: 'MQTT' },
-      { id: 'canned',   label: 'Canned' },
-      { id: 'extnotif', label: 'ExtNotif' },
-      { id: 'sf',       label: 'S&F' },
-      { id: 'telmod',   label: 'Telemetry' },
-      { id: 'cannedmod',label: 'CannedMod' },
-      { id: 'rangetest',label: 'RangeTest' },
-      { id: 'detsensor',label: 'DetSensor' },
-      { id: 'ambilight',label: 'AmbLight' },
-      { id: 'neighinfo', label: 'Neighbor' },
-      { id: 'serial',   label: 'Serial' },
+    openGroup: 'board',
+    groups: [
+      { id: 'board', label: 'Board', sections: [
+        { id: 'node', label: 'Nodo' }, { id: 'lora', label: 'LoRa' }, { id: 'channels', label: 'Canali' },
+        { id: 'mqtt', label: 'MQTT' }, { id: 'alert', label: 'Alert' },
+        { id: 'extnotif', label: 'ExtNotif' }, { id: 'sf', label: 'S&F' }, { id: 'telmod', label: 'Telemetry' },
+        { id: 'cannedmod', label: 'CannedMod' }, { id: 'rangetest', label: 'RangeTest' },
+        { id: 'detsensor', label: 'DetSensor' }, { id: 'ambilight', label: 'AmbLight' },
+        { id: 'neighinfo', label: 'Neighbor' }, { id: 'serial', label: 'Serial' },
+      ]},
+      { id: 'pi', label: 'Pi', sections: [
+        { id: 'gpio', label: 'GPIO' }, { id: 'rtc', label: 'RTC' }, { id: 'usb', label: 'USB' },
+        { id: 'wifi', label: 'WiFi' }, { id: 'display', label: 'Display' },
+      ]},
+      { id: 'ui', label: 'UI', sections: [
+        { id: 'theme', label: 'Tema' }, { id: 'mappa', label: 'Mappa' }, { id: 'canned', label: 'Canned' },
+      ]},
     ],
 
     node: { long_name: '', short_name: '', role: 'CLIENT', cached: true },
@@ -1224,6 +1256,7 @@ function configPage() {
     channelsCached: true,
     mappa: { local_tiles: false, region: 'italia', tiles_present: false, cached: false, saving: false },
     usb: { connected: false, devices: [], tiles_location: 'sd', loading: false, moving: false },
+    display: { brightness: 255, saving: false, status: '' },
     alert: { node_offline_min: 30, battery_low: 20, ram_high: 85, saving: false },
     mqtt: { enabled: false, address: 'mqtt.meshtastic.org', username: 'meshdev', password: 'large4cats',
             encryption_enabled: false, json_enabled: false, tls_enabled: false, root: 'msh',
@@ -1246,8 +1279,9 @@ function configPage() {
       await this.scanSerialPorts()
     },
 
-    async selectSection(s) {
+    async selectSection(s, groupId) {
       this.section = s
+      if (groupId) this.openGroup = groupId
       if (s === 'node'     && !this.node.long_name)      await this.loadNode()
       if (s === 'lora'     && !this.lora.region)          await this.loadLora()
       if (s === 'channels' && this.channels.length === 0) await this.loadChannels()
@@ -1255,6 +1289,7 @@ function configPage() {
       if (s === 'rtc')                                    await this.loadRtc()
       if (s === 'mappa')                                  await this.loadMappa()
       if (s === 'usb')                                    await this.loadUsb()
+      if (s === 'display')                                await this.loadDisplay()
       if (s === 'alert') await this.loadAlert()
       if (s === 'mqtt') { await this.loadMqtt(); await this.loadMqttStatus() }
       if (s === 'canned') await this.loadCanned()
@@ -1679,6 +1714,34 @@ function configPage() {
         }
       } catch(e) { if (typeof showToast === 'function') showToast('Errore ripristino', 'warn') }
       this.usb.moving = false
+    },
+
+    async loadDisplay() {
+      try {
+        const r = await fetch('/api/config/display')
+        if (r.ok) {
+          const d = await r.json()
+          this.display.brightness = d.brightness
+        }
+      } catch(e) {}
+    },
+
+    async saveDisplay() {
+      this.display.saving = true
+      this.display.status = ''
+      try {
+        const r = await fetch('/api/config/display', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ brightness: this.display.brightness })
+        })
+        const d = await r.json()
+        this.display.status = r.ok ? '✓ Salvato' : '✗ ' + (d.error || 'Errore')
+      } catch(e) {
+        this.display.status = '✗ Errore di rete'
+      } finally {
+        this.display.saving = false
+      }
     },
 
     async loadAlert() {

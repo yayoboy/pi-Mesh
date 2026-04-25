@@ -690,3 +690,31 @@ async def save_mqtt_config(req: MqttConfigRequest):
 @router.get('/api/config/mqtt/status')
 async def get_mqtt_status():
     return JSONResponse(mqtt_bridge.get_status())
+
+
+_BACKLIGHT_SCRIPT = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'scripts', 'backlight.sh')
+
+
+class DisplayConfigRequest(BaseModel):
+    brightness: int
+
+
+@router.get('/api/config/display')
+async def get_display_config():
+    val = await database.get_setting('display.brightness', '255')
+    return {'brightness': int(val)}
+
+
+@router.post('/api/config/display')
+async def post_display_config(body: DisplayConfigRequest):
+    brightness = max(0, min(255, body.brightness))
+    await database.set_setting('display.brightness', str(brightness))
+    try:
+        await asyncio.to_thread(
+            subprocess.run,
+            ['bash', _BACKLIGHT_SCRIPT, str(brightness)],
+            capture_output=True, text=True, timeout=5
+        )
+    except Exception:
+        pass
+    return {'ok': True, 'brightness': brightness}

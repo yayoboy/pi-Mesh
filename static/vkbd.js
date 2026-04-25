@@ -5,7 +5,7 @@
   var _preview = null
   var _keysContainer = null
   var _shift = false
-  var _sym = false
+  var _page = 0
 
   var ROWS_ALPHA = [
     ['q','w','e','r','t','y','u','i','o','p'],
@@ -16,6 +16,10 @@
     ['1','2','3','4','5','6','7','8','9','0'],
     ['@','#','$','%','&','*','-','+','='],
     ['!','"','\'','(',')','/',':',';']
+  ]
+  var ROWS_SYM2 = [
+    ['_','~','<','>','{','}','[',']'],
+    ['^','|','\\','`','?','€'],
   ]
 
   function build() {
@@ -41,7 +45,7 @@
   }
 
   function render() {
-    var rows = _sym ? ROWS_SYM : ROWS_ALPHA
+    var rows = _page === 1 ? ROWS_SYM : _page === 2 ? ROWS_SYM2 : ROWS_ALPHA
     // Build keyboard using DOM methods (no innerHTML with user data)
     var frag = document.createDocumentFragment()
 
@@ -58,7 +62,7 @@
       row.style.cssText = 'display:flex;justify-content:center;gap:2px;margin-bottom:2px;'
 
       // Shift key on last alpha row
-      if (r === 2 && !_sym) {
+      if (r === 2 && _page === 0) {
         var shiftBtn = document.createElement('button')
         shiftBtn.className = 'vk'
         shiftBtn.dataset.action = 'shift'
@@ -70,7 +74,7 @@
 
       for (var c = 0; c < rows[r].length; c++) {
         var ch = rows[r][c]
-        var display = _shift && !_sym ? ch.toUpperCase() : ch
+        var display = _shift && _page === 0 ? ch.toUpperCase() : ch
         var btn = document.createElement('button')
         btn.className = 'vk'
         btn.dataset.char = display
@@ -79,7 +83,7 @@
       }
 
       // Backspace on last row
-      if (r === 2) {
+      if (r === rows.length - 1) {
         var bsBtn = document.createElement('button')
         bsBtn.className = 'vk'
         bsBtn.dataset.action = 'backspace'
@@ -99,8 +103,8 @@
     symBtn.className = 'vk'
     symBtn.dataset.action = 'sym'
     symBtn.style.cssText = 'min-width:40px;font-size:10px;'
-    if (_sym) { symBtn.style.background = '#4a9eff'; symBtn.style.color = '#fff' }
-    symBtn.textContent = _sym ? 'ABC' : '123'
+    if (_page !== 0) { symBtn.style.background = '#4a9eff'; symBtn.style.color = '#fff' }
+    symBtn.textContent = _page === 0 ? '123' : _page === 1 ? '#+=': 'ABC'
     bottom.appendChild(symBtn)
 
     var commaBtn = document.createElement('button')
@@ -153,7 +157,7 @@
       return
     }
     if (action === 'sym') {
-      _sym = !_sym
+      _page = (_page + 1) % 3
       _shift = false
       render()
       return
@@ -181,7 +185,7 @@
       var end = _target.selectionEnd
       _target.value = _target.value.slice(0, start) + ch + _target.value.slice(end)
       _target.selectionStart = _target.selectionEnd = start + ch.length
-      if (_shift && !_sym) {
+      if (_shift && _page === 0) {
         _shift = false
         render()
       }
@@ -213,7 +217,7 @@
     if (!_kbd) build()
     _target = el
     _shift = false
-    _sym = false
+    _page = 0
     render()
     _kbd.style.display = 'block'
     // Shrink content area to avoid keyboard overlap

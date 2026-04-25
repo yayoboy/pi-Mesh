@@ -160,6 +160,11 @@ CREATE TABLE IF NOT EXISTS sensor_events (
     data_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sensor_events_node_ts ON sensor_events(from_id, ts DESC);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
 """
 
 
@@ -711,4 +716,21 @@ async def delete_gpio_device(db_path: str, device_id: int) -> None:
     """Delete a GPIO device."""
     async with _get_db() as db:
         await db.execute('DELETE FROM gpio_devices WHERE id = ?', (device_id,))
+        await db.commit()
+
+
+async def get_setting(key: str, default=None):
+    async with _get_db() as db:
+        cur = await db.execute('SELECT value FROM settings WHERE key = ?', (key,))
+        row = await cur.fetchone()
+        return row[0] if row else default
+
+
+async def set_setting(key: str, value: str) -> None:
+    async with _get_db() as db:
+        await db.execute(
+            'INSERT INTO settings (key, value) VALUES (?, ?)'
+            ' ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+            (key, value)
+        )
         await db.commit()
