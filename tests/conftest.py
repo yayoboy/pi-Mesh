@@ -3,6 +3,29 @@ from httpx import AsyncClient, ASGITransport
 from unittest.mock import patch
 
 
+@pytest.fixture(autouse=True)
+async def _reset_database_singleton():
+    """Reset the module-level ``database._db`` connection between tests.
+
+    Without this each test inherits the previous test's connection (and its
+    ``_db_path``), so tests that use a fresh ``tmp_path`` DB end up reading or
+    writing to a stale file — surfaces as ``sqlite3.OperationalError: no such
+    table`` and unread-count drift in test_database / test_messages.
+
+    The fixture must be async so we can ``await database.close()`` cleanly;
+    pytest-asyncio (asyncio_mode = auto) auto-applies it to sync tests too.
+    """
+    yield
+    import database
+
+    if database._db is not None:
+        try:
+            await database.close()
+        except Exception:
+            database._db = None
+    database._db_path = None
+
+
 @pytest.fixture
 def mock_client():
     """Mock meshtasticd_client module for tests that don't need real board."""
