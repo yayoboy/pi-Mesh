@@ -284,3 +284,88 @@ async def test_flush_dirty_writes_nodes_to_db(tmp_path):
     assert len(mc._dirty_nodes) == 0
     nodes = await database.get_all_nodes(db_path)
     assert any(n['id'] == '!aabbccdd' for n in nodes)
+
+
+# --- Event queue fan-out (Task 1.1) -----------------------------------------
+
+def _reset_event_queues():
+    import meshtasticd_client as mc
+    mc._event_queues.clear()
+
+
+def test_subscribe_events_returns_distinct_queues():
+    _reset_event_queues()
+    q1 = meshtasticd_client.subscribe_events()
+    q2 = meshtasticd_client.subscribe_events()
+    assert isinstance(q1, asyncio.Queue)
+    assert isinstance(q2, asyncio.Queue)
+    assert q1 is not q2
+
+
+def test_enqueue_event_fans_out_to_all_subscribers():
+    _reset_event_queues()
+    q1 = meshtasticd_client.subscribe_events()
+    q2 = meshtasticd_client.subscribe_events()
+
+    meshtasticd_client._enqueue_event({'type': 'node', 'id': '!a'})
+
+    assert q1.qsize() == 1
+    assert q2.qsize() == 1
+    assert q1.get_nowait() == {'type': 'node', 'id': '!a'}
+    assert q2.get_nowait() == {'type': 'node', 'id': '!a'}
+
+
+def test_unsubscribe_events_stops_delivery():
+    _reset_event_queues()
+    q1 = meshtasticd_client.subscribe_events()
+    q2 = meshtasticd_client.subscribe_events()
+
+    meshtasticd_client.unsubscribe_events(q1)
+    meshtasticd_client._enqueue_event({'type': 'log'})
+
+    assert q1.qsize() == 0
+    assert q2.qsize() == 1
+
+
+def test_unsubscribe_unknown_queue_is_noop():
+    _reset_event_queues()
+    q_external: asyncio.Queue = asyncio.Queue()
+    # Must not raise
+    meshtasticd_client.unsubscribe_events(q_external)
+
+
+def test_get_event_queue_backward_compat_creates_first_subscriber():
+    _reset_event_queues()
+    q = meshtasticd_client.get_event_queue()
+    assert isinstance(q, asyncio.Queue)
+    assert meshtasticd_client._event_queues == [q]
+
+    # Re-call returns the same queue
+    assert meshtasticd_client.get_event_queue() is q
+
+
+def test_get_event_queue_returns_first_when_others_exist():
+    _reset_event_queues()
+    q_legacy = meshtasticd_client.get_event_queue()
+    q_new = meshtasticd_client.subscribe_events()
+
+    meshtasticd_client._enqueue_event({'type': 'message'})
+
+    # Both receive
+    assert q_legacy.qsize() == 1
+    assert q_new.qsize() == 1
+    # Backward-compat keeps returning the first
+    assert meshtasticd_client.get_event_queue() is q_legacy
+
+
+def test_full_subscriber_does_not_block_others():
+    _reset_event_queues()
+    q_small = meshtasticd_client.subscribe_events(maxsize=1)
+    q_big = meshtasticd_client.subscribe_events(maxsize=10)
+
+    meshtasticd_client._enqueue_event({'n': 1})
+    meshtasticd_client._enqueue_event({'n': 2})  # q_small full, dropped there
+    meshtasticd_client._enqueue_event({'n': 3})  # q_small full, dropped there
+
+    assert q_small.qsize() == 1
+    assert q_big.qsize() == 3

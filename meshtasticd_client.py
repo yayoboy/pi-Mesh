@@ -17,7 +17,7 @@ _dirty_nodes: set[str] = set()
 _last_node_fetch: float = 0.0
 _log_queue: deque = deque(maxlen=500)
 _subscribers: list = []
-_event_queue: asyncio.Queue = asyncio.Queue(maxsize=500)
+_event_queues: list[asyncio.Queue] = []
 _loop: asyncio.AbstractEventLoop | None = None
 _traceroute_cache: dict[str, dict] = {}
 _command_queue: asyncio.Queue = asyncio.Queue()
@@ -27,11 +27,12 @@ import database
 
 
 def _enqueue_event(event: dict) -> None:
-    """Thread-safe enqueue to _event_queue, dropping if full."""
-    try:
-        _event_queue.put_nowait(event)
-    except asyncio.QueueFull:
-        pass
+    """Fan-out: thread-safe enqueue to every subscribed queue, dropping per-queue if full."""
+    for q in _event_queues:
+        try:
+            q.put_nowait(event)
+        except asyncio.QueueFull:
+            pass
 
 NODE_CACHE_TTL = cfg.NODE_CACHE_TTL
 
@@ -72,8 +73,31 @@ def unsubscribe_log(callback) -> None:
         _subscribers.remove(callback)
 
 
+def subscribe_events(maxsize: int = 500) -> asyncio.Queue:
+    """Register a new subscriber queue. Every future event will be fanned out to it.
+
+    Each subscriber owns its queue; backpressure on one subscriber does not affect
+    the others (events are dropped per-queue when full, never globally).
+    """
+    q: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
+    _event_queues.append(q)
+    return q
+
+
+def unsubscribe_events(q: asyncio.Queue) -> None:
+    """Remove a previously subscribed queue. Safe to call with an unknown queue."""
+    if q in _event_queues:
+        _event_queues.remove(q)
+
+
 def get_event_queue() -> asyncio.Queue:
-    return _event_queue
+    """Backward-compat: returns the first subscribed queue, creating one if needed.
+
+    New code should use subscribe_events() / unsubscribe_events() instead.
+    """
+    if not _event_queues:
+        _event_queues.append(asyncio.Queue(maxsize=500))
+    return _event_queues[0]
 
 
 async def request_traceroute(node_id: str) -> None:
