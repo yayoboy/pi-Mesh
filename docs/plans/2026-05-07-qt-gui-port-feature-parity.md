@@ -169,9 +169,9 @@
 
 ---
 
-## 8. Pagina Telemetria (sotto-pagina di Metriche o stand-alone)
+## 8. Pagina Telemetria (stand-alone, copre tutti i sensori)
 
-> Verifica: nei tab attuali Telemetria **non** c'è tra i 6 tab principali. Vive come sezione di Metriche o accessibile dal dettaglio nodo. **Decisione UI Qt**: integrarla come tab interna in Metriche o come dialog dal dettaglio nodo.
+> **Decisione utente (07/05/2026)**: telemetria riguarda **tutti i sensori** di tutti i nodi → pagina **stand-alone** dedicata. Nella GUI Qt diventa il **7° tab** (oppure si fonde con Metriche se serve risparmiare uno slot). Default: 7° tab.
 
 | # | Feature | Endpoint web | Sostituto Qt | Task | Stato |
 |---|---|---|---|---|---|
@@ -220,11 +220,22 @@ Tutti gli eventi prodotti da `meshtasticd_client._enqueue_event` e da `mqtt_brid
 
 ---
 
-## 11. Settings (non in tab; oggi accessibile da bottone in status bar?)
+## 11. Settings (audit completato 2026-05-07)
 
-> Audit pendente: `templates/settings.html` esiste (779 righe) ma non è nei 6 tab principali. Verificare come si raggiunge nella web UI. **Decisione preliminare**: integrare i contenuti di `settings.html` dentro la pagina Config (sezioni 7.22 Display, 7.23 System, e sotto-sezione "App settings" se ci sono altre opzioni non duplicate).
+> **Risultato audit**: `templates/settings.html` (779 righe) è **codice orfano**. Nessun handler in `main.py` o nei router serve `/settings`. Le sue 12 sezioni (Nodo, LoRa, Canali, Tema, WiFi, Admin, GPIO/Display, Hardware, Bot, Sistema, Configurazione, Colori) sono già coperte da `config.html` + i `*_router.py` corrispondenti.
+>
+> Gli endpoint chiamati da `settings.html` (`/api/keys`, `/api/hardware-config`, `/api/remote-config`, `/api/bot-config`, `/api/status`, `POST /settings`) **non esistono nel backend** (verificato con `grep` esaustivo su `routers/`, `main.py`). Compaiono solo nel piano vecchio del 2026-03-23, mai implementati o rimossi durante il refactor 2026-03-25.
+>
+> **Decisione utente (07/05/2026)**: queste feature sono "usate o da implementare". Significa che vanno **prima implementate nel backend FastAPI**, poi esposte sia nella web UI ripristinata che nella GUI Qt. Vedi §17 per la lista.
 
-Ispezionare `templates/settings.html` per estrarre eventuali feature non già mappate sopra (es. info versione, link doc, log app).
+| # | Feature da settings.html | Stato attuale | Decisione | Task | Stato |
+|---|---|---|---|---|---|
+| ST1 | Lista chiavi PSK canali (`/api/keys`) | endpoint mancante | implementare backend + Qt | nuovo Task 4.21a | [ ] |
+| ST2 | Hardware config (button_gpio, buzzer_gpio, ecc. via `/api/hardware-config`) | endpoint mancante | implementare backend + Qt | nuovo Task 4.21b | [ ] |
+| ST3 | Remote config (set config su nodo remoto via admin) | endpoint mancante | implementare backend + Qt | nuovo Task 4.21c | [ ] |
+| ST4 | Bot config persistito (`/api/bot-config`) | endpoint mancante | già pianificato come Task 4.20b | 4.20b | [ ] |
+| ST5 | Status sistema unificato (`/api/status`) | endpoint mancante | implementare backend + Qt | nuovo Task 4.21d | [ ] |
+| ST6 | Endpoint POST `/settings` (salvataggio aggregato) | mancante | sostituire con singoli endpoint settoriali | n/a | n/a |
 
 ---
 
@@ -293,10 +304,128 @@ Effort aggiuntivo stimato: **+1.5 giornate** (Fase 4 da 4 → 5.5 gg).
 
 ---
 
-## 16. Open issue prima di Fase 0
+## 16. Open issue prima di Fase 0 — risolte (07/05/2026)
 
-- [ ] Verificare endpoint `/api/keys`, `/api/hardware-config`, `/api/remote-config`, `/api/bot-config`: chi li usa, se sono attivi.
-- [ ] Verificare come si raggiunge `/settings` nella UI web attuale (non in tab) e cosa contiene di unico.
-- [ ] Verificare se "Telemetria" è una pagina stand-alone o solo sezione di Metriche/Nodes.
-- [ ] Confermare con utente: `mqtt_bridge` deve girare anche con la GUI Qt (lifespan task condiviso) → presumibilmente sì.
-- [ ] Confermare elenco completo dei moduli Meshtastic supportati (la versione meshtastic-python attuale ne supporta altri?).
+- [x] Endpoint `/api/keys`, `/api/hardware-config`, `/api/remote-config`, `/api/bot-config`, `/api/status` → **non esistono nel backend**. Decisione utente: implementare. Vedi §11 e §17.
+- [x] `/settings` non è raggiungibile (no handler). Template orfano. Sezioni distribuite in §11.
+- [x] **Telemetria = pagina stand-alone** che riguarda **tutti i sensori** di tutti i nodi. Promossa a 7° tab (oppure sostituisce o si fonde con Metriche).
+- [x] `mqtt_bridge` **deve restare attivo** con GUI Qt (lifespan task condiviso nel processo Python).
+- [x] **Scope Meshtastic completo**: l'utente vuole che "tutto ciò che è supportato da Meshtastic sia utilizzabile". Vedi §17 per l'elenco delle feature non ancora esposte e l'effort impatto.
+
+---
+
+## 17. Coverage Meshtastic completo (richiesta utente 07/05/2026)
+
+> **Richiesta**: la GUI deve esporre **ogni** feature configurabile/comandabile della libreria `meshtastic-python`, non solo ciò che oggi è già nella web UI.
+>
+> **Implicazione**: questo va oltre il "porting": è un'estensione funzionale che riguarda **sia il backend FastAPI (oggi mancante) sia la GUI Qt**. Senza l'estensione del backend, la web UI rimarrebbe priva delle feature aggiuntive (asimmetria con Qt).
+
+### 17.1 Inventario Meshtastic vs. pi-Mesh attuale
+
+#### Config (`meshtastic.config_pb2.Config`)
+
+| Sezione protobuf | Oggi in pi-Mesh | Da aggiungere |
+|---|---|---|
+| `DeviceConfig` (role, serial_enabled, debug_log, button_gpio, buzzer_gpio, rebroadcast_mode, node_info_broadcast_secs, double_tap, is_managed, ...) | Solo `role` | tutto il resto |
+| `PositionConfig` (broadcast_secs, smart_broadcast, fixed_position, gps_enabled, gps_update_interval, position_flags, broadcast_smart_min_dist/interval, ...) | Solo `request-position` | tutta la sezione |
+| `PowerConfig` (is_power_saving, on_battery_shutdown_after_secs, adc_multiplier, wait_bluetooth_secs, sds_secs, ls_secs, min_wake_secs, battery_ina_address) | nulla | tutta |
+| `NetworkConfig` (Ethernet eth_enabled, ipv4_config, ntp_server, rsyslog_server) | WiFi gestito via `nmcli` (NON via Meshtastic) | Ethernet del nodo (distinta dalla rete Pi) |
+| `DisplayConfig` (Meshtastic OLED — distinta dal display SPI Pi) | nulla | tutta |
+| `LoRaConfig` (region, preset, modem params, hop_limit, tx_power, channel_num, override_freq, ignore_incoming, ignore_mqtt) | region + preset | bandwidth, sf, cr, hop_limit, tx_power, override_freq, ignore_*, config_ok_to_mqtt |
+| `BluetoothConfig` (enabled, mode, fixed_pin) | nulla | tutta |
+| `SecurityConfig` (public_key, private_key, admin_key, is_managed, admin_channel_enabled, debug_log_api_enabled) | nulla | tutta (PKC è importante per amministrazione remota sicura) |
+
+→ **8 sezioni Config**, oggi coperte ~15%.
+
+#### ModuleConfig (`meshtastic.module_config_pb2.ModuleConfig`)
+
+| Modulo | Oggi in pi-Mesh | Da aggiungere |
+|---|---|---|
+| `MQTT` (enabled, address, user, pass, encryption, json, tls, root, proxy_to_client, map_reporting, map_report_settings) | bridge MQTT proprio (non modulo Meshtastic) | esporre anche il modulo MQTT del **nodo** (distinto dal bridge Pi → broker) |
+| `Serial` (mesh) | `/api/config/module/serial` | già coperto (Task 4.13e) |
+| `ExternalNotification` | sì | già coperto (Task 4.10) |
+| `StoreForward` | sì | già coperto (Task 4.11) |
+| `RangeTest` | sì | già coperto (Task 4.13b) |
+| `Telemetry` | sì | già coperto (Task 4.12) |
+| `CannedMessage` | sì | già coperto (Task 4.13f) |
+| `Audio` (codec2, ptt_pin, bitrate, i2s pins) | nulla | tutto |
+| `RemoteHardware` (enabled, allow_undefined_pin_access, available_pins) | nulla | tutto |
+| `NeighborInfo` | sì | già coperto (Task 4.13) |
+| `AmbientLighting` | sì | già coperto (Task 4.13d) |
+| `DetectionSensor` | sì | già coperto (Task 4.13c) |
+| `Paxcounter` (enabled, update_interval, wifi_threshold, ble_threshold) | consumato come evento | esporre **config** |
+
+→ **13 moduli**, oggi coperti ~70%. Mancano: Audio, RemoteHardware, Paxcounter config, MQTT module Meshtastic.
+
+#### Admin operations (`meshtastic.admin_pb2.AdminMessage`)
+
+| Operazione | Oggi in pi-Mesh | Da aggiungere |
+|---|---|---|
+| `set_owner` (rename remoto) | nulla | sì |
+| `set_config` / `get_config` (qualsiasi sezione su nodo remoto) | nulla | sì — fondamentale per remote admin |
+| `set_module_config` / `get_module_config` (su nodo remoto) | nulla | sì |
+| `set_channel` / `get_channel` (su nodo remoto) | nulla | sì |
+| `set_fixed_position` / `remove_fixed_position` | nulla | sì |
+| `set_canned_message_module_messages` / `get_canned_message_module_messages` | parziale (solo locale) | esporre per nodo remoto |
+| `set_ringtone_message` / `get_ringtone` | nulla | sì |
+| `store_ui_config` / `get_ui_config` (DeviceUIConfig protobuf) | nulla | sì |
+| `set_favorite_node` / `remove_favorite_node` | nulla | sì |
+| `delete_node_request` (su nodeDB del nodo, non locale) | parziale | esporre per nodo remoto |
+| `nodedb_reset` | nulla | sì |
+| `factory_reset_device` / `factory_reset_config` | parziale (`factory-reset` generico) | distinguere |
+| `reboot_seconds` | parziale | parametrizzabile |
+| `shutdown_seconds` | nulla | sì |
+| `enter_dfu_mode` | nulla | sì (avanzato) |
+| `set_time_only` | nulla | sì |
+| `delete_file_request` | nulla | sì (sf storage) |
+| `get_device_metadata` | nulla | sì (info hardware/firmware) |
+| `begin_edit_settings` / `commit_edit_settings` | nulla | usare per batching |
+
+→ **~20 operazioni admin**, oggi coperte ~10%.
+
+#### Channel management
+
+| Feature | Oggi | Da aggiungere |
+|---|---|---|
+| Edit nome canale | sì (parziale) | confermare completezza |
+| PSK random/manuale | parziale | UI generazione + paste |
+| Position precision per canale | nulla | sì |
+| Uplink/downlink toggle | nulla | sì |
+| Module settings per canale | nulla | sì |
+| QR share canale | nulla | sì (display QR su touchscreen) |
+| Import canale da QR | nulla | sì (richiede camera o input manuale) |
+
+#### Altre feature Meshtastic
+
+- **File transfer** (file system on-device, `delete_file_request`) — opzionale, usato raramente.
+- **OTA firmware update** (DFU mode, file upload) — avanzato; serve versione corrispondente e sicurezza.
+- **Trace route avanzato** (multi-hop con misure SNR per hop) — pi-Mesh ha `request_traceroute` ma il dettaglio per-hop SNR potrebbe non essere visualizzato.
+- **MeshPacket inspector** (pacchetti raw decoded) — già parzialmente nel Log; valutare estensione.
+
+### 17.2 Effort impatto
+
+| Area | Effort backend FastAPI | Effort GUI Qt | Totale |
+|---|---|---|---|
+| Config protobuf mancanti (Power, Position completa, Network/Eth, Display Meshtastic, Bluetooth, Security/PKC, Device completo) | ~3 gg | ~2 gg | 5 gg |
+| ModuleConfig mancanti (Audio, RemoteHardware, Paxcounter config, MQTT module) | ~1.5 gg | ~1 gg | 2.5 gg |
+| Admin operations remote (set_owner, set_config remote, set_fixed_position, ringtone, ui_config, ...) | ~2.5 gg | ~1.5 gg | 4 gg |
+| Channel management completo + QR | ~1 gg | ~1.5 gg | 2.5 gg |
+| Device metadata + diagnostics | ~0.5 gg | ~0.5 gg | 1 gg |
+| File transfer + OTA (opzionali) | ~1.5 gg | ~1 gg | 2.5 gg |
+| **Totale aggiuntivo per coverage Meshtastic completo** | **~10 gg** | **~7.5 gg** | **~17.5 gg** |
+
+> **Effort grand total** del piano (porting Qt + parity attuale + coverage Meshtastic completo): **~17.5 gg (porting) + ~17.5 gg (extension) = ~35 giornate dev esperto Qt+Python+Meshtastic**.
+
+### 17.3 Decisione richiesta all'utente PRIMA di Fase 0
+
+Sono possibili tre strategie:
+
+| Opzione | Descrizione | Effort | Quando |
+|---|---|---|---|
+| **A — Parity stretta** | Solo ciò che è già esposto dalla web UI attuale (incluse 9 sezioni dell'audit + 5 endpoint orfani da implementare). | ~17.5 gg | Si parte subito |
+| **B — Coverage completa Meshtastic** | A + tutte le feature di Meshtastic non ancora esposte (Config, ModuleConfig, Admin completi, Channel, ecc.). | ~35 gg | Backend prima, poi Qt |
+| **C — Incrementale** | A come MVP. Alla fine di Fase 9, lista delle feature Meshtastic mancanti viene rivalutata e prioritizzata in Fase 10+. | ~17.5 gg + N gg per estensioni mirate | Si parte subito |
+
+**Raccomandazione**: **Opzione C**. Permette di vedere subito i benefici di performance (target principale dichiarato) senza bloccarsi 35 giorni prima del primo risultato. Le feature Meshtastic non esposte oggi non hanno utenti attivi (vista l'asimmetria) quindi possono attendere e essere prioritizzate in base a richieste reali.
+
+**Decisione utente:** ⚠️ da prendere prima di Task 0.1.
