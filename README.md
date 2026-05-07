@@ -194,6 +194,50 @@ static/tiles/satellite/{z}/{x}/{y}.png
 
 Then add `data-local-tiles="1"` to the `<html>` tag in `templates/base.html`.
 
+### 6 — Native Qt GUI (experimental)
+
+A native PySide6 + QtWidgets kiosk is being ported in parallel as a faster
+alternative to the surf/WebKit-based kiosk. It runs in the same Python process
+as the FastAPI backend (via `qasync`), shares the live event queue with the
+WebSocket broadcaster, and reuses every backend module — so the LAN browser
+stays available.
+
+**Install** (`setup.sh` does this automatically; manual steps if needed):
+
+```bash
+sudo apt install -y libegl1 libxcb-cursor0 libxkbcommon0 libfontconfig1
+# Try pip first; on ARM Pi OS Bookworm wheels typically don't match glibc:
+pip install -r requirements-gui.txt || {
+    sudo apt install -y python3-pyside6.qtcore python3-pyside6.qtgui \
+                        python3-pyside6.qtwidgets python3-pyside6.qtsvg
+    python -m venv --system-site-packages venv   # recreate so the venv sees apt PySide6
+}
+```
+
+**Enable as the kiosk** (replaces the surf-based kiosk):
+
+```bash
+sudo systemctl disable --now kiosk.service     # if currently enabled
+sudo cp systemd/pimesh-gui.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now pimesh-gui
+```
+
+`pimesh-gui.service` declares `Conflicts=kiosk.service` so the two cannot run
+simultaneously.
+
+**Run interactively** (without systemd, useful for development):
+
+```bash
+DISPLAY=:0 python -m gui
+```
+
+See the porting plan at:
+
+- `docs/plans/2026-05-07-qt-gui-port-design.md` — architecture and stack.
+- `docs/plans/2026-05-07-qt-gui-port-implementation.md` — task-by-task plan.
+- `docs/plans/2026-05-07-qt-gui-port-feature-parity.md` — feature inventory.
+
 ---
 
 ## Project Structure
