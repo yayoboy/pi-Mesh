@@ -130,16 +130,22 @@ Obiettivo: avere la cornice (status bar + tab bar + content area) funzionante co
 **Accettazione:**
 - Test con `pytest-qt`: enqueue di un evento `{'type': 'node', ...}` → segnale `node_updated` ricevuto.
 
-### Task 1.4 — Settings wrapper
+### Task 1.4 — Settings wrapper ✅ done
 
 **Files:**
+- `gui/core/__init__.py`
 - `gui/core/settings.py`
+- `gui/tests/test_settings.py`
 
-**Codice:**
-- Funzioni sync `get(key, default)` e `set(key, value)` che usano `asyncio.run_coroutine_threadsafe` per chiamare `database.get_setting/set_setting` dal qasync loop.
+**Implementazione effettiva** (deviazione dal piano, motivata):
+Invece di `asyncio.run_coroutine_threadsafe` da slot Qt sync (che con qasync sarebbe nello stesso thread del loop = deadlock), uso un **cache in-memory + write-through asincrono**:
+- `Settings.load(loader, keys)` popola la cache una volta a startup.
+- `Settings.get(key, default)` sync da slot Qt.
+- `Settings.set(key, value)` aggiorna cache immediatamente + schedula `loop.create_task(saver(...))` fire-and-forget. Eccezioni del saver sono loggate, non propagate.
+- `await Settings.flush()` per lo shutdown / test deterministici.
 
 **Accettazione:**
-- Smoke test: lettura/scrittura di una chiave fittizia.
+- ✅ 9 unit test passano (cache, load, write-through, no-loop fallback, exception swallowing, flush, singleton raise-if-not-init, **round-trip reale con SQLite**).
 
 ### Task 1.5 — MainWindow + StatusBar + TabBar [blocking]
 
@@ -188,16 +194,21 @@ Obiettivo: avere la cornice (status bar + tab bar + content area) funzionante co
 - All'avvio carica tema da `database.get_setting('display.theme', 'dark')`.
 - Da REPL/test: `app.apply_theme('light')` aggiorna immediatamente tutta la GUI.
 
-### Task 1.7 — Servizio systemd dev e script di lancio
+### Task 1.7 — Servizio systemd dev e script di lancio ✅ done (codice; install/enable rimanda al Pi)
 
 **Files:**
-- `scripts/start-gui.sh` (vedi design §9.2)
-- `systemd/pimesh-gui.service` (vedi design §9.2)
-- `README.md`: sezione "GUI nativa (sperimentale)"
+- `scripts/start-gui.sh` (eseguibile, sostituisce `surf` con `python -m gui`).
+- `systemd/pimesh-gui.service` (`Conflicts=kiosk.service`, segue il pattern del `kiosk.service` esistente).
+- `README.md`: sezione "GUI nativa (sperimentale)" — **da fare in Task 8.4**.
+
+**Note di implementazione:**
+- `start-gui.sh` preferisce `venv/bin/python` se esiste, altrimenti ricade su `/usr/bin/python3` (fallback per quando PySide6 viene installato via apt + system-site-packages).
+- Carica `config.env` se presente per env vars (es. `PIMESH_GUI_EMBEDDED_UVICORN`, `PIMESH_ORIENTATION`).
 
 **Accettazione:**
-- `sudo systemctl --user start pimesh-gui` (o equivalente system) lancia la GUI sul touchscreen.
-- `Conflicts=` impedisce avvio simultaneo con `kiosk.service`.
+- ✅ `start-gui.sh` eseguibile, sintassi shell corretta.
+- ✅ `pimesh-gui.service` con `Conflicts=kiosk.service` per evitare avvio simultaneo con il kiosk web.
+- ⏳ Verifica end-to-end (`systemctl start pimesh-gui` → finestra sul touchscreen) richiede Pi reale (Task 0.3).
 
 ---
 

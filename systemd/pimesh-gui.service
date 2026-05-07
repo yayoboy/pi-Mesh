@@ -1,0 +1,22 @@
+[Unit]
+Description=pi-Mesh native Qt GUI (kiosk)
+After=network.target meshtasticd.service
+Requires=meshtasticd.service
+# Mutually exclusive with the web kiosk; enabling one stops the other.
+Conflicts=kiosk.service
+
+[Service]
+User=pimesh
+PAMName=login
+Environment=DISPLAY=:0
+Environment=HOME=/home/pimesh
+WorkingDirectory=/home/pimesh/pi-Mesh
+ExecStartPre=/bin/sleep 3
+ExecStart=/usr/bin/xinit /home/pimesh/pi-Mesh/scripts/start-gui.sh -- :0 vt1 -nolisten tcp
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
