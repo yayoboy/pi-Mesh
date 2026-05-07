@@ -428,4 +428,8 @@ Sono possibili tre strategie:
 
 **Raccomandazione**: **Opzione C**. Permette di vedere subito i benefici di performance (target principale dichiarato) senza bloccarsi 35 giorni prima del primo risultato. Le feature Meshtastic non esposte oggi non hanno utenti attivi (vista l'asimmetria) quindi possono attendere e essere prioritizzate in base a richieste reali.
 
-**Decisione utente:** ⚠️ da prendere prima di Task 0.1.
+**Decisione utente:** ✅ **Opzione C — Incrementale** (confermata 07/05/2026).
+
+- Fase 1–9: parity con web UI attuale + 5 endpoint orfani da implementare. Effort ~17.5 gg.
+- Fase 10+: estensione Meshtastic in base a richieste reali (rivalutazione a fine Fase 9).
+- Le feature §17.1 non esposte oggi sono **catalogate** ma non eseguite finché non richieste.
