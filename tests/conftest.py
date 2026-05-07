@@ -23,7 +23,10 @@ async def _reset_database_singleton():
             await database.close()
         except Exception:
             database._db = None
-    database._db_path = None
+    # Intentionally do NOT reset database._db_path: clearing the connection is
+    # enough, and resetting the path to None would let a stray _get_db() call
+    # in a later test try aiosqlite.connect(None), which silently creates a
+    # SQLite file literally named "None" in the CWD.
 
 
 @pytest.fixture
