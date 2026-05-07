@@ -715,7 +715,8 @@ Sezione "GUI nativa Qt (opzionale)" con istruzioni per abilitare `pimesh-gui.ser
 
 | Rischio | Probabilità | Impatto | Mitigazione |
 |---|---|---|---|
-| PySide6 wheel non disponibile per Pi Zero 2 (armv7l) | Alta | Alto | Fallback a pacchetti Debian `python3-pyside6.*`, oppure escludiamo Pi Zero 2 dal supporto GUI nativa (resta web). |
+| **PySide6 wheel non installabile su Pi (verificato 07/05/2026)**: `manylinux_2_39_aarch64` richiede glibc 2.39 (Pi OS Bookworm ha 2.36); per `armv7l` (Pi 3 / Pi Zero 2 32-bit) **nessun wheel** su PyPI | **Confermata** | Alto | Fallback **apt**: `python3-pyside6.qtcore qtgui qtwidgets qtsvg` (Bookworm v6.4) + venv con `--system-site-packages`. Setup script gestisce automaticamente entrambe le strade. Pi Zero 2 supportato solo via apt. |
+| Dipendenze runtime native (`libEGL.so.1`, `libxcb-cursor0`, `libxkbcommon0`, `libfontconfig1`) assenti in installazioni headless | Media | Alto | `setup.sh` installa esplicitamente: `apt install -y libegl1 libxcb-cursor0 libxkbcommon0 libfontconfig1`. Su Pi OS desktop sono già presenti. |
 | qasync conflicts con uvicorn loop | Media | Alto | Test precoce in Fase 0; se intrattabile, separiamo i processi (vedi §3 alternativa). |
 | Touch pinch gestures instabili su X11 | Media | Medio | Fallback a bottoni zoom +/− nella mappa. |
 | Performance map < 25 fps su Pi 3 | Media | Medio | Tile cache LRU + culling tile fuori viewport + scelta `QGraphicsView.MinimalViewportUpdate`. |

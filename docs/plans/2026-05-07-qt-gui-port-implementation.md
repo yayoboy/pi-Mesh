@@ -32,13 +32,22 @@ Obiettivo: validare lo stack tecnico prima di scrivere UI. Se qui qualcosa non f
 - `requirements-dev.txt`: +`pytest-qt>=4.4`
 
 **Azioni:**
-1. Aggiorna i due file.
-2. In un Pi reale (o emulatore aarch64): `python -m venv venv && pip install -r requirements.txt`. Annotare tempo e dimensione.
-3. Se `PySide6-Essentials` da pip fallisce o è > 200 MB, documentare in `docs/plans/2026-05-07-qt-gui-port-design.md` §12 e proporre fallback `apt install python3-pyside6.qtwidgets python3-pyside6.qtsvg`.
+1. ✅ Aggiorna i due file.
+2. ✅ Validazione locale (x86_64 Ubuntu 24.04): `pip install` riuscita in 5 s (78 MB wheel). `qasync 0.28.0` + `PySide6 6.11.0`.
+3. ✅ Audit wheel ARM:
+   - `aarch64` (Pi 4/5 64-bit): wheel `manylinux_2_39_aarch64` esiste ma **non installabile su Bookworm** (richiede glibc 2.39, Bookworm ha 2.36).
+   - `armv7l` (Pi 3 / Pi Zero 2 32-bit): **nessun wheel** disponibile su PyPI.
+4. ✅ Decisione: fallback `apt install python3-pyside6.{qtcore,qtgui,qtwidgets,qtsvg}` (Bookworm v6.4) + venv con `--system-site-packages`. Documentato in design §12.
+5. ⏳ **Da fare nel Task 0.2 / setup.sh**: implementare lo script che tenta pip → fallback apt automaticamente.
 
 **Accettazione:**
-- `python -c "from PySide6.QtWidgets import QApplication; import qasync"` non solleva.
-- `pip list | grep -i pyside` mostra la versione.
+- ✅ `pip install` di `PySide6-Essentials` e `qasync` riesce localmente.
+- ✅ `pip list | grep -i pyside` mostra `PySide6-Essentials 6.11.0`.
+- ⚠️ `python -c "from PySide6.QtWidgets import QApplication; import qasync"` richiede `libEGL.so.1` + `libxcb-cursor0`. Su Pi OS desktop presenti; in sandbox/headless da installare via apt.
+
+**Note di follow-up:**
+- Su Pi reale (Pi 4 64-bit, Pi Zero 2): la verifica di import effettiva sarà fatta nel Task 0.3.
+- `setup.sh` deve essere aggiornato con la logica di fallback (Task 8.4).
 
 ### Task 0.2 — Smoke test minimale: QApplication + qasync + uvicorn nello stesso loop [blocking]
 
