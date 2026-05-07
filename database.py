@@ -22,6 +22,13 @@ async def _get_db():
         except Exception:
             _db = None
     if _db is None:
+        if _db_path is None:
+            # Without this guard, aiosqlite.connect(None) silently stringifies
+            # to "None" and creates a junk SQLite file in the CWD. Better to
+            # fail loudly so callers know they forgot init().
+            raise RuntimeError(
+                "database.init(db_path) must be called before any DB access"
+            )
         _db = await aiosqlite.connect(_db_path)
         await _db.execute('PRAGMA journal_mode=WAL')
         await _db.execute('PRAGMA busy_timeout=5000')
