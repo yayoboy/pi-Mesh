@@ -346,6 +346,21 @@ Ogni sub-task corrisponde a una sezione di `templates/config.html`. Ogni sezione
 ### Task 4.13 — Sezione Neighbor info
 **Files:** `gui/pages/config_sections/neighbor.py`.
 
+### Task 4.13b — Sezione Range Test module
+**Files:** `gui/pages/config_sections/range_test.py`. Endpoints: `GET/POST /api/config/module/range-test`.
+
+### Task 4.13c — Sezione Detection Sensor module
+**Files:** `gui/pages/config_sections/detection_sensor.py`. Endpoints: `GET/POST /api/config/module/detection-sensor`.
+
+### Task 4.13d — Sezione Ambient Lighting module
+**Files:** `gui/pages/config_sections/ambient_lighting.py`. Endpoints: `GET/POST /api/config/module/ambient-lighting`.
+
+### Task 4.13e — Sezione Serial module (mesh)
+**Files:** `gui/pages/config_sections/serial_module.py`. Endpoints: `GET/POST /api/config/module/serial`.
+
+### Task 4.13f — Sezione Canned Message module (config Meshtastic)
+**Files:** `gui/pages/config_sections/canned_message_module.py`. Endpoints: `GET/POST /api/config/module/canned-message`. Distinto da CRUD canned in app (Task 4.14).
+
 ### Task 4.14 — Sezione Canned messages
 **Files:** `gui/pages/config_sections/canned.py`. CRUD via `database.*`.
 
@@ -356,7 +371,19 @@ Ogni sub-task corrisponde a una sezione di `templates/config.html`. Ogni sezione
 **Files:** `gui/pages/config_sections/display.py`. Brightness via `scripts/backlight.sh`, rotation via env+restart, calibrazione via `scripts/calibrate-touch.sh`.
 
 ### Task 4.17 — Sezione System
-**Files:** `gui/pages/config_sections/system.py`. Reboot, shutdown, screenshot.
+**Files:** `gui/pages/config_sections/system.py`. Reboot, shutdown, factory-reset, screenshot. Endpoints: `POST /api/system/{reboot,shutdown,factory-reset}`, `POST /api/screenshot`.
+
+### Task 4.18 — Sezione Map config
+**Files:** `gui/pages/config_sections/map_config.py`. Endpoints: `GET/POST /api/config/map`. Setting: region (`MAP_REGION`), local tiles toggle (`MAP_LOCAL_TILES`).
+
+### Task 4.19 — Sezione Alerts thresholds
+**Files:** `gui/pages/config_sections/alerts.py`. Endpoints: `GET/POST /api/config/alerts`. Soglie: `ALERT_NODE_OFFLINE_MIN`, `ALERT_BATTERY_LOW`, `ALERT_RAM_HIGH`.
+
+### Task 4.20 — Sezione USB storage
+**Files:** `gui/pages/config_sections/usb_storage.py`. Endpoints: `GET /api/config/usb/status`, `POST /api/config/usb/{move,restore}-tiles`. Usa direttamente `usb_storage.py`.
+
+### Task 4.20b — Sezione Bot config
+**Files:** `gui/pages/config_sections/bot.py`. Endpoint: `GET/POST /api/bot-config`. Start/stop `bots/echo_bot.py`, selezione canale.
 
 **Accettazione di Fase 4:**
 - Ogni sezione legge/scrive correttamente.
@@ -564,16 +591,18 @@ Il blocco più impegnativo. Diviso in sub-task incrementali.
 | Fase | Effort (giornate sviluppo Qt) | Note |
 |---|---|---|
 | 0 | 1 | Critica: se fallisce, ripensiamo architettura |
-| 1 | 2 | Scheletro + theme + 1.7 systemd |
-| 2 | 2 | Nodi + Messaggi |
-| 3 | 2 | Log + Metriche + Telemetria |
-| 4 | 4 | 17 sezioni config (~3 h ciascuna media) |
+| 1 | 1.5 | Scheletro + theme Fusion + systemd (semplificato: no clone pixel-perfect) |
+| 2 | 1.5 | Nodi + Messaggi |
+| 3 | 1.5 | Log + Metriche + Telemetria (chart minimal o QtCharts) |
+| 4 | 5.5 | 26 sezioni config (incluse 9 nuove dall'audit parity) |
 | 5 | 1 | VKB |
-| 6 | 4 | Mappa intera |
+| 6 | 3 | Mappa (semplificata: marker base, no animazioni custom) |
 | 7 | 0.5 | Settings |
 | 8 | 1.5 | Hardening |
-| 9 | 0.5 | Release |
-| **Totale** | **~18 giorni dev esperto Qt+Python** | escluso debug hardware-specific |
+| 9 | 0.5 | Release + verifica feature parity |
+| **Totale** | **~17.5 giorni dev esperto Qt+Python** | escluso debug hardware-specific |
+
+> Nota: la stima "performance-first" (no clone pixel) abbatte ~30% l'effort UI delle fasi 1, 3, 6, ma l'audit di feature parity ha aggiunto 9 sezioni Config (+1.5 gg). Saldo netto vicino al piano originale.
 
 ---
 
