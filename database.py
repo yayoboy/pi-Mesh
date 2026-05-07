@@ -208,14 +208,15 @@ async def init(db_path: str) -> None:
 
 
 async def upsert_node(db_path: str, node: dict) -> None:
+    """Upsert a single node. Missing keys default to NULL (consistent with
+    ``bulk_upsert_nodes``)."""
     async with _get_db() as db:
-        await db.execute("""
+        await db.execute(
+            """
             INSERT INTO nodes (id, short_name, long_name, latitude, longitude,
                 last_heard, snr, battery_level, hop_count, hw_model, is_local, raw_json,
                 distance_km, rssi, firmware_version, role, public_key, altitude)
-            VALUES (:id, :short_name, :long_name, :latitude, :longitude,
-                :last_heard, :snr, :battery_level, :hop_count, :hw_model, :is_local, :raw_json,
-                :distance_km, :rssi, :firmware_version, :role, :public_key, :altitude)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 short_name=excluded.short_name, long_name=excluded.long_name,
                 latitude=excluded.latitude, longitude=excluded.longitude,
@@ -229,7 +230,19 @@ async def upsert_node(db_path: str, node: dict) -> None:
                 role=excluded.role,
                 public_key=excluded.public_key,
                 altitude=excluded.altitude
-        """, node)
+            """,
+            (
+                node.get('id'), node.get('short_name'), node.get('long_name'),
+                node.get('latitude'), node.get('longitude'),
+                node.get('last_heard'), node.get('snr'),
+                node.get('battery_level'), node.get('hop_count'),
+                node.get('hw_model'), node.get('is_local'),
+                node.get('raw_json'), node.get('distance_km'),
+                node.get('rssi'), node.get('firmware_version'),
+                node.get('role'), node.get('public_key'),
+                node.get('altitude'),
+            ),
+        )
         await db.commit()
 
 

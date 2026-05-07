@@ -159,7 +159,9 @@ async def test_on_receive_telemetry_emits_typed_event():
         events.append(q.get_nowait())
     tel_event = next((e for e in events if e['type'] == 'telemetry'), None)
     assert tel_event is not None
-    assert tel_event['battery_level'] == 78
+    assert tel_event['ttype'] == 'device'
+    assert tel_event['id'] == '!aabbccdd'
+    assert tel_event['data']['battery_level'] == 78
     mc._loop = None
 
 

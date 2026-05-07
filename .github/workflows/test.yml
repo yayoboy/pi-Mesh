@@ -40,17 +40,4 @@ jobs:
           python -m compileall -q gui/ tests/
 
       - name: Run pytest (core + GUI-pure)
-        # The deselected tests are pre-existing bugs unrelated to the Qt port:
-        #   - test_on_receive_telemetry_emits_typed_event: KeyError 'battery_level',
-        #     event payload shape changed but the test was not updated.
-        #   - test_upsert_node*, test_load_nodes_from_db_populates_cache:
-        #     database.upsert_node uses named SQL bindings (:rssi) but the test
-        #     fixtures pass node dicts that don't always include every key.
-        # TODO: fix in a dedicated PR; until then, deselect so CI is meaningful.
-        run: |
-          pytest -v \
-            --deselect tests/test_meshtasticd_client.py::test_on_receive_telemetry_emits_typed_event \
-            --deselect tests/test_database.py::test_upsert_node \
-            --deselect tests/test_database.py::test_upsert_node_with_distance_km \
-            --deselect tests/test_database.py::test_upsert_node_distance_km_none \
-            --deselect tests/test_meshtasticd_client.py::test_load_nodes_from_db_populates_cache
+        run: pytest -v
