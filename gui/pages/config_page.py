@@ -695,6 +695,19 @@ class Page(QWidget):
         body_layout.addWidget(self._display)
         body_layout.addWidget(self._wifi)
         body_layout.addWidget(self._admin)
+
+        # Module configs (telemetry, canned, range test, neighbor info,
+        # store-and-forward, external notification, ambient lighting,
+        # detection sensor, serial). All driven by ModuleSpec data so
+        # adding a new module is a one-line spec edit.
+        from gui.pages._module_section import ModuleSection
+        from gui.pages._module_specs import ALL_MODULE_SPECS
+        self._modules: list[ModuleSection] = []
+        for spec in ALL_MODULE_SPECS:
+            section = ModuleSection(spec, body)
+            body_layout.addWidget(section)
+            self._modules.append(section)
+
         body_layout.addStretch(1)
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
@@ -732,6 +745,10 @@ class Page(QWidget):
         self._lora.fill(lora)
         self._channels.fill(channels or [])
         self._mqtt.fill(mqtt or {})
+
+        # Refresh every generic module section in parallel.
+        for section in self._modules:
+            section.reload()
 
     # Save handlers -----------------------------------------------------
 
