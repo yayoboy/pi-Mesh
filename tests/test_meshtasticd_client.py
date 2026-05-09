@@ -168,9 +168,9 @@ async def test_on_receive_telemetry_emits_typed_event():
 @pytest.mark.asyncio
 async def test_request_traceroute_enqueues_callable():
     import meshtasticd_client as mc
-    while not mc._command_queue.empty():
-        mc._command_queue.get_nowait()
-
+    # Rebind the module-level Queue to the current test's loop. Without this,
+    # a Queue bound to a previous test's loop deadlocks `await put()`.
+    mc._command_queue = asyncio.Queue()
     mc._connected = True
     await mc.request_traceroute('!aabbccdd')
     assert not mc._command_queue.empty()
@@ -181,9 +181,7 @@ async def test_request_traceroute_enqueues_callable():
 @pytest.mark.asyncio
 async def test_send_text_enqueues_callable():
     import meshtasticd_client as mc
-    while not mc._command_queue.empty():
-        mc._command_queue.get_nowait()
-
+    mc._command_queue = asyncio.Queue()
     mc._connected = True
     await mc.send_text('Hello', '!aabbccdd', channel=0)
     assert not mc._command_queue.empty()
@@ -194,9 +192,7 @@ async def test_send_text_enqueues_callable():
 @pytest.mark.asyncio
 async def test_request_position_enqueues_callable():
     import meshtasticd_client as mc
-    while not mc._command_queue.empty():
-        mc._command_queue.get_nowait()
-
+    mc._command_queue = asyncio.Queue()
     mc._connected = True
     await mc.request_position('!aabbccdd')
     assert not mc._command_queue.empty()

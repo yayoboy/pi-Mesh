@@ -4,29 +4,20 @@ from unittest.mock import patch
 
 
 @pytest.fixture(autouse=True)
-async def _reset_database_singleton():
-    """Reset the module-level ``database._db`` connection between tests.
+def _reset_database_singleton():
+    """Drop the per-process ``database._db`` reference between tests so
+    subsequent tests using a fresh ``tmp_path`` don't read the previous
+    test's file.
 
-    Without this each test inherits the previous test's connection (and its
-    ``_db_path``), so tests that use a fresh ``tmp_path`` DB end up reading or
-    writing to a stale file — surfaces as ``sqlite3.OperationalError: no such
-    table`` and unread-count drift in test_database / test_messages.
-
-    The fixture must be async so we can ``await database.close()`` cleanly;
-    pytest-asyncio (asyncio_mode = auto) auto-applies it to sync tests too.
+    Sync (not async) on purpose: awaiting ``database.close()`` from a
+    pytest-asyncio teardown leaks aiosqlite worker threads that prevent
+    pytest from exiting after the run completes. Dropping the reference
+    is enough — SQLite's WAL journal handles the rest, and the GC
+    eventually reaps the connection.
     """
     yield
     import database
-
-    if database._db is not None:
-        try:
-            await database.close()
-        except Exception:
-            database._db = None
-    # Intentionally do NOT reset database._db_path: clearing the connection is
-    # enough, and resetting the path to None would let a stray _get_db() call
-    # in a later test try aiosqlite.connect(None), which silently creates a
-    # SQLite file literally named "None" in the CWD.
+    database._db = None
 
 
 @pytest.fixture
