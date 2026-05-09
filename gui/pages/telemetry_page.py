@@ -65,7 +65,8 @@ class Page(QWidget):
         self._rows.setFont(f)
         right_layout.addWidget(self._rows, 1)
         splitter.addWidget(right)
-        splitter.setSizes([200, 600])
+        # ~1/3 nodes list, 2/3 telemetry rows on a 480 px landscape display.
+        splitter.setSizes([160, 320])
 
         self._refresh_nodes()
 

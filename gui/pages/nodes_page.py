@@ -1,202 +1,185 @@
-"""Nodes page: sortable list of mesh nodes with live updates from EventBus."""
+"""Nodes page: card-list adapted for the 320×480 SPI display.
+
+Each row is two lines:
+    [short]  long_name
+       ↳ snr · batt · hops · dist · age
+
+A QListView with a custom delegate would be more efficient on a large mesh
+but a QListWidget with rich-text items is plenty for the few dozen nodes
+typical of pi-Mesh deployments and stays trivial to read.
+"""
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
-from PySide6.QtCore import (
-    QAbstractTableModel,
-    QModelIndex,
-    Qt,
-    QSortFilterProxyModel,
-    Signal,
-    Slot,
-)
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
-    QTableView,
     QVBoxLayout,
     QWidget,
 )
 
-from gui.pages._node_format import fmt_node
+from gui.pages._node_format import fmt_age, fmt_node
+
+log = logging.getLogger(__name__)
 
 
-# Columns in the order they appear in the table.
-_COLUMNS = [
-    ("short", "Short"),
-    ("long",  "Long name"),
-    ("snr",   "SNR"),
-    ("batt",  "Batt"),
-    ("hops",  "Hops"),
-    ("dist",  "Dist km"),
-    ("seen",  "Last seen"),
-]
+def _row_html(node: dict, *, now: int | None = None) -> str:
+    short = node.get("short_name") or "?"
+    long_name = node.get("long_name") or ""
+    age = fmt_age(node.get("last_heard"), now=now)
 
+    parts: list[str] = []
+    snr = node.get("snr")
+    if snr is not None:
+        parts.append(f"SNR {snr:+.1f}")
+    batt = node.get("battery_level")
+    if batt is not None:
+        parts.append(f"{batt}%")
+    hops = node.get("hop_count")
+    if hops is not None:
+        parts.append(f"h={hops}")
+    parts.append(fmt_node(node, "dist", now=now))
+    parts.append(age)
+    sub = " · ".join(parts)
 
-class NodesModel(QAbstractTableModel):
-    """Holds the list of node dicts; one row per node."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._rows: list[dict] = []
-
-    def set_nodes(self, nodes: list[dict]) -> None:
-        # Local node first, then sort by last_heard descending.
-        sorted_nodes = sorted(
-            nodes,
-            key=lambda n: (
-                0 if n.get("is_local") else 1,
-                -(n.get("last_heard") or 0),
-            ),
-        )
-        self.beginResetModel()
-        self._rows = sorted_nodes
-        self.endResetModel()
-
-    def upsert_node(self, node: dict) -> None:
-        node_id = node.get("id")
-        if not node_id:
-            return
-        for i, existing in enumerate(self._rows):
-            if existing.get("id") == node_id:
-                merged = {**existing, **{k: v for k, v in node.items() if v is not None}}
-                self._rows[i] = merged
-                top = self.index(i, 0)
-                bottom = self.index(i, len(_COLUMNS) - 1)
-                self.dataChanged.emit(top, bottom, [Qt.ItemDataRole.DisplayRole])
-                return
-        # New node: append.
-        self.beginInsertRows(QModelIndex(), len(self._rows), len(self._rows))
-        self._rows.append(node)
-        self.endInsertRows()
-
-    def node_at(self, row: int) -> dict | None:
-        if 0 <= row < len(self._rows):
-            return self._rows[row]
-        return None
-
-    # Qt model API ----------------------------------------------------------
-
-    def rowCount(self, parent=QModelIndex()) -> int:
-        return 0 if parent.isValid() else len(self._rows)
-
-    def columnCount(self, parent=QModelIndex()) -> int:
-        return len(_COLUMNS)
-
-    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
-        if not index.isValid():
-            return None
-        row = index.row()
-        if not (0 <= row < len(self._rows)):
-            return None
-        node = self._rows[row]
-        col_key, _ = _COLUMNS[index.column()]
-
-        if role == Qt.ItemDataRole.DisplayRole:
-            return fmt_node(node, col_key)
-        if role == Qt.ItemDataRole.FontRole and node.get("is_local"):
-            f = QFont()
-            f.setBold(True)
-            return f
-        if role == Qt.ItemDataRole.UserRole:
-            return node.get("id")
-        return None
-
-    def headerData(self, section: int, orientation, role: int = Qt.ItemDataRole.DisplayRole):
-        if orientation != Qt.Orientation.Horizontal:
-            return None
-        if role == Qt.ItemDataRole.DisplayRole:
-            return _COLUMNS[section][1]
-        return None
+    weight = "700" if node.get("is_local") else "500"
+    short_color = "var(--accent)" if node.get("is_local") else "var(--text)"
+    return (
+        f'<div style="font-weight:{weight}; color:{short_color};">'
+        f'  <span style="font-size:13px;">{short}</span>'
+        f'  <span style="color:#9aa;font-weight:400;font-size:11px;"> {long_name}</span>'
+        f'</div>'
+        f'<div style="font-size:10px;color:#7a8090;">{sub}</div>'
+    )
 
 
 class Page(QWidget):
-    """Nodes page widget."""
-
-    node_double_clicked = Signal(str)
-
     def __init__(self, eventbus, settings):
         super().__init__()
         self._eventbus = eventbus
         self._settings = settings
+        self._filter = ""
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(6)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
 
-        # Header: search + count
-        header = QHBoxLayout()
-        self._count = QLabel("0 nodes")
+        head = QHBoxLayout()
+        head.setSpacing(4)
+        self._count = QLabel("0")
         self._count.setProperty("role", "muted")
-        self._search = QLineEdit()
-        self._search.setPlaceholderText("Filter by name or id…")
+        f = self._count.font()
+        f.setPointSize(9)
+        self._count.setFont(f)
+        self._search = QLineEdit(self)
+        self._search.setPlaceholderText("filter…")
         self._search.setClearButtonEnabled(True)
-        refresh = QPushButton("Refresh")
+        self._search.textChanged.connect(self._on_filter)
+        head.addWidget(self._count)
+        head.addWidget(self._search, 1)
+        refresh = QPushButton("⟳")
+        refresh.setFixedWidth(28)
         refresh.clicked.connect(self._refresh)
-        header.addWidget(self._count)
-        header.addStretch(1)
-        header.addWidget(self._search)
-        header.addWidget(refresh)
-        layout.addLayout(header)
+        head.addWidget(refresh)
+        layout.addLayout(head)
 
-        # Model + sortable proxy + table
-        self._model = NodesModel(self)
-        self._proxy = QSortFilterProxyModel(self)
-        self._proxy.setSourceModel(self._model)
-        self._proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        self._proxy.setFilterKeyColumn(-1)  # all columns
-        self._search.textChanged.connect(self._proxy.setFilterFixedString)
+        self._list = QListWidget(self)
+        self._list.setUniformItemSizes(False)
+        self._list.setSpacing(1)
+        self._list.setWordWrap(True)
+        self._list.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self._list.itemActivated.connect(self._on_activate)
+        layout.addWidget(self._list, 1)
 
-        self._table = QTableView(self)
-        self._table.setModel(self._proxy)
-        self._table.setSortingEnabled(True)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setAlternatingRowColors(True)
-        self._table.verticalHeader().setVisible(False)
-        self._table.horizontalHeader().setStretchLastSection(False)
-        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self._table.doubleClicked.connect(self._on_double_click)
-        layout.addWidget(self._table, 1)
-
+        self._nodes: list[dict] = []
         self._refresh()
 
-        # Wire eventbus
-        if self._eventbus is not None:
-            self._eventbus.node_updated.connect(self._on_node_event)
-            self._eventbus.position_updated.connect(self._on_node_event)
+        if eventbus is not None:
+            eventbus.node_updated.connect(self._on_node_event)
+            eventbus.position_updated.connect(self._on_node_event)
 
     # ------------------------------------------------------------------
 
     def _refresh(self) -> None:
         try:
             import meshtasticd_client
-            nodes = meshtasticd_client.get_nodes()
+            self._nodes = list(meshtasticd_client.get_nodes())
         except Exception:
-            nodes = []
-        self._model.set_nodes(nodes)
-        self._update_count()
+            self._nodes = []
+        self._render()
 
-    def _update_count(self) -> None:
-        n = self._model.rowCount()
-        self._count.setText(f"{n} node{'s' if n != 1 else ''}")
+    def _render(self) -> None:
+        # Sort: local first, then last_heard desc.
+        self._nodes.sort(
+            key=lambda n: (
+                0 if n.get("is_local") else 1,
+                -(n.get("last_heard") or 0),
+            )
+        )
+        self._list.clear()
+        f = self._filter.lower()
+        shown = 0
+        for n in self._nodes:
+            if f and not _matches(n, f):
+                continue
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, n.get("id"))
+            label = QLabel(_row_html(n))
+            label.setTextFormat(Qt.TextFormat.RichText)
+            label.setStyleSheet("padding:4px;")
+            label.setMinimumHeight(34)
+            item.setSizeHint(label.sizeHint())
+            self._list.addItem(item)
+            self._list.setItemWidget(item, label)
+            shown += 1
+        self._count.setText(f"{shown}/{len(self._nodes)}")
+
+    def _upsert(self, event: dict) -> None:
+        node_id = event.get("id")
+        if not node_id:
+            return
+        for i, n in enumerate(self._nodes):
+            if n.get("id") == node_id:
+                self._nodes[i] = {**n, **{k: v for k, v in event.items() if v is not None}}
+                self._render()
+                return
+        self._nodes.append(dict(event))
+        self._render()
+
+    # Slots --------------------------------------------------------------
+
+    @Slot(str)
+    def _on_filter(self, text: str) -> None:
+        self._filter = text or ""
+        self._render()
 
     @Slot(dict)
     def _on_node_event(self, event: dict) -> None:
-        self._model.upsert_node(event)
-        self._update_count()
+        self._upsert(event)
 
-    @Slot(QModelIndex)
-    def _on_double_click(self, idx: QModelIndex) -> None:
-        source = self._proxy.mapToSource(idx)
-        node = self._model.node_at(source.row())
-        if node and node.get("id"):
-            self.node_double_clicked.emit(node["id"])
+    @Slot(QListWidgetItem)
+    def _on_activate(self, item: QListWidgetItem) -> None:
+        node_id = item.data(Qt.ItemDataRole.UserRole)
+        if not node_id:
+            return
+        # Future: open node detail view. For now, jump to telemetry page.
+        win = self.window()
+        if hasattr(win, "show_telemetry"):
+            win.show_telemetry()
+
+
+def _matches(node: dict, needle: str) -> bool:
+    fields = (
+        node.get("id"), node.get("short_name"), node.get("long_name"),
+        node.get("hw_model"),
+    )
+    return any(needle in (f or "").lower() for f in fields)
