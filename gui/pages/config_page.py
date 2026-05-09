@@ -12,7 +12,9 @@ import asyncio
 import logging
 
 from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QColorDialog,
     QComboBox,
     QFormLayout,
     QGroupBox,
@@ -86,6 +88,181 @@ class _DeviceSection(QGroupBox):
         )
 
 
+class _ChannelsSection(QGroupBox):
+    """List of mesh channels with edit dialogs.
+
+    Channel 0 (PRIMARY) cannot be renamed; the others can. PSK is shown as
+    base64; ``random`` generates a new 256-bit key.
+    """
+
+    def __init__(self, on_save_channel, parent=None):
+        super().__init__("Channels", parent)
+        self._on_save_channel = on_save_channel
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(4)
+
+        self._rows: list[QWidget] = []
+        self._container = QWidget(self)
+        self._container_layout = QVBoxLayout(self._container)
+        self._container_layout.setContentsMargins(0, 0, 0, 0)
+        self._container_layout.setSpacing(2)
+        layout.addWidget(self._container)
+
+        self._empty = QLabel("(no channels read yet)")
+        self._empty.setProperty("role", "muted")
+        layout.addWidget(self._empty)
+
+    def fill(self, channels: list[dict]) -> None:
+        # Wipe rows
+        for row in self._rows:
+            self._container_layout.removeWidget(row)
+            row.deleteLater()
+        self._rows.clear()
+
+        if not channels:
+            self._empty.show()
+            return
+        self._empty.hide()
+
+        for ch in channels:
+            row = self._build_row(ch)
+            self._container_layout.addWidget(row)
+            self._rows.append(row)
+
+    def _build_row(self, ch: dict) -> QWidget:
+        row = QWidget(self._container)
+        rl = QHBoxLayout(row)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.setSpacing(4)
+
+        idx = ch.get("index", 0)
+        role = ch.get("role", "DISABLED")
+        name = ch.get("name") or (f"Primary" if idx == 0 else f"Ch {idx}")
+
+        label = QLabel(f"{idx}  {name}")
+        label.setProperty("role", "muted" if role == "DISABLED" else None)
+        rl.addWidget(label, 1)
+
+        role_lbl = QLabel(role)
+        role_lbl.setProperty("role", "muted")
+        rl.addWidget(role_lbl)
+
+        edit = QPushButton("Edit")
+        edit.setFixedWidth(56)
+        edit.clicked.connect(lambda: self._edit(ch))
+        rl.addWidget(edit)
+        return row
+
+    def _edit(self, ch: dict) -> None:
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFormLayout, QLineEdit
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Channel {ch.get('index', 0)}")
+        dlg.setModal(True)
+        form = QFormLayout(dlg)
+
+        name_edit = QLineEdit(ch.get("name") or "")
+        name_edit.setMaxLength(11)
+        psk_edit = QLineEdit(ch.get("psk_b64") or "")
+        psk_edit.setPlaceholderText("base64 PSK or empty")
+        form.addRow("Name", name_edit)
+        form.addRow("PSK", psk_edit)
+
+        random_btn = QPushButton("Random PSK")
+        random_btn.clicked.connect(lambda: psk_edit.setText(_random_psk_b64()))
+        form.addRow(random_btn)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        form.addRow(buttons)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._on_save_channel(
+            index=ch.get("index", 0),
+            name=name_edit.text().strip(),
+            psk_b64=psk_edit.text().strip(),
+        )
+
+
+from gui.pages._psk import random_psk_b64 as _random_psk_b64  # noqa: E402  (kept name for backward-compat in this module)
+
+
+class _DisplaySection(QGroupBox):
+    """Theme picker + accent color. Writes to Settings, which fires the
+    hot-reload subscriber wired up in :mod:`gui.app`."""
+
+    def __init__(self, settings, parent=None):
+        super().__init__("Display", parent)
+        self._settings = settings
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(8)
+
+        # Theme picker — radio-button-style buttons row.
+        theme_row = QHBoxLayout()
+        theme_row.setSpacing(4)
+        theme_row.addWidget(QLabel("Theme"))
+        self._theme_buttons: dict[str, QPushButton] = {}
+        for name in ("dark", "light", "hc", "custom"):
+            btn = QPushButton(name)
+            btn.setCheckable(True)
+            btn.clicked.connect(lambda _checked, n=name: self._on_theme_clicked(n))
+            theme_row.addWidget(btn)
+            self._theme_buttons[name] = btn
+        theme_row.addStretch(1)
+        layout.addLayout(theme_row)
+
+        # Accent color picker.
+        accent_row = QHBoxLayout()
+        accent_row.addWidget(QLabel("Accent"))
+        self._accent_swatch = QPushButton("")
+        self._accent_swatch.setFixedSize(28, 22)
+        self._accent_swatch.clicked.connect(self._pick_accent)
+        accent_row.addWidget(self._accent_swatch)
+        accent_row.addStretch(1)
+        layout.addLayout(accent_row)
+
+        self._refresh()
+
+    # ------------------------------------------------------------------
+
+    def _refresh(self) -> None:
+        if self._settings is None:
+            return
+        current = self._settings.get("display.theme", "dark") or "dark"
+        for name, btn in self._theme_buttons.items():
+            btn.setChecked(name == current)
+        accent = self._settings.get("pimesh-accent") or "#4a9eff"
+        self._set_swatch_color(accent)
+
+    def _on_theme_clicked(self, name: str) -> None:
+        if self._settings is None:
+            return
+        self._settings.set("display.theme", name)
+        for n, btn in self._theme_buttons.items():
+            btn.setChecked(n == name)
+
+    def _pick_accent(self) -> None:
+        if self._settings is None:
+            return
+        current = QColor(self._settings.get("pimesh-accent") or "#4a9eff")
+        chosen = QColorDialog.getColor(current, self, "Accent color")
+        if chosen.isValid():
+            value = chosen.name()
+            self._settings.set("pimesh-accent", value)
+            self._set_swatch_color(value)
+
+    def _set_swatch_color(self, hex_color: str) -> None:
+        self._accent_swatch.setStyleSheet(
+            f"background:{hex_color}; border:1px solid #444; border-radius:3px;"
+        )
+
+
 class _LoraSection(QGroupBox):
     def __init__(self, on_save, parent=None):
         super().__init__("LoRa", parent)
@@ -147,8 +324,12 @@ class Page(QWidget):
 
         self._device = _DeviceSection(self._save_device, body)
         self._lora = _LoraSection(self._save_lora, body)
+        self._channels = _ChannelsSection(self._save_channel, body)
+        self._display = _DisplaySection(self._settings, body)
         body_layout.addWidget(self._device)
         body_layout.addWidget(self._lora)
+        body_layout.addWidget(self._channels)
+        body_layout.addWidget(self._display)
         body_layout.addStretch(1)
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
@@ -168,6 +349,7 @@ class Page(QWidget):
             import meshtasticd_client
             node = await meshtasticd_client.get_node_config(cfg.DB_PATH)
             lora = await meshtasticd_client.get_lora_config(cfg.DB_PATH)
+            channels = await meshtasticd_client.get_channels(cfg.DB_PATH)
         except Exception:
             log.exception("config reload failed")
             self._status.setText("error loading config")
@@ -182,6 +364,7 @@ class Page(QWidget):
 
         self._device.fill(node)
         self._lora.fill(lora)
+        self._channels.fill(channels or [])
 
     # Save handlers -----------------------------------------------------
 
@@ -223,3 +406,23 @@ class Page(QWidget):
         self._status.setProperty("role", "ok")
         self._status.style().unpolish(self._status)
         self._status.style().polish(self._status)
+
+    def _save_channel(self, *, index: int, name: str, psk_b64: str) -> None:
+        loop = asyncio.get_event_loop_policy().get_event_loop()
+        if loop.is_running():
+            loop.create_task(self._save_channel_async(index, name, psk_b64))
+
+    async def _save_channel_async(self, index: int, name: str, psk_b64: str) -> None:
+        try:
+            import meshtasticd_client
+            await meshtasticd_client.set_channel(index, name, psk_b64)
+        except Exception:
+            log.exception("set_channel failed")
+            QMessageBox.critical(self, "Config", f"Failed to save channel {index}.")
+            return
+        self._status.setText(f"channel {index} queued")
+        self._status.setProperty("role", "ok")
+        self._status.style().unpolish(self._status)
+        self._status.style().polish(self._status)
+        # Reload channel list
+        self._reload()
