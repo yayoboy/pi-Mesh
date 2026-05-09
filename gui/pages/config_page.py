@@ -942,6 +942,7 @@ class Page(QWidget):
             _SerialSection,
             _UsbStorageSection,
         )
+        from gui.pages._bots_section import _BotsSection
         sections.extend([
             ("Serial port",      _SerialSection(body)),
             ("GPIO devices",     _GpioSection(body)),
@@ -952,6 +953,7 @@ class Page(QWidget):
             ("Map config",       _MapConfigSection(body)),
             ("Canned messages",  _CannedMessagesSection(body)),
             ("USB storage",      _UsbStorageSection(body)),
+            ("Bots",             _BotsSection(body)),
         ])
 
         for i, (title, widget) in enumerate(sections):

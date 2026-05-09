@@ -16,7 +16,9 @@ import rpi_telemetry
 
 logging.basicConfig(level=getattr(logging, cfg.LOG_LEVEL, logging.WARNING))
 
-from routers import nodes, map_router, log_router, commands, ws_router, messages_router, config_router, metrics_router, canned_router, module_config_router, waypoints_router, neighbor_router, admin_router
+from routers import nodes, map_router, log_router, commands, ws_router, messages_router, config_router, metrics_router, canned_router, module_config_router, waypoints_router, neighbor_router, admin_router, bots_router
+
+from bots import runner as bots_runner
 
 
 async def _broadcast_task() -> None:
@@ -89,10 +91,13 @@ async def lifespan(app: FastAPI):
     if mqtt_cfg.get('enabled'):
         mqtt_bridge.set_ws_dispatch(_mqtt_ws_dispatch)
         _tasks.append(asyncio.create_task(mqtt_bridge.start(mqtt_cfg)))
+    # Start the Meshtastic bots runner.
+    await bots_runner.start(cfg.DB_PATH)
     yield
     for t in _tasks:
         t.cancel()
     await asyncio.gather(*_tasks, return_exceptions=True)
+    await bots_runner.stop()
     await mqtt_bridge.stop()
     await meshtasticd_client.disconnect()
     await database.close()
@@ -118,6 +123,7 @@ app.include_router(module_config_router.router)
 app.include_router(waypoints_router.router)
 app.include_router(neighbor_router.router)
 app.include_router(admin_router.router)
+app.include_router(bots_router.router)
 
 
 @app.get('/')

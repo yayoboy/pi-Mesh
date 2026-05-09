@@ -892,6 +892,7 @@ async def _save_incoming_message(
     typed_event = {
         'type':        'message',
         'id':          msg_id,
+        'from':        from_id,        # alias used by EventBus / bots layer
         'node_id':     from_id,
         'channel':     channel,
         'text':        text,
@@ -901,6 +902,7 @@ async def _save_incoming_message(
         'hop_count':   hop_limit,
         'ack':         0,
         'destination': dest,
+        'is_dm':       bool(dest != '^all' and _local_id and dest == _local_id),
     }
     if _loop is not None:
         _loop.call_soon_threadsafe(_enqueue_event,typed_event)
