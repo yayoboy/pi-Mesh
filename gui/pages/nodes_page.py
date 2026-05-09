@@ -176,7 +176,13 @@ class Page(QWidget):
             return
         from gui.pages._node_detail import NodeDetailDialog
         dlg = NodeDetailDialog(node, parent=self.window())
+        dlg.forget_requested.connect(self._on_forget)
         dlg.exec()
+
+    @Slot(str)
+    def _on_forget(self, node_id: str) -> None:
+        self._nodes = [n for n in self._nodes if n.get("id") != node_id]
+        self._render()
 
 
 def _matches(node: dict, needle: str) -> bool:

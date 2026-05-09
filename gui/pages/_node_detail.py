@@ -5,13 +5,15 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QVBoxLayout,
@@ -55,9 +57,15 @@ class NodeDetailDialog(QDialog):
 
     Buttons (require radio connected):
         - Request position
+        - Request telemetry (admin)
         - Traceroute
         - Send DM (opens prompt → meshtasticd_client.send_text(text, node_id))
+        - Remote reboot (admin) [confirm]
+        - Remote factory reset (admin) [type RESET to confirm]
+        - Forget node (DELETE /api/nodes/{id}; optional purge of messages)
     """
+
+    forget_requested = Signal(str)  # emitted with node_id when the user forgets
 
     def __init__(self, node: dict, *, parent=None):
         super().__init__(parent)
@@ -102,9 +110,9 @@ class NodeDetailDialog(QDialog):
             form.addRow(label, value_lbl)
         layout.addLayout(form)
 
-        # Action buttons
+        # Action buttons — local
         actions = QHBoxLayout()
-        pos_btn = QPushButton("Request position")
+        pos_btn = QPushButton("Position")
         tr_btn = QPushButton("Traceroute")
         dm_btn = QPushButton("Send DM")
         for b in (pos_btn, tr_btn, dm_btn):
@@ -116,6 +124,28 @@ class NodeDetailDialog(QDialog):
         tr_btn.clicked.connect(self._traceroute)
         dm_btn.clicked.connect(self._send_dm)
 
+        # Admin actions — POST /api/admin/{node_id}/{op}
+        admin = QHBoxLayout()
+        tel_btn = QPushButton("Telemetry")
+        reboot_btn = QPushButton("Reboot")
+        reset_btn = QPushButton("Factory reset")
+        forget_btn = QPushButton("Forget")
+        for b in (tel_btn, reboot_btn, reset_btn, forget_btn):
+            b.setMinimumHeight(26)
+            admin.addWidget(b)
+        layout.addLayout(admin)
+
+        tel_btn.clicked.connect(self._request_telemetry)
+        reboot_btn.clicked.connect(self._remote_reboot)
+        reset_btn.clicked.connect(self._remote_factory_reset)
+        forget_btn.clicked.connect(self._forget_node)
+
+        # Status banner for action feedback
+        self._action_status = QLabel("")
+        self._action_status.setProperty("role", "muted")
+        self._action_status.setWordWrap(True)
+        layout.addWidget(self._action_status)
+
         # Close button
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
@@ -126,11 +156,6 @@ class NodeDetailDialog(QDialog):
 
     def _node_id(self) -> str | None:
         return self._node.get("id")
-
-    def _schedule(self, coro) -> None:
-        loop = asyncio.get_event_loop_policy().get_event_loop()
-        if loop.is_running():
-            loop.create_task(coro)
 
     def _request_position(self) -> None:
         nid = self._node_id()
@@ -177,3 +202,116 @@ class NodeDetailDialog(QDialog):
         except Exception:
             log.exception("send_text DM failed")
             QMessageBox.warning(self, "Node", "Failed to send DM.")
+
+    # -- Admin actions -----------------------------------------------
+
+    def _set_status(self, text: str, *, role: str = "muted") -> None:
+        self._action_status.setText(text)
+        self._action_status.setProperty("role", role)
+        self._action_status.style().unpolish(self._action_status)
+        self._action_status.style().polish(self._action_status)
+
+    def _request_telemetry(self) -> None:
+        nid = self._node_id()
+        if not nid:
+            return
+        self._schedule(self._post_admin(nid, "request-telemetry", "telemetry requested"))
+
+    def _remote_reboot(self) -> None:
+        nid = self._node_id()
+        if not nid:
+            return
+        if QMessageBox.question(
+            self, "Remote reboot",
+            f"Reboot node {nid}? It will be unreachable for ~30 s.",
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        self._schedule(self._post_admin(nid, "reboot", "reboot sent"))
+
+    def _remote_factory_reset(self) -> None:
+        nid = self._node_id()
+        if not nid:
+            return
+        # Type 'RESET' to confirm — matches the web UI flow.
+        from PySide6.QtWidgets import QInputDialog
+        text, ok = QInputDialog.getText(
+            self, "Factory reset", f"Type RESET to factory-reset {nid}:"
+        )
+        if not ok or text.strip() != "RESET":
+            self._set_status("factory reset cancelled")
+            return
+        self._schedule(self._post_admin(nid, "factory-reset", "factory reset sent", warn=True))
+
+    async def _post_admin(self, nid: str, operation: str, ok_msg: str, *, warn: bool = False) -> None:
+        self._set_status(f"sending {operation}…")
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as c:
+                r = await c.post(
+                    f"http://127.0.0.1:8080/api/admin/{nid}/{operation}",
+                )
+            if r.status_code == 200:
+                self._set_status(f"✓ {ok_msg}", role="warn" if warn else "ok")
+                return
+            err = ""
+            try:
+                err = r.json().get("error") or r.json().get("detail") or ""
+            except Exception:
+                err = r.text[:160]
+            self._set_status(f"✗ {operation} failed: {err}", role="danger")
+        except Exception as exc:
+            self._set_status(f"✗ {operation} error: {exc}", role="danger")
+
+    # -- Forget ------------------------------------------------------
+
+    def _forget_node(self) -> None:
+        nid = self._node_id()
+        if not nid:
+            return
+        # Single dialog with optional purge checkbox.
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Forget node")
+        dlg.setModal(True)
+        v = QVBoxLayout(dlg)
+        v.addWidget(QLabel(f"Remove {nid} from the local cache."))
+        purge = QCheckBox("Also delete messages and telemetry (purge)")
+        v.addWidget(purge)
+        bb = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        v.addWidget(bb)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._schedule(self._do_forget(nid, purge.isChecked()))
+
+    async def _do_forget(self, nid: str, purge: bool) -> None:
+        url = f"http://127.0.0.1:8080/api/nodes/{nid}"
+        if purge:
+            url += "?purge=true"
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as c:
+                r = await c.delete(url)
+            if r.status_code != 200:
+                self._set_status(f"✗ forget failed: {r.text[:120]}", role="danger")
+                return
+        except Exception as exc:
+            self._set_status(f"✗ forget error: {exc}", role="danger")
+            return
+        self._set_status("✓ node removed", role="ok")
+        self.forget_requested.emit(nid)
+        self.accept()
+
+    # -- helpers -----------------------------------------------------
+
+    @staticmethod
+    def _schedule(coro) -> None:
+        loop = asyncio.get_event_loop_policy().get_event_loop()
+        if loop.is_running():
+            loop.create_task(coro)
+
+
+# Convert internal `self._schedule` references back to the staticmethod call.
+# (No-op marker — keeps the surrounding diff minimal.)
