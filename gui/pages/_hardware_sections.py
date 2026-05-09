@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -427,6 +428,352 @@ class _GpioSection(QGroupBox):
 # ---------------------------------------------------------------------------
 # USB storage
 # ---------------------------------------------------------------------------
+
+class _SerialSection(QGroupBox):
+    """Serial port selection for the Meshtastic board.
+
+    Lists ``/api/config/serial/ports`` and writes the choice via
+    ``POST /api/config/serial/port`` (persists in config.env).
+    """
+
+    def __init__(self, parent=None):
+        super().__init__("Serial port", parent)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(4)
+
+        bar = QHBoxLayout()
+        bar.addWidget(QLabel("Port"))
+        self._combo = QComboBox(self)
+        bar.addWidget(self._combo, 1)
+        refresh = QPushButton("Refresh")
+        refresh.clicked.connect(self._refresh)
+        save = QPushButton("Apply")
+        save.clicked.connect(self._on_save)
+        bar.addWidget(refresh)
+        bar.addWidget(save)
+        layout.addLayout(bar)
+
+        self._info = QLabel("…")
+        self._info.setProperty("role", "muted")
+        layout.addWidget(self._info)
+
+        self._refresh()
+
+    def _refresh(self) -> None:
+        _schedule(self._refresh_async())
+
+    async def _refresh_async(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                r = await c.get("http://127.0.0.1:8080/api/config/serial/ports")
+            data = r.json() if r.status_code == 200 else {}
+        except Exception:
+            data = {}
+        ports = data.get("ports") if isinstance(data, dict) else data
+        ports = ports or []
+        current = data.get("current") if isinstance(data, dict) else None
+
+        self._combo.clear()
+        for p in ports:
+            self._combo.addItem(p)
+        if current:
+            idx = self._combo.findText(current)
+            if idx >= 0:
+                self._combo.setCurrentIndex(idx)
+            self._info.setText(f"current: {current}")
+        else:
+            self._info.setText(f"{len(ports)} ports detected")
+
+    def _on_save(self) -> None:
+        port = self._combo.currentText().strip()
+        if not port:
+            return
+        if QMessageBox.question(
+            self, "Serial",
+            f"Switch to {port}? meshtasticd will be restarted.",
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        _schedule(self._save_async(port))
+
+    async def _save_async(self, port: str) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as c:
+                r = await c.post(
+                    "http://127.0.0.1:8080/api/config/serial/port",
+                    json={"port": port},
+                )
+            if r.status_code == 200:
+                self._info.setText(f"applied: {port}")
+            else:
+                err = ""
+                try:
+                    err = r.json().get("error", "")
+                except Exception:
+                    err = r.text[:120]
+                self._info.setText(f"failed: {err}")
+        except Exception as exc:
+            self._info.setText(f"error: {exc}")
+
+
+class _AlertsSection(QGroupBox):
+    """Threshold values for the alerts system (offline/battery/RAM)."""
+
+    def __init__(self, parent=None):
+        super().__init__("Alerts thresholds", parent)
+        form = QFormLayout(self)
+
+        self._offline = QSpinBox(self)
+        self._offline.setRange(1, 24 * 60)
+        self._offline.setSuffix(" min")
+        self._battery = QSpinBox(self)
+        self._battery.setRange(0, 100)
+        self._battery.setSuffix(" %")
+        self._ram = QSpinBox(self)
+        self._ram.setRange(0, 100)
+        self._ram.setSuffix(" %")
+
+        form.addRow("Node offline after", self._offline)
+        form.addRow("Battery low below", self._battery)
+        form.addRow("RAM high above", self._ram)
+
+        save_row = QHBoxLayout()
+        save = QPushButton("Save thresholds")
+        save.clicked.connect(self._on_save)
+        save_row.addStretch(1)
+        save_row.addWidget(save)
+        form.addRow(save_row)
+
+        _schedule(self._refresh_async())
+
+    async def _refresh_async(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                r = await c.get("http://127.0.0.1:8080/api/config/alerts")
+            d = r.json() if r.status_code == 200 else {}
+        except Exception:
+            d = {}
+        self._offline.setValue(int(d.get("node_offline_min", 30)))
+        self._battery.setValue(int(d.get("battery_low", 20)))
+        self._ram.setValue(int(d.get("ram_high", 90)))
+
+    def _on_save(self) -> None:
+        body = {
+            "node_offline_min": self._offline.value(),
+            "battery_low": self._battery.value(),
+            "ram_high": self._ram.value(),
+        }
+        _schedule(self._save_async(body))
+
+    async def _save_async(self, body: dict) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                r = await c.post("http://127.0.0.1:8080/api/config/alerts", json=body)
+            if r.status_code != 200:
+                QMessageBox.warning(self, "Alerts", f"Save failed: {r.text[:120]}")
+        except Exception:
+            log.exception("alerts save failed")
+            QMessageBox.warning(self, "Alerts", "Save failed.")
+
+
+class _MapConfigSection(QGroupBox):
+    """Map config: local tiles toggle + region readout (read-only)."""
+
+    def __init__(self, parent=None):
+        super().__init__("Map config", parent)
+        form = QFormLayout(self)
+
+        self._local_tiles = QPushButton("local tiles off")
+        self._local_tiles.setCheckable(True)
+        self._local_tiles.toggled.connect(
+            lambda c: self._local_tiles.setText(
+                "local tiles on" if c else "local tiles off"
+            )
+        )
+        self._region = QLabel("—")
+        self._region.setProperty("role", "muted")
+        self._tiles_present = QLabel("—")
+        self._tiles_present.setProperty("role", "muted")
+
+        form.addRow("Use local tiles", self._local_tiles)
+        form.addRow("Region", self._region)
+        form.addRow("Tiles present", self._tiles_present)
+
+        save_row = QHBoxLayout()
+        save = QPushButton("Save")
+        save.clicked.connect(self._on_save)
+        save_row.addStretch(1)
+        save_row.addWidget(save)
+        form.addRow(save_row)
+
+        _schedule(self._refresh_async())
+
+    async def _refresh_async(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                r = await c.get("http://127.0.0.1:8080/api/config/map")
+            d = r.json() if r.status_code == 200 else {}
+        except Exception:
+            d = {}
+        self._local_tiles.setChecked(bool(d.get("local_tiles")))
+        self._region.setText(str(d.get("region") or "—"))
+        self._tiles_present.setText("yes" if d.get("tiles_present") else "no")
+
+    def _on_save(self) -> None:
+        body = {"local_tiles": self._local_tiles.isChecked()}
+        _schedule(self._save_async(body))
+
+    async def _save_async(self, body: dict) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                await c.post("http://127.0.0.1:8080/api/config/map", json=body)
+        except Exception:
+            log.exception("map config save failed")
+            QMessageBox.warning(self, "Map", "Save failed.")
+
+
+class _CannedMessagesSection(QGroupBox):
+    """CRUD list of pre-canned message texts (POST/PUT/DELETE
+    /api/canned-messages). The Messages page reads this list to populate
+    its quick-insert menu.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__("Canned messages", parent)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(4)
+
+        bar = QHBoxLayout()
+        add = QPushButton("Add")
+        add.clicked.connect(self._on_add)
+        edit = QPushButton("Edit")
+        edit.clicked.connect(self._on_edit)
+        delete = QPushButton("Delete")
+        delete.clicked.connect(self._on_delete)
+        refresh = QPushButton("Refresh")
+        refresh.clicked.connect(self._refresh)
+        for b in (add, edit, delete, refresh):
+            bar.addWidget(b)
+        bar.addStretch(1)
+        layout.addLayout(bar)
+
+        self._list = QListWidget(self)
+        self._list.setMaximumHeight(140)
+        self._list.itemDoubleClicked.connect(lambda _it: self._on_edit())
+        layout.addWidget(self._list)
+
+        self._refresh()
+
+    # ------------------------------------------------------------------
+
+    def _refresh(self) -> None:
+        _schedule(self._refresh_async())
+
+    async def _refresh_async(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                r = await c.get("http://127.0.0.1:8080/api/canned-messages")
+            items = r.json() if r.status_code == 200 else []
+        except Exception:
+            items = []
+        self._list.clear()
+        for it in items:
+            text = it.get("text") or ""
+            short = text if len(text) <= 60 else text[:58] + "…"
+            label = f"{it.get('sort_order', 0):02d}  {short}"
+            qit = QListWidgetItem(label)
+            qit.setData(Qt.ItemDataRole.UserRole, it)
+            self._list.addItem(qit)
+
+    def _prompt_text(self, current: str = "", current_order: int = 0) -> tuple[str, int] | None:
+        from PySide6.QtWidgets import (
+            QDialog,
+            QDialogButtonBox,
+            QFormLayout,
+            QLineEdit,
+            QSpinBox,
+            QTextEdit,
+        )
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Canned message")
+        dlg.setModal(True)
+        form = QFormLayout(dlg)
+        text_edit = QTextEdit(current)
+        text_edit.setFixedHeight(80)
+        order_edit = QSpinBox()
+        order_edit.setRange(0, 999)
+        order_edit.setValue(current_order)
+        form.addRow("Text", text_edit)
+        form.addRow("Order", order_edit)
+        bb = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        form.addRow(bb)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        text = text_edit.toPlainText().strip()
+        if not text:
+            return None
+        return text, order_edit.value()
+
+    def _on_add(self) -> None:
+        result = self._prompt_text()
+        if result is None:
+            return
+        text, order = result
+        _schedule(self._post_async("POST", None, text, order))
+
+    def _on_edit(self) -> None:
+        item = self._list.currentItem()
+        if item is None:
+            return
+        data = item.data(Qt.ItemDataRole.UserRole) or {}
+        result = self._prompt_text(data.get("text") or "", int(data.get("sort_order") or 0))
+        if result is None:
+            return
+        text, order = result
+        _schedule(self._post_async("PUT", int(data.get("id")), text, order))
+
+    def _on_delete(self) -> None:
+        item = self._list.currentItem()
+        if item is None:
+            return
+        data = item.data(Qt.ItemDataRole.UserRole) or {}
+        if QMessageBox.question(
+            self, "Canned", f"Delete canned message {data.get('id')}?",
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        _schedule(self._post_async("DELETE", int(data.get("id")), None, None))
+
+    async def _post_async(self, method: str, msg_id: int | None,
+                          text: str | None, order: int | None) -> None:
+        url = "http://127.0.0.1:8080/api/canned-messages"
+        if msg_id is not None:
+            url += f"/{msg_id}"
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                if method == "POST":
+                    await c.post(url, json={"text": text, "sort_order": order})
+                elif method == "PUT":
+                    await c.put(url, json={"text": text, "sort_order": order})
+                elif method == "DELETE":
+                    await c.delete(url)
+        except Exception:
+            log.exception("canned %s failed", method)
+            QMessageBox.warning(self, "Canned", f"{method} failed.")
+        self._refresh()
+
 
 class _UsbStorageSection(QGroupBox):
     def __init__(self, parent=None):

@@ -100,7 +100,7 @@ class _DeviceSection(QGroupBox):
 
 
 class _WifiSection(QGroupBox):
-    """WiFi: current status, scan/connect.
+    """WiFi: current status, scan/connect, saved profiles, static IP.
 
     All hits go through the FastAPI bridge (``/api/config/wifi/*``) so the
     GUI doesn't shell out directly. Useful even before the radio is talking.
@@ -121,8 +121,14 @@ class _WifiSection(QGroupBox):
         scan.clicked.connect(self._on_scan)
         refresh = QPushButton("Status")
         refresh.clicked.connect(self._on_refresh_status)
+        saved = QPushButton("Saved")
+        saved.clicked.connect(self._on_show_saved)
+        ip = QPushButton("IP…")
+        ip.clicked.connect(self._on_show_ip_dialog)
         bar.addWidget(scan)
         bar.addWidget(refresh)
+        bar.addWidget(saved)
+        bar.addWidget(ip)
         bar.addStretch(1)
         layout.addLayout(bar)
 
@@ -218,34 +224,175 @@ class _WifiSection(QGroupBox):
         self._status.style().unpolish(self._status)
         self._status.style().polish(self._status)
 
+    # -- Saved profiles ------------------------------------------------
+
+    def _on_show_saved(self) -> None:
+        from PySide6.QtWidgets import (
+            QDialog,
+            QDialogButtonBox,
+            QListWidget as _LW,
+            QListWidgetItem as _LWI,
+            QVBoxLayout,
+        )
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Saved WiFi profiles")
+        dlg.setModal(True)
+        v = QVBoxLayout(dlg)
+        v.addWidget(QLabel("Double-tap to delete a saved profile."))
+        lw = _LW()
+        v.addWidget(lw, 1)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        bb.rejected.connect(dlg.reject)
+        bb.accepted.connect(dlg.accept)
+        v.addWidget(bb)
+
+        async def populate():
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=5.0) as c:
+                    r = await c.get("http://127.0.0.1:8080/api/config/wifi/saved")
+                items = r.json() if r.status_code == 200 else []
+            except Exception:
+                items = []
+            for it in items:
+                qit = _LWI(it.get("name") or "?")
+                qit.setData(Qt.ItemDataRole.UserRole, it.get("name"))
+                lw.addItem(qit)
+
+        async def delete_one(name: str):
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=5.0) as c:
+                    await c.delete(f"http://127.0.0.1:8080/api/config/wifi/saved/{name}")
+            except Exception:
+                log.exception("wifi delete failed")
+
+        def on_dbl(item):
+            name = item.data(Qt.ItemDataRole.UserRole)
+            if not name:
+                return
+            if QMessageBox.question(self, "WiFi", f"Forget {name!r}?") != QMessageBox.StandardButton.Yes:
+                return
+            _schedule_qt(delete_one(name))
+            row = lw.row(item)
+            lw.takeItem(row)
+
+        lw.itemDoubleClicked.connect(on_dbl)
+        _schedule_qt(populate())
+        dlg.exec()
+
+    # -- Static IP -----------------------------------------------------
+
+    def _on_show_ip_dialog(self) -> None:
+        from PySide6.QtWidgets import (
+            QDialog,
+            QDialogButtonBox,
+            QFormLayout,
+            QRadioButton,
+            QVBoxLayout,
+        )
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("WiFi IP configuration")
+        dlg.setModal(True)
+        v = QVBoxLayout(dlg)
+
+        method_row = QHBoxLayout()
+        auto_btn = QRadioButton("DHCP (auto)")
+        auto_btn.setChecked(True)
+        manual_btn = QRadioButton("Static")
+        method_row.addWidget(auto_btn)
+        method_row.addWidget(manual_btn)
+        method_row.addStretch(1)
+        v.addLayout(method_row)
+
+        form = QFormLayout()
+        addr = QLineEdit()
+        addr.setPlaceholderText("192.168.1.50/24")
+        gw = QLineEdit()
+        gw.setPlaceholderText("192.168.1.1")
+        dns = QLineEdit()
+        dns.setPlaceholderText("8.8.8.8 1.1.1.1")
+        form.addRow("Address", addr)
+        form.addRow("Gateway", gw)
+        form.addRow("DNS", dns)
+        v.addLayout(form)
+
+        bb = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        v.addWidget(bb)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        body = {
+            "method": "manual" if manual_btn.isChecked() else "auto",
+            "address": addr.text().strip(),
+            "gateway": gw.text().strip(),
+            "dns": dns.text().strip(),
+        }
+
+        async def post():
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=15.0) as c:
+                    r = await c.post("http://127.0.0.1:8080/api/config/wifi/ip", json=body)
+                if r.status_code == 200:
+                    self._status.setText("IP config applied")
+                    self._status.setProperty("role", "ok")
+                else:
+                    err = r.text[:120]
+                    self._status.setText(f"IP failed: {err}")
+                    self._status.setProperty("role", "danger")
+            except Exception as exc:
+                self._status.setText(f"IP error: {exc}")
+                self._status.setProperty("role", "danger")
+            self._status.style().unpolish(self._status)
+            self._status.style().polish(self._status)
+
+        _schedule_qt(post())
+
 
 class _AdminSection(QGroupBox):
-    """Destructive / system-level actions: factory reset, reboot, firmware."""
+    """Destructive / system-level actions."""
 
-    def __init__(self, on_factory_reset, on_reboot, parent=None):
+    def __init__(self, on_factory_reset, on_reboot, on_pi_factory_reset, parent=None):
         super().__init__("Admin", parent)
         self._on_factory_reset = on_factory_reset
         self._on_reboot = on_reboot
+        self._on_pi_factory_reset = on_pi_factory_reset
 
         layout = QVBoxLayout(self)
         layout.setSpacing(4)
 
         info = QLabel(
             "Operations below affect the local radio and the Pi. "
-            "Factory reset wipes all radio config — confirm twice."
+            "Factory resets wipe configuration — confirm twice."
         )
         info.setProperty("role", "muted")
         info.setWordWrap(True)
         layout.addWidget(info)
 
-        row = QHBoxLayout()
+        row1 = QHBoxLayout()
         reboot_btn = QPushButton("Reboot Pi")
         reboot_btn.clicked.connect(self._reboot_clicked)
-        factory_btn = QPushButton("Factory reset radio")
-        factory_btn.clicked.connect(self._factory_reset_clicked)
-        row.addWidget(reboot_btn)
-        row.addWidget(factory_btn)
-        layout.addLayout(row)
+        radio_btn = QPushButton("Factory reset radio")
+        radio_btn.clicked.connect(self._factory_reset_clicked)
+        row1.addWidget(reboot_btn)
+        row1.addWidget(radio_btn)
+        layout.addLayout(row1)
+
+        row2 = QHBoxLayout()
+        pi_factory_btn = QPushButton("Factory reset Pi")
+        pi_factory_btn.setStyleSheet("color:#ef4444;")
+        pi_factory_btn.clicked.connect(self._pi_factory_clicked)
+        row2.addStretch(1)
+        row2.addWidget(pi_factory_btn)
+        layout.addLayout(row2)
 
     # ------------------------------------------------------------------
 
@@ -274,6 +421,25 @@ class _AdminSection(QGroupBox):
         if confirm != QMessageBox.StandardButton.Yes:
             return
         self._on_factory_reset()
+
+    def _pi_factory_clicked(self) -> None:
+        # Triple-confirmation: it wipes the local pi-Mesh state.
+        first = QMessageBox.warning(
+            self, "Pi factory reset",
+            "This wipes the pi-Mesh database, settings and logs on this Pi. "
+            "The radio configuration is NOT touched. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+        )
+        if first != QMessageBox.StandardButton.Yes:
+            return
+        from PySide6.QtWidgets import QInputDialog
+        text, ok = QInputDialog.getText(
+            self, "Pi factory reset",
+            "Type WIPE to confirm:",
+        )
+        if not ok or text.strip() != "WIPE":
+            return
+        self._on_pi_factory_reset()
 
 
 class _MqttSection(QGroupBox):
@@ -687,7 +853,9 @@ class Page(QWidget):
         self._mqtt = _MqttSection(self._save_mqtt, body)
         self._display = _DisplaySection(self._settings, body)
         self._wifi = _WifiSection(body)
-        self._admin = _AdminSection(self._do_factory_reset, self._do_reboot, body)
+        self._admin = _AdminSection(
+            self._do_factory_reset, self._do_reboot, self._do_pi_factory_reset, body,
+        )
         body_layout.addWidget(self._device)
         body_layout.addWidget(self._lora)
         body_layout.addWidget(self._channels)
@@ -710,16 +878,24 @@ class Page(QWidget):
 
         # Hardware-side sections — direct REST hits, no radio dependency.
         from gui.pages._hardware_sections import (
+            _AlertsSection,
             _ApSection,
+            _CannedMessagesSection,
             _GpioSection,
             _I2cSection,
+            _MapConfigSection,
             _RtcSection,
+            _SerialSection,
             _UsbStorageSection,
         )
+        body_layout.addWidget(_SerialSection(body))
         body_layout.addWidget(_GpioSection(body))
         body_layout.addWidget(_I2cSection(body))
         body_layout.addWidget(_RtcSection(body))
         body_layout.addWidget(_ApSection(body))
+        body_layout.addWidget(_AlertsSection(body))
+        body_layout.addWidget(_MapConfigSection(body))
+        body_layout.addWidget(_CannedMessagesSection(body))
         body_layout.addWidget(_UsbStorageSection(body))
 
         body_layout.addStretch(1)
@@ -846,6 +1022,27 @@ class Page(QWidget):
         loop = asyncio.get_event_loop_policy().get_event_loop()
         if loop.is_running():
             loop.create_task(self._factory_reset_async())
+
+    def _do_pi_factory_reset(self) -> None:
+        loop = asyncio.get_event_loop_policy().get_event_loop()
+        if loop.is_running():
+            loop.create_task(self._pi_factory_reset_async())
+
+    async def _pi_factory_reset_async(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=15.0) as c:
+                r = await c.post("http://127.0.0.1:8080/api/system/factory-reset")
+            if r.status_code != 200:
+                QMessageBox.warning(self, "Admin", f"Pi factory reset failed: {r.text[:120]}")
+                return
+        except Exception as exc:
+            QMessageBox.warning(self, "Admin", f"Pi factory reset error: {exc}")
+            return
+        self._status.setText("Pi factory reset queued")
+        self._status.setProperty("role", "warn")
+        self._status.style().unpolish(self._status)
+        self._status.style().polish(self._status)
 
     async def _factory_reset_async(self) -> None:
         try:
