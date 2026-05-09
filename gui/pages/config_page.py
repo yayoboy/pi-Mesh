@@ -88,6 +88,89 @@ class _DeviceSection(QGroupBox):
         )
 
 
+class _MqttSection(QGroupBox):
+    """MQTT bridge config: enabled, address, credentials, root prefix, flags."""
+
+    def __init__(self, on_save, parent=None):
+        super().__init__("MQTT", parent)
+        self._on_save = on_save
+
+        form = QFormLayout(self)
+        self._enabled = QPushButton("disabled")
+        self._enabled.setCheckable(True)
+        self._enabled.toggled.connect(
+            lambda checked: self._enabled.setText("enabled" if checked else "disabled")
+        )
+
+        self._address = QLineEdit(self)
+        self._address.setPlaceholderText("mqtt.meshtastic.org")
+        self._username = QLineEdit(self)
+        self._password = QLineEdit(self)
+        self._password.setEchoMode(QLineEdit.EchoMode.Password)
+        self._root = QLineEdit(self)
+        self._root.setPlaceholderText("msh")
+
+        self._encryption = QPushButton("encryption")
+        self._encryption.setCheckable(True)
+        self._tls = QPushButton("TLS")
+        self._tls.setCheckable(True)
+        self._json = QPushButton("JSON")
+        self._json.setCheckable(True)
+        self._proxy = QPushButton("proxy")
+        self._proxy.setCheckable(True)
+        self._map_report = QPushButton("map report")
+        self._map_report.setCheckable(True)
+
+        form.addRow("State", self._enabled)
+        form.addRow("Address", self._address)
+        form.addRow("User", self._username)
+        form.addRow("Pass", self._password)
+        form.addRow("Root", self._root)
+
+        flags_a = QHBoxLayout()
+        for w in (self._encryption, self._tls, self._json):
+            flags_a.addWidget(w)
+        form.addRow("Flags", flags_a)
+        flags_b = QHBoxLayout()
+        for w in (self._proxy, self._map_report):
+            flags_b.addWidget(w)
+        form.addRow("", flags_b)
+
+        save_row = QHBoxLayout()
+        save = QPushButton("Save MQTT")
+        save.clicked.connect(self._save)
+        save_row.addStretch(1)
+        save_row.addWidget(save)
+        form.addRow(save_row)
+
+    def fill(self, data: dict) -> None:
+        self._enabled.setChecked(bool(data.get("enabled")))
+        self._enabled.setText("enabled" if self._enabled.isChecked() else "disabled")
+        self._address.setText(data.get("address") or "")
+        self._username.setText(data.get("username") or "")
+        self._password.setText(data.get("password") or "")
+        self._root.setText(data.get("root") or "")
+        self._encryption.setChecked(bool(data.get("encryption_enabled")))
+        self._tls.setChecked(bool(data.get("tls_enabled")))
+        self._json.setChecked(bool(data.get("json_enabled")))
+        self._proxy.setChecked(bool(data.get("proxy_to_client_enabled")))
+        self._map_report.setChecked(bool(data.get("map_reporting_enabled")))
+
+    def _save(self) -> None:
+        self._on_save({
+            "enabled":                  self._enabled.isChecked(),
+            "address":                  self._address.text().strip(),
+            "username":                 self._username.text(),
+            "password":                 self._password.text(),
+            "root":                     self._root.text().strip(),
+            "encryption_enabled":       self._encryption.isChecked(),
+            "tls_enabled":              self._tls.isChecked(),
+            "json_enabled":             self._json.isChecked(),
+            "proxy_to_client_enabled":  self._proxy.isChecked(),
+            "map_reporting_enabled":    self._map_report.isChecked(),
+        })
+
+
 class _ChannelsSection(QGroupBox):
     """List of mesh channels with edit dialogs.
 
@@ -325,10 +408,12 @@ class Page(QWidget):
         self._device = _DeviceSection(self._save_device, body)
         self._lora = _LoraSection(self._save_lora, body)
         self._channels = _ChannelsSection(self._save_channel, body)
+        self._mqtt = _MqttSection(self._save_mqtt, body)
         self._display = _DisplaySection(self._settings, body)
         body_layout.addWidget(self._device)
         body_layout.addWidget(self._lora)
         body_layout.addWidget(self._channels)
+        body_layout.addWidget(self._mqtt)
         body_layout.addWidget(self._display)
         body_layout.addStretch(1)
         scroll.setWidget(body)
@@ -350,13 +435,14 @@ class Page(QWidget):
             node = await meshtasticd_client.get_node_config(cfg.DB_PATH)
             lora = await meshtasticd_client.get_lora_config(cfg.DB_PATH)
             channels = await meshtasticd_client.get_channels(cfg.DB_PATH)
+            mqtt = await meshtasticd_client.get_mqtt_config(cfg.DB_PATH)
         except Exception:
             log.exception("config reload failed")
             self._status.setText("error loading config")
             self._status.setProperty("role", "danger")
             return
 
-        cached = node.get("cached") or lora.get("cached")
+        cached = node.get("cached") or lora.get("cached") or mqtt.get("cached")
         self._status.setText("cached (radio offline)" if cached else "live")
         self._status.setProperty("role", "warn" if cached else "ok")
         self._status.style().unpolish(self._status)
@@ -365,6 +451,7 @@ class Page(QWidget):
         self._device.fill(node)
         self._lora.fill(lora)
         self._channels.fill(channels or [])
+        self._mqtt.fill(mqtt or {})
 
     # Save handlers -----------------------------------------------------
 
@@ -403,6 +490,24 @@ class Page(QWidget):
             QMessageBox.critical(self, "Config", "Failed to save LoRa config.")
             return
         self._status.setText("LoRa config queued")
+        self._status.setProperty("role", "ok")
+        self._status.style().unpolish(self._status)
+        self._status.style().polish(self._status)
+
+    def _save_mqtt(self, params: dict) -> None:
+        loop = asyncio.get_event_loop_policy().get_event_loop()
+        if loop.is_running():
+            loop.create_task(self._save_mqtt_async(params))
+
+    async def _save_mqtt_async(self, params: dict) -> None:
+        try:
+            import meshtasticd_client
+            await meshtasticd_client.set_mqtt_config(params)
+        except Exception:
+            log.exception("set_mqtt_config failed")
+            QMessageBox.critical(self, "Config", "Failed to save MQTT config.")
+            return
+        self._status.setText("MQTT config queued")
         self._status.setProperty("role", "ok")
         self._status.style().unpolish(self._status)
         self._status.style().polish(self._status)
