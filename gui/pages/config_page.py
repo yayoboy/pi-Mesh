@@ -14,6 +14,7 @@ import logging
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QColorDialog,
     QComboBox,
     QFormLayout,
@@ -21,14 +22,24 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
 
 log = logging.getLogger(__name__)
+
+
+def _schedule_qt(coro) -> None:
+    """Schedule a coroutine on the running qasync loop, no-op if no loop."""
+    loop = asyncio.get_event_loop_policy().get_event_loop()
+    if loop.is_running():
+        loop.create_task(coro)
 
 
 # Region/preset values from the Meshtastic protobuf RegionCode / ModemPreset enums.
@@ -86,6 +97,126 @@ class _DeviceSection(QGroupBox):
             short_name=self._short.text().strip(),
             role=self._role.currentText(),
         )
+
+
+class _WifiSection(QGroupBox):
+    """WiFi: current status, scan/connect.
+
+    All hits go through the FastAPI bridge (``/api/config/wifi/*``) so the
+    GUI doesn't shell out directly. Useful even before the radio is talking.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__("WiFi", parent)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(4)
+
+        self._status = QLabel("(unknown)")
+        self._status.setProperty("role", "muted")
+        layout.addWidget(self._status)
+
+        bar = QHBoxLayout()
+        scan = QPushButton("Scan")
+        scan.clicked.connect(self._on_scan)
+        refresh = QPushButton("Status")
+        refresh.clicked.connect(self._on_refresh_status)
+        bar.addWidget(scan)
+        bar.addWidget(refresh)
+        bar.addStretch(1)
+        layout.addLayout(bar)
+
+        self._networks = QListWidget(self)
+        self._networks.setMaximumHeight(120)
+        self._networks.itemActivated.connect(self._on_network_activated)
+        layout.addWidget(self._networks)
+
+        # Initial state
+        _schedule_qt(self._refresh_status_async())
+
+    def _on_scan(self) -> None:
+        _schedule_qt(self._scan_async())
+
+    def _on_refresh_status(self) -> None:
+        _schedule_qt(self._refresh_status_async())
+
+    async def _scan_async(self) -> None:
+        self._status.setText("scanning…")
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=20.0) as c:
+                r = await c.get("http://127.0.0.1:8080/api/config/wifi/scan")
+                networks = r.json() if r.status_code == 200 else []
+        except Exception:
+            log.exception("wifi scan failed")
+            networks = []
+            self._status.setText("scan failed")
+            return
+
+        self._networks.clear()
+        for net in networks:
+            ssid = net.get("ssid", "?")
+            signal = net.get("signal", 0)
+            sec = net.get("security", "")
+            text = f"{ssid}  ({signal}%)  {sec}".strip()
+            item = QListWidgetItem(text)
+            item.setData(Qt.ItemDataRole.UserRole, ssid)
+            self._networks.addItem(item)
+        self._status.setText(f"{len(networks)} networks")
+
+    async def _refresh_status_async(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                r = await c.get("http://127.0.0.1:8080/api/config/wifi/status")
+                d = r.json() if r.status_code == 200 else {}
+        except Exception:
+            self._status.setText("status unavailable")
+            return
+        ssid = d.get("ssid") or ""
+        ip = d.get("ip") or ""
+        if ssid:
+            self._status.setText(f"connected: {ssid}  {ip}")
+            self._status.setProperty("role", "ok")
+        else:
+            self._status.setText("not connected")
+            self._status.setProperty("role", "muted")
+        self._status.style().unpolish(self._status)
+        self._status.style().polish(self._status)
+
+    def _on_network_activated(self, item: QListWidgetItem) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        ssid = item.data(Qt.ItemDataRole.UserRole)
+        if not ssid:
+            return
+        password, ok = QInputDialog.getText(
+            self, "WiFi", f"Password for {ssid!r}:", QLineEdit.EchoMode.Password
+        )
+        if not ok:
+            return
+        _schedule_qt(self._connect_async(ssid, password))
+
+    async def _connect_async(self, ssid: str, password: str) -> None:
+        self._status.setText(f"connecting to {ssid}…")
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=30.0) as c:
+                r = await c.post(
+                    "http://127.0.0.1:8080/api/config/wifi/connect",
+                    json={"ssid": ssid, "password": password},
+                )
+            if r.status_code == 200:
+                self._status.setText(f"connected: {ssid}")
+                self._status.setProperty("role", "ok")
+            else:
+                err = r.json().get("error", "unknown error") if r.headers.get("content-type", "").startswith("application/json") else r.text
+                self._status.setText(f"connect failed: {err}")
+                self._status.setProperty("role", "danger")
+        except Exception as exc:
+            self._status.setText(f"connect failed: {exc}")
+            self._status.setProperty("role", "danger")
+        self._status.style().unpolish(self._status)
+        self._status.style().polish(self._status)
 
 
 class _AdminSection(QGroupBox):
@@ -333,8 +464,13 @@ from gui.pages._psk import random_psk_b64 as _random_psk_b64  # noqa: E402  (kep
 
 
 class _DisplaySection(QGroupBox):
-    """Theme picker + accent color. Writes to Settings, which fires the
-    hot-reload subscriber wired up in :mod:`gui.app`."""
+    """Theme picker + accent color + brightness + rotation.
+
+    Theme/accent writes go through ``Settings.set`` which triggers the
+    hot-reload subscriber in :mod:`gui.app`. Brightness and rotation POST
+    to ``/api/config/display`` since they need OS-level effect (PWM on the
+    backlight, dtoverlay rewrite + xrandr rotate).
+    """
 
     def __init__(self, settings, parent=None):
         super().__init__("Display", parent)
@@ -343,7 +479,7 @@ class _DisplaySection(QGroupBox):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
 
-        # Theme picker — radio-button-style buttons row.
+        # --- Theme picker
         theme_row = QHBoxLayout()
         theme_row.setSpacing(4)
         theme_row.addWidget(QLabel("Theme"))
@@ -357,7 +493,7 @@ class _DisplaySection(QGroupBox):
         theme_row.addStretch(1)
         layout.addLayout(theme_row)
 
-        # Accent color picker.
+        # --- Accent color
         accent_row = QHBoxLayout()
         accent_row.addWidget(QLabel("Accent"))
         self._accent_swatch = QPushButton("")
@@ -367,7 +503,38 @@ class _DisplaySection(QGroupBox):
         accent_row.addStretch(1)
         layout.addLayout(accent_row)
 
+        # --- Brightness slider
+        bri_row = QHBoxLayout()
+        bri_row.addWidget(QLabel("Brightness"))
+        self._brightness = QSlider(Qt.Orientation.Horizontal)
+        self._brightness.setRange(0, 255)
+        self._brightness.setValue(255)
+        self._brightness_value = QLabel("255")
+        self._brightness_value.setMinimumWidth(28)
+        self._brightness.valueChanged.connect(
+            lambda v: self._brightness_value.setText(str(v))
+        )
+        self._brightness.sliderReleased.connect(self._on_brightness_release)
+        bri_row.addWidget(self._brightness, 1)
+        bri_row.addWidget(self._brightness_value)
+        layout.addLayout(bri_row)
+
+        # --- Rotation buttons
+        rot_row = QHBoxLayout()
+        rot_row.addWidget(QLabel("Rotation"))
+        self._rotation_buttons: dict[int, QPushButton] = {}
+        for deg in (0, 90, 180, 270):
+            btn = QPushButton(f"{deg}°")
+            btn.setCheckable(True)
+            btn.clicked.connect(lambda _c, d=deg: self._on_rotation_clicked(d))
+            rot_row.addWidget(btn)
+            self._rotation_buttons[deg] = btn
+        rot_row.addStretch(1)
+        layout.addLayout(rot_row)
+
         self._refresh()
+        # Async fetch of OS-level brightness/rotation via /api/config/display.
+        _schedule_qt(self._fetch_display())
 
     # ------------------------------------------------------------------
 
@@ -401,6 +568,58 @@ class _DisplaySection(QGroupBox):
         self._accent_swatch.setStyleSheet(
             f"background:{hex_color}; border:1px solid #444; border-radius:3px;"
         )
+
+    # -- brightness & rotation ----------------------------------------
+
+    async def _fetch_display(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=2.0) as c:
+                r = await c.get("http://127.0.0.1:8080/api/config/display")
+            if r.status_code == 200:
+                d = r.json()
+                self._brightness.setValue(int(d.get("brightness", 255)))
+                self._brightness_value.setText(str(self._brightness.value()))
+                self._set_rotation_active(int(d.get("rotation", 0)))
+        except Exception:
+            log.debug("display fetch failed", exc_info=True)
+
+    def _on_brightness_release(self) -> None:
+        _schedule_qt(self._post_display(brightness=self._brightness.value()))
+
+    def _on_rotation_clicked(self, deg: int) -> None:
+        if QMessageBox.question(
+            self, "Rotation",
+            f"Set rotation to {deg}°? The Pi will reboot to apply.",
+        ) != QMessageBox.StandardButton.Yes:
+            self._refresh_rotation_buttons_from_settings()
+            return
+        self._set_rotation_active(deg)
+        _schedule_qt(self._post_display(rotation=deg))
+
+    def _refresh_rotation_buttons_from_settings(self) -> None:
+        # Best-effort: re-query OS state.
+        _schedule_qt(self._fetch_display())
+
+    def _set_rotation_active(self, deg: int) -> None:
+        for d, btn in self._rotation_buttons.items():
+            btn.setChecked(d == deg)
+
+    async def _post_display(self, *, brightness: int | None = None, rotation: int | None = None) -> None:
+        body: dict[str, int] = {}
+        if brightness is not None:
+            body["brightness"] = brightness
+        if rotation is not None:
+            body["rotation"] = rotation
+        if not body:
+            return
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=3.0) as c:
+                await c.post("http://127.0.0.1:8080/api/config/display", json=body)
+        except Exception:
+            log.exception("display POST failed")
+            QMessageBox.warning(self, "Display", "Failed to apply display change.")
 
 
 class _LoraSection(QGroupBox):
@@ -467,12 +686,14 @@ class Page(QWidget):
         self._channels = _ChannelsSection(self._save_channel, body)
         self._mqtt = _MqttSection(self._save_mqtt, body)
         self._display = _DisplaySection(self._settings, body)
+        self._wifi = _WifiSection(body)
         self._admin = _AdminSection(self._do_factory_reset, self._do_reboot, body)
         body_layout.addWidget(self._device)
         body_layout.addWidget(self._lora)
         body_layout.addWidget(self._channels)
         body_layout.addWidget(self._mqtt)
         body_layout.addWidget(self._display)
+        body_layout.addWidget(self._wifi)
         body_layout.addWidget(self._admin)
         body_layout.addStretch(1)
         scroll.setWidget(body)
