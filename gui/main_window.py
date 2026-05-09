@@ -315,6 +315,14 @@ class MainWindow(QMainWindow):
     def attach(self, eventbus, settings) -> None:
         self._eventbus = eventbus
         self._settings = settings
+
+        # Software keyboard appears on text-widget focus, hides on blur.
+        # Disabled when PIMESH_GUI_NO_VKB=1 (useful for desktop dev).
+        import os
+        if os.environ.get("PIMESH_GUI_NO_VKB", "0") != "1":
+            from gui.widgets.vkb import VkbController
+            self._vkb_controller = VkbController(self)
+
         self._select_tab(0)
 
     def _select_tab(self, index: int) -> None:
