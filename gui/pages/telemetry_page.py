@@ -31,12 +31,6 @@ from gui.widgets.sparkline import Sparkline
 log = logging.getLogger(__name__)
 
 
-def _schedule(coro) -> None:
-    loop = asyncio.get_event_loop_policy().get_event_loop()
-    if loop.is_running():
-        loop.create_task(coro)
-
-
 class Page(QWidget):
     def __init__(self, eventbus, settings):
         super().__init__()
@@ -187,27 +181,19 @@ class Page(QWidget):
             from gui.widgets.toast import show_toast
             show_toast(self, "Select a node first", role="warn")
             return
-        _schedule(self._export_async(self._selected_node, fmt))
+        self._do_export(self._selected_node, fmt)
 
-    async def _export_async(self, node_id: str, fmt: str) -> None:
+    def _do_export(self, node_id: str, fmt: str) -> None:
         from datetime import datetime
         from pathlib import Path
         out_dir = Path("data/exports")
         out_dir.mkdir(parents=True, exist_ok=True)
         safe_id = node_id.replace("/", "_").replace("!", "")
         out_path = out_dir / f"telemetry-{safe_id}-{datetime.now():%Y%m%d-%H%M%S}.{fmt}"
-        url = (
-            f"http://127.0.0.1:8080/api/export/telemetry"
-            f"?node_id={node_id}&format={fmt}&limit=2000"
-        )
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=30.0) as c:
-                r = await c.get(url)
-            if r.status_code != 200:
-                QMessageBox.warning(self, "Export", f"Export failed: {r.status_code}")
-                return
-            out_path.write_bytes(r.content)
+            from gui import backend
+            content = backend.export_telemetry(fmt, limit=2000)
+            out_path.write_text(content, encoding="utf-8")
         except Exception as exc:
             QMessageBox.warning(self, "Export", f"Export error: {exc}")
             return

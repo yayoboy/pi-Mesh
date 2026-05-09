@@ -7,7 +7,6 @@ itself — that work continues to live behind the existing routers.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 
@@ -33,12 +32,6 @@ from PySide6.QtWidgets import (
 )
 
 log = logging.getLogger(__name__)
-
-
-def _schedule(coro) -> None:
-    loop = asyncio.get_event_loop_policy().get_event_loop()
-    if loop.is_running():
-        loop.create_task(coro)
 
 
 # ---------------------------------------------------------------------------
@@ -69,27 +62,20 @@ class _I2cSection(QGroupBox):
         layout.addWidget(self._results)
 
     def _on_scan(self) -> None:
+        from gui import backend
         self._results.setText("scanning…")
-        _schedule(self._scan_async(self._bus.value()))
-
-    async def _scan_async(self, bus: int) -> None:
+        bus = self._bus.value()
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=10.0) as c:
-                r = await c.get(f"http://127.0.0.1:8080/api/config/i2c-scan?bus={bus}")
-            if r.status_code != 200:
-                self._results.setText(f"scan failed: {r.text[:120]}")
-                return
-            data = r.json()
+            data = backend.i2c_scan(bus=bus)
         except Exception as exc:
             self._results.setText(f"scan failed: {exc}")
             return
-        # Server returns either a list of addresses or a parsed grid.
+        # backend returns either a list of addresses or a parsed structure.
         if isinstance(data, list):
-            self._results.setText(", ".join(data) if data else "no devices")
+            self._results.setText(", ".join(str(d) for d in data) if data else "no devices")
         elif isinstance(data, dict) and "devices" in data:
             devs = data["devices"]
-            self._results.setText(", ".join(devs) if devs else "no devices")
+            self._results.setText(", ".join(str(d) for d in devs) if devs else "no devices")
         else:
             self._results.setText(json.dumps(data, separators=(",", ":")))
 
@@ -119,14 +105,9 @@ class _RtcSection(QGroupBox):
         self._refresh()
 
     def _refresh(self) -> None:
-        _schedule(self._refresh_async())
-
-    async def _refresh_async(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/config/rtc/status")
-            d = r.json() if r.status_code == 200 else {}
+            d = backend.rtc_status()
         except Exception:
             self._status.setText("status unavailable")
             return
@@ -173,14 +154,9 @@ class _ApSection(QGroupBox):
         self._refresh()
 
     def _refresh(self) -> None:
-        _schedule(self._refresh_async())
-
-    async def _refresh_async(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/config/ap/status")
-            d = r.json() if r.status_code == 200 else {}
+            d = backend.ap_status()
         except Exception:
             self._status.setText("status unavailable")
             return
@@ -198,14 +174,9 @@ class _ApSection(QGroupBox):
             self, "AP", "Toggle AP mode now?",
         ) != QMessageBox.StandardButton.Yes:
             return
-        _schedule(self._toggle_async())
-
-    async def _toggle_async(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=15.0) as c:
-                r = await c.post("http://127.0.0.1:8080/api/config/ap/toggle")
-            d = r.json() if r.status_code == 200 else {}
+            d = backend.ap_toggle()
             self._status.setText(d.get("message") or ("AP active" if d.get("active") else "AP off"))
         except Exception as exc:
             self._status.setText(f"toggle failed: {exc}")
@@ -325,14 +296,9 @@ class _GpioSection(QGroupBox):
         self._refresh()
 
     def _refresh(self) -> None:
-        _schedule(self._refresh_async())
-
-    async def _refresh_async(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/config/gpio")
-            devices = r.json() if r.status_code == 200 else []
+            devices = backend.get_gpio_devices()
         except Exception:
             log.exception("gpio refresh failed")
             devices = []
@@ -348,17 +314,13 @@ class _GpioSection(QGroupBox):
     def _on_add(self) -> None:
         dlg = _GpioDeviceDialog(parent=self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            _schedule(self._add_async(dlg.to_payload()))
-
-    async def _add_async(self, payload: dict) -> None:
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=10.0) as c:
-                await c.post("http://127.0.0.1:8080/api/config/gpio", json=payload)
-        except Exception:
-            log.exception("gpio add failed")
-            QMessageBox.warning(self, "GPIO", "Add failed.")
-        self._refresh()
+            from gui import backend
+            try:
+                backend.add_gpio_device(dlg.to_payload())
+            except Exception:
+                log.exception("gpio add failed")
+                QMessageBox.warning(self, "GPIO", "Add failed.")
+            self._refresh()
 
     def _on_edit(self, item: QListWidgetItem | None) -> None:
         if item is None:
@@ -368,17 +330,13 @@ class _GpioSection(QGroupBox):
             return
         dlg = _GpioDeviceDialog(dev, parent=self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            _schedule(self._update_async(dev["id"], dlg.to_payload()))
-
-    async def _update_async(self, dev_id: int, payload: dict) -> None:
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=10.0) as c:
-                await c.put(f"http://127.0.0.1:8080/api/config/gpio/{dev_id}", json=payload)
-        except Exception:
-            log.exception("gpio update failed")
-            QMessageBox.warning(self, "GPIO", "Update failed.")
-        self._refresh()
+            from gui import backend
+            try:
+                backend.update_gpio_device(dev["id"], dlg.to_payload())
+            except Exception:
+                log.exception("gpio update failed")
+                QMessageBox.warning(self, "GPIO", "Update failed.")
+            self._refresh()
 
     def _on_delete(self) -> None:
         item = self._list.currentItem()
@@ -391,13 +349,9 @@ class _GpioSection(QGroupBox):
             self, "GPIO", f"Delete device #{dev.get('id')} ({dev.get('name')})?",
         ) != QMessageBox.StandardButton.Yes:
             return
-        _schedule(self._delete_async(dev["id"]))
-
-    async def _delete_async(self, dev_id: int) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                await c.delete(f"http://127.0.0.1:8080/api/config/gpio/{dev_id}")
+            backend.delete_gpio_device(dev["id"])
         except Exception:
             log.exception("gpio delete failed")
             QMessageBox.warning(self, "GPIO", "Delete failed.")
@@ -410,19 +364,12 @@ class _GpioSection(QGroupBox):
         dev = item.data(Qt.ItemDataRole.UserRole)
         if not dev:
             return
-        _schedule(self._test_async(dev["id"]))
-
-    async def _test_async(self, dev_id: int) -> None:
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=10.0) as c:
-                r = await c.post(f"http://127.0.0.1:8080/api/config/gpio/{dev_id}/test")
-            d = r.json() if r.status_code == 200 else {}
-        except Exception as exc:
-            QMessageBox.warning(self, "GPIO", f"Test failed: {exc}")
-            return
-        result = d.get("result", "no output")
-        QMessageBox.information(self, "GPIO test", str(result))
+        from gui import backend
+        result = backend.test_gpio(dev["id"])
+        if result.get("ok"):
+            QMessageBox.information(self, "GPIO test", result.get("result", "OK"))
+        else:
+            QMessageBox.warning(self, "GPIO test", result.get("error", "Test failed"))
 
 
 # ---------------------------------------------------------------------------
@@ -432,8 +379,8 @@ class _GpioSection(QGroupBox):
 class _SerialSection(QGroupBox):
     """Serial port selection for the Meshtastic board.
 
-    Lists ``/api/config/serial/ports`` and writes the choice via
-    ``POST /api/config/serial/port`` (persists in config.env).
+    Lists available ports and writes the choice via backend.set_serial_port
+    (persists in config.env).
     """
 
     def __init__(self, parent=None):
@@ -461,14 +408,9 @@ class _SerialSection(QGroupBox):
         self._refresh()
 
     def _refresh(self) -> None:
-        _schedule(self._refresh_async())
-
-    async def _refresh_async(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/config/serial/ports")
-            data = r.json() if r.status_code == 200 else {}
+            data = backend.list_serial_ports()
         except Exception:
             data = {}
         ports = data.get("ports") if isinstance(data, dict) else data
@@ -495,25 +437,13 @@ class _SerialSection(QGroupBox):
             f"Switch to {port}? meshtasticd will be restarted.",
         ) != QMessageBox.StandardButton.Yes:
             return
-        _schedule(self._save_async(port))
-
-    async def _save_async(self, port: str) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=10.0) as c:
-                r = await c.post(
-                    "http://127.0.0.1:8080/api/config/serial/port",
-                    json={"port": port},
-                )
-            if r.status_code == 200:
+            r = backend.set_serial_port(port)
+            if r.get("ok", True):
                 self._info.setText(f"applied: {port}")
             else:
-                err = ""
-                try:
-                    err = r.json().get("error", "")
-                except Exception:
-                    err = r.text[:120]
-                self._info.setText(f"failed: {err}")
+                self._info.setText(f"failed: {r.get('error', '')}")
         except Exception as exc:
             self._info.setText(f"error: {exc}")
 
@@ -546,14 +476,12 @@ class _AlertsSection(QGroupBox):
         save_row.addWidget(save)
         form.addRow(save_row)
 
-        _schedule(self._refresh_async())
+        self._refresh()
 
-    async def _refresh_async(self) -> None:
+    def _refresh(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/config/alerts")
-            d = r.json() if r.status_code == 200 else {}
+            d = backend.get_alert_config()
         except Exception:
             d = {}
         self._offline.setValue(int(d.get("node_offline_min", 30)))
@@ -561,20 +489,16 @@ class _AlertsSection(QGroupBox):
         self._ram.setValue(int(d.get("ram_high", 90)))
 
     def _on_save(self) -> None:
+        from gui import backend
         body = {
             "node_offline_min": self._offline.value(),
             "battery_low": self._battery.value(),
             "ram_high": self._ram.value(),
         }
-        _schedule(self._save_async(body))
-
-    async def _save_async(self, body: dict) -> None:
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.post("http://127.0.0.1:8080/api/config/alerts", json=body)
-            if r.status_code != 200:
-                QMessageBox.warning(self, "Alerts", f"Save failed: {r.text[:120]}")
+            r = backend.set_alert_config(body)
+            if not r.get("ok", True):
+                QMessageBox.warning(self, "Alerts", f"Save failed: {r.get('error', '')}")
         except Exception:
             log.exception("alerts save failed")
             QMessageBox.warning(self, "Alerts", "Save failed.")
@@ -610,14 +534,12 @@ class _MapConfigSection(QGroupBox):
         save_row.addWidget(save)
         form.addRow(save_row)
 
-        _schedule(self._refresh_async())
+        self._refresh()
 
-    async def _refresh_async(self) -> None:
+    def _refresh(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/config/map")
-            d = r.json() if r.status_code == 200 else {}
+            d = backend.get_map_config()
         except Exception:
             d = {}
         self._local_tiles.setChecked(bool(d.get("local_tiles")))
@@ -625,23 +547,18 @@ class _MapConfigSection(QGroupBox):
         self._tiles_present.setText("yes" if d.get("tiles_present") else "no")
 
     def _on_save(self) -> None:
+        from gui import backend
         body = {"local_tiles": self._local_tiles.isChecked()}
-        _schedule(self._save_async(body))
-
-    async def _save_async(self, body: dict) -> None:
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                await c.post("http://127.0.0.1:8080/api/config/map", json=body)
+            backend.set_map_config(body)
         except Exception:
             log.exception("map config save failed")
             QMessageBox.warning(self, "Map", "Save failed.")
 
 
 class _CannedMessagesSection(QGroupBox):
-    """CRUD list of pre-canned message texts (POST/PUT/DELETE
-    /api/canned-messages). The Messages page reads this list to populate
-    its quick-insert menu.
+    """CRUD list of pre-canned message texts. The Messages page reads this
+    list to populate its quick-insert menu.
     """
 
     def __init__(self, parent=None):
@@ -674,14 +591,9 @@ class _CannedMessagesSection(QGroupBox):
     # ------------------------------------------------------------------
 
     def _refresh(self) -> None:
-        _schedule(self._refresh_async())
-
-    async def _refresh_async(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/canned-messages")
-            items = r.json() if r.status_code == 200 else []
+            items = backend.get_canned_messages()
         except Exception:
             items = []
         self._list.clear()
@@ -731,7 +643,13 @@ class _CannedMessagesSection(QGroupBox):
         if result is None:
             return
         text, order = result
-        _schedule(self._post_async("POST", None, text, order))
+        from gui import backend
+        try:
+            backend.add_canned_message(text, order)
+        except Exception:
+            log.exception("canned POST failed")
+            QMessageBox.warning(self, "Canned", "Add failed.")
+        self._refresh()
 
     def _on_edit(self) -> None:
         item = self._list.currentItem()
@@ -742,7 +660,13 @@ class _CannedMessagesSection(QGroupBox):
         if result is None:
             return
         text, order = result
-        _schedule(self._post_async("PUT", int(data.get("id")), text, order))
+        from gui import backend
+        try:
+            backend.update_canned_message(int(data.get("id")), text, order)
+        except Exception:
+            log.exception("canned PUT failed")
+            QMessageBox.warning(self, "Canned", "Edit failed.")
+        self._refresh()
 
     def _on_delete(self) -> None:
         item = self._list.currentItem()
@@ -753,25 +677,12 @@ class _CannedMessagesSection(QGroupBox):
             self, "Canned", f"Delete canned message {data.get('id')}?",
         ) != QMessageBox.StandardButton.Yes:
             return
-        _schedule(self._post_async("DELETE", int(data.get("id")), None, None))
-
-    async def _post_async(self, method: str, msg_id: int | None,
-                          text: str | None, order: int | None) -> None:
-        url = "http://127.0.0.1:8080/api/canned-messages"
-        if msg_id is not None:
-            url += f"/{msg_id}"
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                if method == "POST":
-                    await c.post(url, json={"text": text, "sort_order": order})
-                elif method == "PUT":
-                    await c.put(url, json={"text": text, "sort_order": order})
-                elif method == "DELETE":
-                    await c.delete(url)
+            backend.delete_canned_message(int(data.get("id")))
         except Exception:
-            log.exception("canned %s failed", method)
-            QMessageBox.warning(self, "Canned", f"{method} failed.")
+            log.exception("canned DELETE failed")
+            QMessageBox.warning(self, "Canned", "Delete failed.")
         self._refresh()
 
 
@@ -802,14 +713,9 @@ class _UsbStorageSection(QGroupBox):
         self._refresh()
 
     def _refresh(self) -> None:
-        _schedule(self._refresh_async())
-
-    async def _refresh_async(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/config/usb/status")
-            d = r.json() if r.status_code == 200 else {}
+            d = backend.usb_status()
         except Exception:
             self._status.setText("status unavailable")
             return
@@ -827,20 +733,27 @@ class _UsbStorageSection(QGroupBox):
     def _on_move(self) -> None:
         if QMessageBox.question(self, "USB", "Move map tiles to USB?") != QMessageBox.StandardButton.Yes:
             return
-        _schedule(self._post_async("move-tiles"))
+        self._usb_action("move-tiles")
 
     def _on_restore(self) -> None:
         if QMessageBox.question(self, "USB", "Restore tiles from USB to internal storage?") != QMessageBox.StandardButton.Yes:
             return
-        _schedule(self._post_async("restore-tiles"))
+        self._usb_action("restore-tiles")
 
-    async def _post_async(self, action: str) -> None:
+    def _usb_action(self, action: str) -> None:
+        import os
+        tiles_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "static", "tiles",
+        )
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=120.0) as c:
-                r = await c.post(f"http://127.0.0.1:8080/api/config/usb/{action}")
-            if r.status_code != 200:
-                QMessageBox.warning(self, "USB", f"{action} failed: {r.text[:200]}")
+            import usb_storage
+            if action == "move-tiles":
+                r = usb_storage.move_tiles_to_usb(tiles_dir)
+            else:
+                r = usb_storage.restore_tiles_to_sd(tiles_dir)
+            if not r.get("ok", True):
+                QMessageBox.warning(self, "USB", f"{action} failed: {r.get('error', '')}")
                 return
         except Exception as exc:
             QMessageBox.warning(self, "USB", f"{action} error: {exc}")

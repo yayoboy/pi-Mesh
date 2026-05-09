@@ -172,21 +172,14 @@ class StatusBar(QFrame):
             f"Rotate to {deg}° and reboot?",
         ) != QMessageBox.StandardButton.Yes:
             return
-        import asyncio
-        loop = asyncio.get_event_loop_policy().get_event_loop()
-        if loop.is_running():
-            loop.create_task(self._post_rotation(deg))
+        self._post_rotation(deg)
 
-    async def _post_rotation(self, deg: int) -> None:
+    def _post_rotation(self, deg: int) -> None:
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                await c.post(
-                    "http://127.0.0.1:8080/api/config/display",
-                    json={"rotation": deg},
-                )
-                # OS reboot is needed for rotation to take effect.
-                await c.post("http://127.0.0.1:8080/api/system/reboot")
+            from gui import backend
+            backend.set_display_config(rotation=deg)
+            # OS reboot is needed for rotation to take effect.
+            backend.system_reboot()
         except Exception:
             log.exception("rotation post failed")
 
@@ -209,16 +202,12 @@ class StatusBar(QFrame):
         msg = "Riavviare il sistema?" if action == "reboot" else "Spegnere il sistema?"
         if QMessageBox.question(self, "pi-Mesh", msg) != QMessageBox.StandardButton.Yes:
             return
-        import asyncio
-        loop = asyncio.get_event_loop_policy().get_event_loop()
-        if loop.is_running():
-            loop.create_task(self._post_system_action(action))
+        self._post_system_action(action)
 
-    async def _post_system_action(self, action: str) -> None:
+    def _post_system_action(self, action: str) -> None:
         try:
-            import httpx
-            async with httpx.AsyncClient() as c:
-                await c.post(f"http://127.0.0.1:8080/api/system/{action}")
+            from gui import backend
+            backend.system_reboot()
         except Exception:
             log.exception("system action %s failed", action)
 
@@ -246,7 +235,8 @@ class _TabButton(QToolButton):
         f = self.font()
         f.setPointSize(7)  # web UI uses 9 px CSS, we go a touch smaller for Qt metrics.
         self.setFont(f)
-        self.setSizePolicy(self.sizePolicy().Expanding, self.sizePolicy().Preferred)
+        from PySide6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
     def set_badge(self, count: int) -> None:
         if count == self._badge:
@@ -398,20 +388,11 @@ class MainWindow(QMainWindow):
             return StubPage(label, error=str(exc))
 
     def _refresh_msg_badge(self) -> None:
-        import asyncio
-        loop = asyncio.get_event_loop_policy().get_event_loop()
-        if loop.is_running():
-            loop.create_task(self._fetch_unread_count())
-
-    async def _fetch_unread_count(self) -> None:
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=2.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/messages/unread-count")
-            count = int((r.json() or {}).get("count", 0)) if r.status_code == 200 else 0
+            from gui import backend
+            count = backend.get_total_unread()
         except Exception:
             count = 0
-        # Index 2 in _TABS is the Msg tab.
         self._tabs.set_badge(2, count)
 
     def _refresh_status(self) -> None:

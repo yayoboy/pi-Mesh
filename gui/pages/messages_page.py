@@ -188,13 +188,12 @@ class _BroadcastView(QWidget):
             self, "Messages", "Clear all message history (broadcast + DM)?",
         ) != QMessageBox.StandardButton.Yes:
             return
-        _schedule(self._clear_async())
+        self._clear()
 
-    async def _clear_async(self) -> None:
+    def _clear(self) -> None:
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=10.0) as c:
-                await c.delete("http://127.0.0.1:8080/api/messages")
+            from gui import backend
+            backend.clear_messages()
         except Exception:
             log.exception("clear messages failed")
             return
@@ -202,14 +201,12 @@ class _BroadcastView(QWidget):
         self.info.setText("cleared")
 
     def _show_canned_menu(self) -> None:
-        _schedule(self._populate_and_show_canned())
+        self._populate_and_show_canned()
 
-    async def _populate_and_show_canned(self) -> None:
+    def _populate_and_show_canned(self) -> None:
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/canned-messages")
-            items = r.json() if r.status_code == 200 else []
+            from gui import backend
+            items = backend.get_canned_messages()
         except Exception:
             items = []
         if not items:

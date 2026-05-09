@@ -7,7 +7,6 @@ backend handles persistence + reload of the in-process runner.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from PySide6.QtCore import Qt
@@ -24,12 +23,6 @@ from PySide6.QtWidgets import (
 )
 
 log = logging.getLogger(__name__)
-
-
-def _schedule(coro) -> None:
-    loop = asyncio.get_event_loop_policy().get_event_loop()
-    if loop.is_running():
-        loop.create_task(coro)
 
 
 class _BotRow(QWidget):
@@ -124,14 +117,9 @@ class _BotsSection(QGroupBox):
     # -- HTTP -----------------------------------------------------------
 
     def _refresh(self) -> None:
-        _schedule(self._refresh_async())
-
-    async def _refresh_async(self) -> None:
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/bots")
-            data = r.json() if r.status_code == 200 else {}
+            from gui import backend
+            data = backend.get_bots()
         except Exception:
             self._status.setText("runner not reachable")
             self._status.setProperty("role", "danger")
@@ -179,17 +167,13 @@ class _BotsSection(QGroupBox):
         prefix = self._prefix.text().strip()
         if not prefix:
             return
-        _schedule(self._post_prefix(prefix))
+        self._post_prefix(prefix)
 
-    async def _post_prefix(self, prefix: str) -> None:
+    def _post_prefix(self, prefix: str) -> None:
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.post(
-                    "http://127.0.0.1:8080/api/bots/prefix",
-                    json={"prefix": prefix},
-                )
-            if r.status_code != 200:
+            from gui import backend
+            r = backend.set_bot_prefix(prefix)
+            if r.get("error"):
                 from gui.widgets.toast import show_toast
                 show_toast(self, "Prefix update failed", role="danger")
                 return
@@ -197,21 +181,17 @@ class _BotsSection(QGroupBox):
             log.exception("set prefix failed")
 
     def _on_toggle(self, name: str, enabled: bool) -> None:
-        _schedule(self._post_toggle(name, enabled))
+        self._post_toggle(name, enabled)
 
-    async def _post_toggle(self, name: str, enabled: bool) -> None:
+    def _post_toggle(self, name: str, enabled: bool) -> None:
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.post(
-                    f"http://127.0.0.1:8080/api/bots/{name}/toggle",
-                    json={"enabled": enabled},
-                )
+            from gui import backend
+            r = backend.toggle_bot(name, enabled)
         except Exception:
             log.exception("toggle bot failed")
             return
         from gui.widgets.toast import show_toast
-        if r.status_code == 200:
+        if r.get("ok"):
             show_toast(self, f"{name}: {'on' if enabled else 'off'}", role="ok")
         else:
             show_toast(self, f"{name}: failed", role="danger")

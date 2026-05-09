@@ -35,13 +35,6 @@ from PySide6.QtWidgets import (
 log = logging.getLogger(__name__)
 
 
-def _schedule_qt(coro) -> None:
-    """Schedule a coroutine on the running qasync loop, no-op if no loop."""
-    loop = asyncio.get_event_loop_policy().get_event_loop()
-    if loop.is_running():
-        loop.create_task(coro)
-
-
 # Region/preset values from the Meshtastic protobuf RegionCode / ModemPreset enums.
 _REGIONS = [
     "UNSET", "US", "EU_433", "EU_868", "CN", "JP", "ANZ", "KR", "TW",
@@ -138,21 +131,19 @@ class _WifiSection(QGroupBox):
         layout.addWidget(self._networks)
 
         # Initial state
-        _schedule_qt(self._refresh_status_async())
+        self._refresh_status()
 
     def _on_scan(self) -> None:
-        _schedule_qt(self._scan_async())
+        self._scan()
 
     def _on_refresh_status(self) -> None:
-        _schedule_qt(self._refresh_status_async())
+        self._refresh_status()
 
-    async def _scan_async(self) -> None:
+    def _scan(self) -> None:
+        from gui import backend
         self._status.setText("scanning…")
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=20.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/config/wifi/scan")
-                networks = r.json() if r.status_code == 200 else []
+            networks = backend.wifi_scan()
         except Exception:
             log.exception("wifi scan failed")
             networks = []
@@ -170,12 +161,10 @@ class _WifiSection(QGroupBox):
             self._networks.addItem(item)
         self._status.setText(f"{len(networks)} networks")
 
-    async def _refresh_status_async(self) -> None:
+    def _refresh_status(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/config/wifi/status")
-                d = r.json() if r.status_code == 200 else {}
+            d = backend.wifi_status()
         except Exception:
             self._status.setText("status unavailable")
             return
@@ -200,22 +189,18 @@ class _WifiSection(QGroupBox):
         )
         if not ok:
             return
-        _schedule_qt(self._connect_async(ssid, password))
+        self._connect(ssid, password)
 
-    async def _connect_async(self, ssid: str, password: str) -> None:
+    def _connect(self, ssid: str, password: str) -> None:
+        from gui import backend
         self._status.setText(f"connecting to {ssid}…")
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=30.0) as c:
-                r = await c.post(
-                    "http://127.0.0.1:8080/api/config/wifi/connect",
-                    json={"ssid": ssid, "password": password},
-                )
-            if r.status_code == 200:
+            r = backend.wifi_connect(ssid, password)
+            if r.get("ok"):
                 self._status.setText(f"connected: {ssid}")
                 self._status.setProperty("role", "ok")
             else:
-                err = r.json().get("error", "unknown error") if r.headers.get("content-type", "").startswith("application/json") else r.text
+                err = r.get("error", "unknown error")
                 self._status.setText(f"connect failed: {err}")
                 self._status.setProperty("role", "danger")
         except Exception as exc:
@@ -247,12 +232,10 @@ class _WifiSection(QGroupBox):
         bb.accepted.connect(dlg.accept)
         v.addWidget(bb)
 
-        async def populate():
+        def populate():
+            from gui import backend
             try:
-                import httpx
-                async with httpx.AsyncClient(timeout=5.0) as c:
-                    r = await c.get("http://127.0.0.1:8080/api/config/wifi/saved")
-                items = r.json() if r.status_code == 200 else []
+                items = backend.wifi_saved()
             except Exception:
                 items = []
             for it in items:
@@ -260,11 +243,10 @@ class _WifiSection(QGroupBox):
                 qit.setData(Qt.ItemDataRole.UserRole, it.get("name"))
                 lw.addItem(qit)
 
-        async def delete_one(name: str):
+        def delete_one(name: str):
+            from gui import backend
             try:
-                import httpx
-                async with httpx.AsyncClient(timeout=5.0) as c:
-                    await c.delete(f"http://127.0.0.1:8080/api/config/wifi/saved/{name}")
+                backend.wifi_delete_saved(name)
             except Exception:
                 log.exception("wifi delete failed")
 
@@ -274,12 +256,12 @@ class _WifiSection(QGroupBox):
                 return
             if QMessageBox.question(self, "WiFi", f"Forget {name!r}?") != QMessageBox.StandardButton.Yes:
                 return
-            _schedule_qt(delete_one(name))
+            delete_one(name)
             row = lw.row(item)
             lw.takeItem(row)
 
         lw.itemDoubleClicked.connect(on_dbl)
-        _schedule_qt(populate())
+        populate()
         dlg.exec()
 
     # -- Static IP -----------------------------------------------------
@@ -329,32 +311,26 @@ class _WifiSection(QGroupBox):
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
-        body = {
-            "method": "manual" if manual_btn.isChecked() else "auto",
-            "address": addr.text().strip(),
-            "gateway": gw.text().strip(),
-            "dns": dns.text().strip(),
-        }
-
-        async def post():
-            try:
-                import httpx
-                async with httpx.AsyncClient(timeout=15.0) as c:
-                    r = await c.post("http://127.0.0.1:8080/api/config/wifi/ip", json=body)
-                if r.status_code == 200:
-                    self._status.setText("IP config applied")
-                    self._status.setProperty("role", "ok")
-                else:
-                    err = r.text[:120]
-                    self._status.setText(f"IP failed: {err}")
-                    self._status.setProperty("role", "danger")
-            except Exception as exc:
-                self._status.setText(f"IP error: {exc}")
+        from gui import backend
+        try:
+            r = backend.wifi_set_ip(
+                mode="manual" if manual_btn.isChecked() else "auto",
+                address=addr.text().strip() or None,
+                gateway=gw.text().strip() or None,
+                dns=dns.text().strip() or None,
+            )
+            if r.get("ok"):
+                self._status.setText("IP config applied")
+                self._status.setProperty("role", "ok")
+            else:
+                err = r.get("error", "unknown error")
+                self._status.setText(f"IP failed: {err}")
                 self._status.setProperty("role", "danger")
-            self._status.style().unpolish(self._status)
-            self._status.style().polish(self._status)
-
-        _schedule_qt(post())
+        except Exception as exc:
+            self._status.setText(f"IP error: {exc}")
+            self._status.setProperty("role", "danger")
+        self._status.style().unpolish(self._status)
+        self._status.style().polish(self._status)
 
 
 class _AdminSection(QGroupBox):
@@ -519,14 +495,9 @@ class _MqttSection(QGroupBox):
         self._refresh_status()
 
     def _refresh_status(self) -> None:
-        _schedule_qt(self._refresh_status_async())
-
-    async def _refresh_status_async(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=3.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/config/mqtt/status")
-            d = r.json() if r.status_code == 200 else {}
+            d = backend.get_mqtt_status()
         except Exception:
             d = {}
         if not d.get("available"):
@@ -746,8 +717,8 @@ class _DisplaySection(QGroupBox):
         layout.addLayout(rot_row)
 
         self._refresh()
-        # Async fetch of OS-level brightness/rotation via /api/config/display.
-        _schedule_qt(self._fetch_display())
+        # Fetch OS-level brightness/rotation.
+        self._fetch_display()
 
     # ------------------------------------------------------------------
 
@@ -784,21 +755,18 @@ class _DisplaySection(QGroupBox):
 
     # -- brightness & rotation ----------------------------------------
 
-    async def _fetch_display(self) -> None:
+    def _fetch_display(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=2.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/config/display")
-            if r.status_code == 200:
-                d = r.json()
-                self._brightness.setValue(int(d.get("brightness", 255)))
-                self._brightness_value.setText(str(self._brightness.value()))
-                self._set_rotation_active(int(d.get("rotation", 0)))
+            d = backend.get_display_config()
+            self._brightness.setValue(int(d.get("brightness", 255)))
+            self._brightness_value.setText(str(self._brightness.value()))
+            self._set_rotation_active(int(d.get("rotation", 0)))
         except Exception:
             log.debug("display fetch failed", exc_info=True)
 
     def _on_brightness_release(self) -> None:
-        _schedule_qt(self._post_display(brightness=self._brightness.value()))
+        self._post_display(brightness=self._brightness.value())
 
     def _on_rotation_clicked(self, deg: int) -> None:
         if QMessageBox.question(
@@ -808,17 +776,18 @@ class _DisplaySection(QGroupBox):
             self._refresh_rotation_buttons_from_settings()
             return
         self._set_rotation_active(deg)
-        _schedule_qt(self._post_display(rotation=deg))
+        self._post_display(rotation=deg)
 
     def _refresh_rotation_buttons_from_settings(self) -> None:
         # Best-effort: re-query OS state.
-        _schedule_qt(self._fetch_display())
+        self._fetch_display()
 
     def _set_rotation_active(self, deg: int) -> None:
         for d, btn in self._rotation_buttons.items():
             btn.setChecked(d == deg)
 
-    async def _post_display(self, *, brightness: int | None = None, rotation: int | None = None) -> None:
+    def _post_display(self, *, brightness: int | None = None, rotation: int | None = None) -> None:
+        from gui import backend
         body: dict[str, int] = {}
         if brightness is not None:
             body["brightness"] = brightness
@@ -827,9 +796,7 @@ class _DisplaySection(QGroupBox):
         if not body:
             return
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=3.0) as c:
-                await c.post("http://127.0.0.1:8080/api/config/display", json=body)
+            backend.set_display_config(**body)
         except Exception:
             log.exception("display POST failed")
             QMessageBox.warning(self, "Display", "Failed to apply display change.")
@@ -1068,15 +1035,9 @@ class Page(QWidget):
             loop.create_task(self._save_channel_async(index, name, psk_b64))
 
     def _do_reboot(self) -> None:
-        loop = asyncio.get_event_loop_policy().get_event_loop()
-        if loop.is_running():
-            loop.create_task(self._reboot_pi())
-
-    async def _reboot_pi(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient() as c:
-                await c.post("http://127.0.0.1:8080/api/system/reboot")
+            backend.system_reboot()
         except Exception:
             log.exception("reboot failed")
             QMessageBox.warning(self, "Admin", "Failed to issue reboot.")
@@ -1087,17 +1048,11 @@ class Page(QWidget):
             loop.create_task(self._factory_reset_async())
 
     def _do_pi_factory_reset(self) -> None:
-        loop = asyncio.get_event_loop_policy().get_event_loop()
-        if loop.is_running():
-            loop.create_task(self._pi_factory_reset_async())
-
-    async def _pi_factory_reset_async(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=15.0) as c:
-                r = await c.post("http://127.0.0.1:8080/api/system/factory-reset")
-            if r.status_code != 200:
-                QMessageBox.warning(self, "Admin", f"Pi factory reset failed: {r.text[:120]}")
+            r = backend.factory_reset()
+            if not r.get("ok", True):
+                QMessageBox.warning(self, "Admin", f"Pi factory reset failed: {r.get('error', '')}")
                 return
         except Exception as exc:
             QMessageBox.warning(self, "Admin", f"Pi factory reset error: {exc}")

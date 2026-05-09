@@ -149,7 +149,7 @@ def main() -> int:
 
     window = MainWindow()
 
-    embed_uvicorn = os.environ.get("PIMESH_GUI_EMBEDDED_UVICORN", "1") != "0"
+    embed_uvicorn = os.environ.get("PIMESH_GUI_EMBEDDED_UVICORN", "0") != "0"
 
     with loop:
         try:

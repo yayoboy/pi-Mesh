@@ -522,16 +522,12 @@ class Page(QWidget):
     def _refresh_neighbors_if_visible(self) -> None:
         if not self._neighbor_toggle.isChecked():
             return
-        loop = __import__("asyncio").get_event_loop_policy().get_event_loop()
-        if loop.is_running():
-            loop.create_task(self._fetch_neighbors())
+        self._fetch_neighbors()
 
-    async def _fetch_neighbors(self) -> None:
+    def _fetch_neighbors(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/neighbor-info")
-            links_raw = r.json() if r.status_code == 200 else []
+            links_raw = backend.get_neighbor_info()
         except Exception:
             return
         try:
@@ -555,16 +551,12 @@ class Page(QWidget):
         self._view.set_neighbor_links(prepared)
 
     def _refresh_waypoints(self) -> None:
-        loop = __import__("asyncio").get_event_loop_policy().get_event_loop()
-        if loop.is_running():
-            loop.create_task(self._fetch_waypoints())
+        self._fetch_waypoints()
 
-    async def _fetch_waypoints(self) -> None:
+    def _fetch_waypoints(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/waypoints")
-            wps = r.json() if r.status_code == 200 else []
+            wps = backend.get_waypoints()
         except Exception:
             return
         seen = set()
@@ -586,16 +578,12 @@ class Page(QWidget):
     # Custom markers + waypoints (CRUD)
 
     def _refresh_custom_markers(self) -> None:
-        loop = __import__("asyncio").get_event_loop_policy().get_event_loop()
-        if loop.is_running():
-            loop.create_task(self._fetch_custom_markers())
+        self._fetch_custom_markers()
 
-    async def _fetch_custom_markers(self) -> None:
+    def _fetch_custom_markers(self) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/map/markers")
-            data = r.json() if r.status_code == 200 else {}
+            data = backend.get_markers()
             markers = data.get("markers", []) if isinstance(data, dict) else data
         except Exception:
             return
@@ -672,45 +660,31 @@ class Page(QWidget):
 
         name = label_edit.text().strip() or "marker"
         if choice["action"] == "marker":
-            self._schedule(self._add_custom_marker_async(name, lat, lon))
+            self._add_custom_marker(name, lat, lon)
         elif choice["action"] == "waypoint":
-            self._schedule(self._send_waypoint_async(
+            self._send_waypoint(
                 name, lat, lon, wp_desc.text().strip(), wp_expire.value()
-            ))
+            )
 
-    @staticmethod
-    def _schedule(coro) -> None:
-        loop = __import__("asyncio").get_event_loop_policy().get_event_loop()
-        if loop.is_running():
-            loop.create_task(coro)
 
-    async def _add_custom_marker_async(self, label: str, lat: float, lon: float) -> None:
+    def _add_custom_marker(self, label: str, lat: float, lon: float) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                await c.post(
-                    "http://127.0.0.1:8080/api/map/markers",
-                    json={"label": label, "icon_type": "poi",
-                          "latitude": lat, "longitude": lon},
-                )
+            backend.create_marker(label, "poi", lat, lon)
         except Exception:
             log.exception("add marker failed")
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "Map", "Failed to add marker.")
         self._refresh_custom_markers()
 
-    async def _send_waypoint_async(self, name: str, lat: float, lon: float,
-                                   description: str, expire_hours: int) -> None:
+    def _send_waypoint(self, name: str, lat: float, lon: float,
+                       description: str, expire_hours: int) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=10.0) as c:
-                await c.post(
-                    "http://127.0.0.1:8080/api/waypoints/send",
-                    json={
-                        "name": name, "lat": lat, "lon": lon,
-                        "description": description or "", "expire_hours": expire_hours,
-                    },
-                )
+            backend.upsert_waypoint({
+                "name": name, "lat": lat, "lon": lon,
+                "description": description or "", "expire_hours": expire_hours,
+            })
         except Exception:
             log.exception("send waypoint failed")
             from PySide6.QtWidgets import QMessageBox
@@ -742,14 +716,12 @@ class Page(QWidget):
         bb.accepted.connect(dlg.accept)
         v.addWidget(bb)
 
-        async def populate():
+        def populate():
+            from gui import backend
             try:
-                import httpx
-                async with httpx.AsyncClient(timeout=5.0) as c:
-                    rm = await c.get("http://127.0.0.1:8080/api/map/markers")
-                    rw = await c.get("http://127.0.0.1:8080/api/waypoints")
-                markers = (rm.json().get("markers") or []) if rm.status_code == 200 else []
-                waypoints = rw.json() if rw.status_code == 200 else []
+                data = backend.get_markers()
+                markers = (data.get("markers") or []) if isinstance(data, dict) else []
+                waypoints = backend.get_waypoints()
             except Exception:
                 return
             for m in markers:
@@ -765,28 +737,26 @@ class Page(QWidget):
                 item.setData(Qt.ItemDataRole.UserRole, ("waypoint", int(w["id"])))
                 wp_list.addItem(item)
 
-        async def remove(kind: str, oid: int):
-            url = (
-                f"http://127.0.0.1:8080/api/map/markers/{oid}" if kind == "marker"
-                else f"http://127.0.0.1:8080/api/waypoints/{oid}"
-            )
+        def remove(kind: str, oid: int):
+            from gui import backend
             try:
-                import httpx
-                async with httpx.AsyncClient(timeout=5.0) as c:
-                    await c.delete(url)
+                if kind == "marker":
+                    backend.delete_marker(oid)
+                else:
+                    backend.delete_waypoint(oid)
             except Exception:
                 pass
             self._refresh_custom_markers()
             self._refresh_waypoints()
 
         marker_list.itemDoubleClicked.connect(
-            lambda it: self._schedule(remove(*it.data(Qt.ItemDataRole.UserRole)))
+            lambda it: remove(*it.data(Qt.ItemDataRole.UserRole))
         )
         wp_list.itemDoubleClicked.connect(
-            lambda it: self._schedule(remove(*it.data(Qt.ItemDataRole.UserRole)))
+            lambda it: remove(*it.data(Qt.ItemDataRole.UserRole))
         )
 
-        self._schedule(populate())
+        populate()
         dlg.exec()
 
     @Slot(dict)

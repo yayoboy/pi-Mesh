@@ -11,7 +11,6 @@ under ``data/exports/`` for retrieval over the LAN.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from pathlib import Path
 
@@ -33,12 +32,6 @@ from PySide6.QtWidgets import (
 from gui.widgets.sparkline import Sparkline
 
 log = logging.getLogger(__name__)
-
-
-def _schedule(coro) -> None:
-    loop = asyncio.get_event_loop_policy().get_event_loop()
-    if loop.is_running():
-        loop.create_task(coro)
 
 
 def _fmt_uptime(seconds: float | None) -> str:
@@ -248,16 +241,15 @@ class Page(QWidget):
         self._timer.start()
         self._poll()
 
-        # Less frequent pull for /api/telemetry/latest (board side).
         self._board_timer = QTimer(self)
         self._board_timer.setInterval(5000)
-        self._board_timer.timeout.connect(lambda: _schedule(self._refresh_board()))
+        self._board_timer.timeout.connect(self._refresh_board_sync)
         self._board_timer.start()
-        _schedule(self._refresh_board())
+        self._refresh_board_sync()
 
         if eventbus is not None:
             eventbus.rpi_telemetry.connect(self._on_event)
-            eventbus.telemetry.connect(lambda _e: _schedule(self._refresh_board()))
+            eventbus.telemetry.connect(lambda _e: self._refresh_board_sync())
 
     # ------------------------------------------------------------------
 
@@ -291,20 +283,37 @@ class Page(QWidget):
                 f"{data['disk_used_mb']} / {data['disk_total_mb']} MB"
             )
 
-    async def _refresh_board(self) -> None:
+    def _refresh_board_sync(self) -> None:
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.get("http://127.0.0.1:8080/api/telemetry/latest")
-            data = r.json() if r.status_code == 200 else {}
+            import meshtasticd_client
+            nodes = meshtasticd_client.get_nodes()
         except Exception:
             log.debug("board telemetry refresh failed", exc_info=True)
             return
 
-        # Reuse / create / drop cards keyed by node id.
         seen = set()
-        for nid, info in data.items():
+        for node in nodes:
+            nid = node.get("id") or node.get("num") or id(node)
+            device_data = {}
+            env_data = {}
+            if node.get("battery_level") is not None:
+                device_data["battery_level"] = node["battery_level"]
+            if node.get("voltage") is not None:
+                device_data["voltage"] = node["voltage"]
+            if node.get("temperature") is not None:
+                env_data["temperature"] = node["temperature"]
+            if node.get("relative_humidity") is not None:
+                env_data["relative_humidity"] = node["relative_humidity"]
+            if node.get("barometric_pressure") is not None:
+                env_data["barometric_pressure"] = node["barometric_pressure"]
+            if not device_data and not env_data:
+                continue
             seen.add(nid)
+            info = {
+                "short_name": node.get("short_name", "?"),
+                "device": {"data": device_data},
+                "environment": {"data": env_data},
+            }
             card = self._node_cards.get(nid)
             if card is None:
                 card = _NodeTelemetryCard(self._node_cards_host)
@@ -321,22 +330,22 @@ class Page(QWidget):
     # ------------------------------------------------------------------
 
     def _export(self, fmt: str) -> None:
-        _schedule(self._export_async(fmt))
-
-    async def _export_async(self, fmt: str) -> None:
         from datetime import datetime
+        try:
+            from gui import backend
+            data = backend.export_telemetry(fmt, limit=1000)
+        except Exception as exc:
+            QMessageBox.warning(self, "Export", f"Export error: {exc}")
+            return
+        if not data:
+            from gui.widgets.toast import show_toast
+            show_toast(self, "No telemetry data", role="warn")
+            return
         out_dir = Path("data/exports")
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"telemetry-{datetime.now():%Y%m%d-%H%M%S}.{fmt}"
-        url = f"http://127.0.0.1:8080/api/export/telemetry?format={fmt}&limit=1000"
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=30.0) as c:
-                r = await c.get(url)
-            if r.status_code != 200:
-                QMessageBox.warning(self, "Export", f"Export failed: {r.status_code}")
-                return
-            out_path.write_bytes(r.content)
+            out_path.write_text(data if isinstance(data, str) else str(data))
         except Exception as exc:
             QMessageBox.warning(self, "Export", f"Export error: {exc}")
             return

@@ -221,7 +221,7 @@ class NodeDetailDialog(QDialog):
         nid = self._node_id()
         if not nid:
             return
-        self._schedule(self._post_admin(nid, "request-telemetry", "telemetry requested"))
+        self._post_admin(nid, "request-telemetry", "telemetry requested")
 
     def _remote_reboot(self) -> None:
         nid = self._node_id()
@@ -232,7 +232,7 @@ class NodeDetailDialog(QDialog):
             f"Reboot node {nid}? It will be unreachable for ~30 s.",
         ) != QMessageBox.StandardButton.Yes:
             return
-        self._schedule(self._post_admin(nid, "reboot", "reboot sent"))
+        self._post_admin(nid, "reboot", "reboot sent")
 
     def _remote_factory_reset(self) -> None:
         nid = self._node_id()
@@ -246,28 +246,21 @@ class NodeDetailDialog(QDialog):
         if not ok or text.strip() != "RESET":
             self._set_status("factory reset cancelled")
             return
-        self._schedule(self._post_admin(nid, "factory-reset", "factory reset sent", warn=True))
+        self._post_admin(nid, "factory-reset", "factory reset sent", warn=True)
 
-    async def _post_admin(self, nid: str, operation: str, ok_msg: str, *, warn: bool = False) -> None:
+    def _post_admin(self, nid: str, operation: str, ok_msg: str, *, warn: bool = False) -> None:
         self._set_status(f"sending {operation}…")
+        from gui import backend
         from gui.widgets.toast import show_toast
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=10.0) as c:
-                r = await c.post(
-                    f"http://127.0.0.1:8080/api/admin/{nid}/{operation}",
-                )
-            if r.status_code == 200:
+            result = backend.admin_action(nid, operation)
+            if isinstance(result, dict) and result.get("error"):
+                err = result["error"]
+                self._set_status(f"✗ {operation} failed: {err}", role="danger")
+                show_toast(self, f"{operation} failed", role="danger")
+            else:
                 self._set_status(f"✓ {ok_msg}", role="warn" if warn else "ok")
                 show_toast(self, ok_msg, role="warn" if warn else "ok")
-                return
-            err = ""
-            try:
-                err = r.json().get("error") or r.json().get("detail") or ""
-            except Exception:
-                err = r.text[:160]
-            self._set_status(f"✗ {operation} failed: {err}", role="danger")
-            show_toast(self, f"{operation} failed", role="danger")
         except Exception as exc:
             self._set_status(f"✗ {operation} error: {exc}", role="danger")
             show_toast(self, f"{operation} error", role="danger")
@@ -294,19 +287,12 @@ class NodeDetailDialog(QDialog):
         v.addWidget(bb)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        self._schedule(self._do_forget(nid, purge.isChecked()))
+        self._do_forget(nid, purge.isChecked())
 
-    async def _do_forget(self, nid: str, purge: bool) -> None:
-        url = f"http://127.0.0.1:8080/api/nodes/{nid}"
-        if purge:
-            url += "?purge=true"
+    def _do_forget(self, nid: str, purge: bool) -> None:
+        from gui import backend
         try:
-            import httpx
-            async with httpx.AsyncClient(timeout=10.0) as c:
-                r = await c.delete(url)
-            if r.status_code != 200:
-                self._set_status(f"✗ forget failed: {r.text[:120]}", role="danger")
-                return
+            backend.forget_node(nid)
         except Exception as exc:
             self._set_status(f"✗ forget error: {exc}", role="danger")
             return
@@ -321,7 +307,3 @@ class NodeDetailDialog(QDialog):
         loop = asyncio.get_event_loop_policy().get_event_loop()
         if loop.is_running():
             loop.create_task(coro)
-
-
-# Convert internal `self._schedule` references back to the staticmethod call.
-# (No-op marker — keeps the surrounding diff minimal.)
