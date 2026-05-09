@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Slot
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPixmap, QWheelEvent
 from PySide6.QtWidgets import (
     QComboBox,
@@ -34,6 +34,7 @@ from gui.pages.map_math import (
     TILE_SIZE,
     TileLoader,
     lonlat_to_pixel,
+    pixel_to_lonlat,
     visible_tiles,
 )
 
@@ -65,6 +66,8 @@ class MapView(QGraphicsView):
     node id so we can update without re-creating.
     """
 
+    location_double_clicked = Signal(float, float)  # (lon, lat)
+
     DEFAULT_LAT = 41.9
     DEFAULT_LON = 12.5
     DEFAULT_ZOOM = 5
@@ -87,6 +90,7 @@ class MapView(QGraphicsView):
         self._label_items: dict[str, QGraphicsTextItem] = {}
         self._traceroute_items: dict[str, QGraphicsPathItem] = {}
         self._waypoint_items: dict[int, tuple[QGraphicsEllipseItem, QGraphicsTextItem]] = {}
+        self._custom_marker_items: dict[int, tuple[QGraphicsEllipseItem, QGraphicsTextItem]] = {}
         self._neighbor_items: list[QGraphicsLineItem] = []
         self._center_lon = self.DEFAULT_LON
         self._center_lat = self.DEFAULT_LAT
@@ -283,6 +287,44 @@ class MapView(QGraphicsView):
                 self._scene.removeItem(it)
         self._waypoint_items.clear()
 
+    # -- custom markers (local DB only) ----------------------------------
+
+    def update_custom_marker(self, marker_id: int, lon: float, lat: float, *,
+                             label: str = "", icon_type: str = "poi") -> None:
+        x, y = lonlat_to_pixel(lon, lat, self._zoom)
+        marker, text = self._custom_marker_items.get(marker_id, (None, None))
+        radius = 5
+        # Distinguish from waypoints (yellow) and node markers (blue/orange).
+        color = QColor("#9c27b0")  # purple
+        if marker is None:
+            marker = QGraphicsEllipseItem(x - radius, y - radius, radius * 2, radius * 2)
+            marker.setPen(QPen(QColor("#ffffff"), 1.0))
+            marker.setBrush(QBrush(color))
+            marker.setZValue(0.7)
+            self._scene.addItem(marker)
+            text = QGraphicsTextItem(label)
+            text.setDefaultTextColor(color)
+            text.setZValue(0.8)
+            self._scene.addItem(text)
+        else:
+            marker.setRect(x - radius, y - radius, radius * 2, radius * 2)
+            text.setPlainText(label)
+        text.setPos(x + radius + 2, y - radius - 4)
+        self._custom_marker_items[marker_id] = (marker, text)
+
+    def remove_custom_marker(self, marker_id: int) -> None:
+        items = self._custom_marker_items.pop(marker_id, None)
+        if items is None:
+            return
+        for it in items:
+            self._scene.removeItem(it)
+
+    def clear_custom_markers(self) -> None:
+        for items in self._custom_marker_items.values():
+            for it in items:
+                self._scene.removeItem(it)
+        self._custom_marker_items.clear()
+
     # -- neighbor links (SNR-coloured straight lines) --------------------
 
     def set_neighbor_links(self, links: list[tuple[float, float, float, float, float]]) -> None:
@@ -322,6 +364,13 @@ class MapView(QGraphicsView):
             return
         new_zoom = self._zoom + (1 if delta > 0 else -1)
         self.set_zoom(new_zoom, recenter=True)
+        ev.accept()
+
+    # Double-click → emit a (lon, lat) signal for the page to handle.
+    def mouseDoubleClickEvent(self, ev) -> None:
+        scene_p = self.mapToScene(ev.pos())
+        lon, lat = pixel_to_lonlat(scene_p.x(), scene_p.y(), self._zoom)
+        self.location_double_clicked.emit(float(lon), float(lat))
         ev.accept()
 
 
@@ -366,12 +415,19 @@ class Page(QWidget):
         recenter.setToolTip("Center on local node")
         recenter.setFixedWidth(28)
 
+        # Markers / waypoints list
+        markers_btn = QToolButton(self)
+        markers_btn.setText("⚑")
+        markers_btn.setToolTip("Custom markers / waypoints")
+        markers_btn.clicked.connect(self._show_markers_dialog)
+
         bar.addWidget(self._zoom_in)
         bar.addWidget(self._zoom_out)
         bar.addWidget(self._zoom_label)
         bar.addWidget(self._layer_combo)
         bar.addWidget(self._neighbor_toggle)
         bar.addStretch(1)
+        bar.addWidget(markers_btn)
         bar.addWidget(recenter)
         layout.addLayout(bar)
 
@@ -383,9 +439,10 @@ class Page(QWidget):
         self._zoom_out.clicked.connect(lambda: self._zoom(-1))
         recenter.clicked.connect(self._recenter_local)
 
-        # Initial markers + waypoints
+        # Initial markers + waypoints + custom markers
         self._refresh_all()
         self._refresh_waypoints()
+        self._refresh_custom_markers()
 
         # Periodic refresh — cheap, catches deletes too.
         self._timer = QTimer(self)
@@ -398,6 +455,9 @@ class Page(QWidget):
         self._wp_timer.setInterval(15000)
         self._wp_timer.timeout.connect(self._refresh_waypoints)
         self._wp_timer.start()
+
+        # Double-click on map → open new-location dialog.
+        self._view.location_double_clicked.connect(self._on_double_click_location)
 
         if eventbus is not None:
             eventbus.position_updated.connect(self._on_position)
@@ -445,6 +505,10 @@ class Page(QWidget):
         if not node_id or lat is None or lon is None:
             return
         self._view.update_marker(node_id, float(lon), float(lat))
+
+    @property
+    def view(self) -> "MapView":
+        return self._view
 
     def _on_layer(self, name: str) -> None:
         self._view.set_layer(name)
@@ -517,6 +581,213 @@ class Page(QWidget):
         for wid in list(self._view._waypoint_items.keys()):
             if wid not in seen:
                 self._view.remove_waypoint(wid)
+
+    # ------------------------------------------------------------------
+    # Custom markers + waypoints (CRUD)
+
+    def _refresh_custom_markers(self) -> None:
+        loop = __import__("asyncio").get_event_loop_policy().get_event_loop()
+        if loop.is_running():
+            loop.create_task(self._fetch_custom_markers())
+
+    async def _fetch_custom_markers(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                r = await c.get("http://127.0.0.1:8080/api/map/markers")
+            data = r.json() if r.status_code == 200 else {}
+            markers = data.get("markers", []) if isinstance(data, dict) else data
+        except Exception:
+            return
+        seen = set()
+        for m in markers:
+            mid = m.get("id")
+            lat = m.get("latitude")
+            lon = m.get("longitude")
+            if mid is None or lat is None or lon is None:
+                continue
+            seen.add(int(mid))
+            self._view.update_custom_marker(
+                int(mid), float(lon), float(lat),
+                label=m.get("label") or "", icon_type=m.get("icon_type") or "poi",
+            )
+        for mid in list(self._view._custom_marker_items.keys()):
+            if mid not in seen:
+                self._view.remove_custom_marker(mid)
+
+    def _on_double_click_location(self, lon: float, lat: float) -> None:
+        from PySide6.QtWidgets import (
+            QDialog,
+            QDialogButtonBox,
+            QFormLayout,
+            QLineEdit,
+            QSpinBox,
+        )
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Location  {lat:.5f}, {lon:.5f}")
+        dlg.setModal(True)
+
+        form = QFormLayout(dlg)
+        form.addRow(QLabel("Add a custom marker (local) or send a waypoint to the mesh."))
+
+        label_edit = QLineEdit()
+        label_edit.setPlaceholderText("Label / name")
+        wp_desc = QLineEdit()
+        wp_desc.setPlaceholderText("Waypoint description (optional)")
+        wp_expire = QSpinBox()
+        wp_expire.setRange(1, 720)
+        wp_expire.setSuffix(" h")
+        wp_expire.setValue(24)
+
+        form.addRow("Name", label_edit)
+        form.addRow("Description", wp_desc)
+        form.addRow("Waypoint TTL", wp_expire)
+
+        row = QHBoxLayout()
+        add_marker_btn = QPushButton("Add marker")
+        send_wp_btn = QPushButton("Send waypoint")
+        cancel_btn = QPushButton("Cancel")
+        row.addWidget(add_marker_btn)
+        row.addWidget(send_wp_btn)
+        row.addStretch(1)
+        row.addWidget(cancel_btn)
+        form.addRow(row)
+
+        choice = {"action": None}
+
+        def do_marker():
+            choice["action"] = "marker"
+            dlg.accept()
+
+        def do_wp():
+            choice["action"] = "waypoint"
+            dlg.accept()
+
+        add_marker_btn.clicked.connect(do_marker)
+        send_wp_btn.clicked.connect(do_wp)
+        cancel_btn.clicked.connect(dlg.reject)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        name = label_edit.text().strip() or "marker"
+        if choice["action"] == "marker":
+            self._schedule(self._add_custom_marker_async(name, lat, lon))
+        elif choice["action"] == "waypoint":
+            self._schedule(self._send_waypoint_async(
+                name, lat, lon, wp_desc.text().strip(), wp_expire.value()
+            ))
+
+    @staticmethod
+    def _schedule(coro) -> None:
+        loop = __import__("asyncio").get_event_loop_policy().get_event_loop()
+        if loop.is_running():
+            loop.create_task(coro)
+
+    async def _add_custom_marker_async(self, label: str, lat: float, lon: float) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                await c.post(
+                    "http://127.0.0.1:8080/api/map/markers",
+                    json={"label": label, "icon_type": "poi",
+                          "latitude": lat, "longitude": lon},
+                )
+        except Exception:
+            log.exception("add marker failed")
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Map", "Failed to add marker.")
+        self._refresh_custom_markers()
+
+    async def _send_waypoint_async(self, name: str, lat: float, lon: float,
+                                   description: str, expire_hours: int) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as c:
+                await c.post(
+                    "http://127.0.0.1:8080/api/waypoints/send",
+                    json={
+                        "name": name, "lat": lat, "lon": lon,
+                        "description": description or "", "expire_hours": expire_hours,
+                    },
+                )
+        except Exception:
+            log.exception("send waypoint failed")
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Map", "Failed to send waypoint.")
+        self._refresh_waypoints()
+
+    def _show_markers_dialog(self) -> None:
+        from PySide6.QtWidgets import (
+            QDialog,
+            QDialogButtonBox,
+            QListWidget,
+            QListWidgetItem,
+            QMessageBox,
+            QVBoxLayout,
+        )
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Markers and waypoints")
+        dlg.setModal(True)
+        v = QVBoxLayout(dlg)
+        v.addWidget(QLabel("Custom markers (purple) — double-tap removes."))
+        marker_list = QListWidget()
+        v.addWidget(marker_list, 1)
+        v.addWidget(QLabel("Waypoints (yellow) — sent to the mesh, double-tap removes."))
+        wp_list = QListWidget()
+        v.addWidget(wp_list, 1)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        bb.rejected.connect(dlg.reject)
+        bb.accepted.connect(dlg.accept)
+        v.addWidget(bb)
+
+        async def populate():
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=5.0) as c:
+                    rm = await c.get("http://127.0.0.1:8080/api/map/markers")
+                    rw = await c.get("http://127.0.0.1:8080/api/waypoints")
+                markers = (rm.json().get("markers") or []) if rm.status_code == 200 else []
+                waypoints = rw.json() if rw.status_code == 200 else []
+            except Exception:
+                return
+            for m in markers:
+                item = QListWidgetItem(
+                    f"{m.get('label') or '?'}  ({m.get('latitude'):.4f}, {m.get('longitude'):.4f})"
+                )
+                item.setData(Qt.ItemDataRole.UserRole, ("marker", int(m["id"])))
+                marker_list.addItem(item)
+            for w in waypoints:
+                item = QListWidgetItem(
+                    f"{w.get('name') or '?'}  ({w.get('lat'):.4f}, {w.get('lon'):.4f})"
+                )
+                item.setData(Qt.ItemDataRole.UserRole, ("waypoint", int(w["id"])))
+                wp_list.addItem(item)
+
+        async def remove(kind: str, oid: int):
+            url = (
+                f"http://127.0.0.1:8080/api/map/markers/{oid}" if kind == "marker"
+                else f"http://127.0.0.1:8080/api/waypoints/{oid}"
+            )
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=5.0) as c:
+                    await c.delete(url)
+            except Exception:
+                pass
+            self._refresh_custom_markers()
+            self._refresh_waypoints()
+
+        marker_list.itemDoubleClicked.connect(
+            lambda it: self._schedule(remove(*it.data(Qt.ItemDataRole.UserRole)))
+        )
+        wp_list.itemDoubleClicked.connect(
+            lambda it: self._schedule(remove(*it.data(Qt.ItemDataRole.UserRole)))
+        )
+
+        self._schedule(populate())
+        dlg.exec()
 
     @Slot(dict)
     def _on_traceroute(self, event: dict) -> None:
