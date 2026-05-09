@@ -160,12 +160,35 @@ class StatusBar(QFrame):
     # Slots --------------------------------------------------------------
 
     def _show_rotation_menu(self) -> None:
-        # Minimal: confirm and POST to /api/config/display.
-        # Full menu (with current rotation indicator) lives in Config page.
-        QMessageBox.information(
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        for deg in (0, 90, 180, 270):
+            menu.addAction(f"{deg}°", lambda d=deg: self._set_rotation(d))
+        menu.exec(self._rot.mapToGlobal(self._rot.rect().bottomLeft()))
+
+    def _set_rotation(self, deg: int) -> None:
+        if QMessageBox.question(
             self, "Rotation",
-            "Open Config → Display to change rotation.",
-        )
+            f"Rotate to {deg}° and reboot?",
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        import asyncio
+        loop = asyncio.get_event_loop_policy().get_event_loop()
+        if loop.is_running():
+            loop.create_task(self._post_rotation(deg))
+
+    async def _post_rotation(self, deg: int) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                await c.post(
+                    "http://127.0.0.1:8080/api/config/display",
+                    json={"rotation": deg},
+                )
+                # OS reboot is needed for rotation to take effect.
+                await c.post("http://127.0.0.1:8080/api/system/reboot")
+        except Exception:
+            log.exception("rotation post failed")
 
     def _take_screenshot(self) -> None:
         from datetime import datetime
