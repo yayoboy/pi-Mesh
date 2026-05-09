@@ -26,11 +26,11 @@ class CollapsibleSection(QFrame):
         self.setObjectName("collapsibleSection")
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setFrameShadow(QFrame.Shadow.Plain)
+        self._first_expand_done = expanded
 
         self._toggle = QToolButton(self)
         self._toggle.setStyleSheet(
-            "QToolButton { border: none; padding: 4px 6px; font-weight: 600; "
-            "color: var(--text); }"
+            "QToolButton { border: none; padding: 4px 6px; font-weight: 600; }"
         )
         self._toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._toggle.setArrowType(Qt.ArrowType.RightArrow)
@@ -58,6 +58,9 @@ class CollapsibleSection(QFrame):
     def add_widget(self, w: QWidget) -> None:
         self._body_layout.addWidget(w)
 
+    def set_on_first_expand(self, callback) -> None:
+        self._on_first_expand = callback
+
     def set_expanded(self, expanded: bool) -> None:
         self._toggle.setChecked(expanded)
 
@@ -71,3 +74,8 @@ class CollapsibleSection(QFrame):
             Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
         )
         self._body.setVisible(expanded)
+        if expanded and not self._first_expand_done:
+            self._first_expand_done = True
+            cb = getattr(self, "_on_first_expand", None)
+            if cb is not None:
+                cb()

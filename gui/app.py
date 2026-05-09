@@ -98,6 +98,10 @@ async def _async_main(app, window, *, embed_uvicorn: bool) -> None:
 
     bus = EventBus()
     window.attach(bus, settings)
+
+    from bots import runner as bots_runner
+    await bots_runner.start(cfg.DB_PATH)
+
     background = [
         asyncio.create_task(meshtasticd_client.connect()),
         bus.start(),
@@ -129,6 +133,10 @@ async def _async_main(app, window, *, embed_uvicorn: bool) -> None:
         for t in background:
             t.cancel()
         await asyncio.gather(*background, return_exceptions=True)
+        try:
+            await bots_runner.stop()
+        except Exception:
+            log.exception("bots runner stop failed")
         try:
             await meshtasticd_client.disconnect()
         except Exception:

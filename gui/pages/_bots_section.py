@@ -112,7 +112,6 @@ class _BotsSection(QGroupBox):
         layout.addWidget(self._rows_host)
 
         self._rows: dict[str, _BotRow] = {}
-        self._refresh()
 
     # -- HTTP -----------------------------------------------------------
 

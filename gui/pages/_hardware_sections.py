@@ -102,8 +102,6 @@ class _RtcSection(QGroupBox):
         bar.addWidget(refresh)
         layout.addLayout(bar)
 
-        self._refresh()
-
     def _refresh(self) -> None:
         from gui import backend
         try:
@@ -150,8 +148,6 @@ class _ApSection(QGroupBox):
         bar.addWidget(refresh)
         bar.addStretch(1)
         layout.addLayout(bar)
-
-        self._refresh()
 
     def _refresh(self) -> None:
         from gui import backend
@@ -293,8 +289,6 @@ class _GpioSection(QGroupBox):
         row_btns.addStretch(1)
         layout.addLayout(row_btns)
 
-        self._refresh()
-
     def _refresh(self) -> None:
         from gui import backend
         try:
@@ -405,8 +399,6 @@ class _SerialSection(QGroupBox):
         self._info.setProperty("role", "muted")
         layout.addWidget(self._info)
 
-        self._refresh()
-
     def _refresh(self) -> None:
         from gui import backend
         try:
@@ -476,8 +468,6 @@ class _AlertsSection(QGroupBox):
         save_row.addWidget(save)
         form.addRow(save_row)
 
-        self._refresh()
-
     def _refresh(self) -> None:
         from gui import backend
         try:
@@ -534,8 +524,6 @@ class _MapConfigSection(QGroupBox):
         save_row.addWidget(save)
         form.addRow(save_row)
 
-        self._refresh()
-
     def _refresh(self) -> None:
         from gui import backend
         try:
@@ -585,8 +573,6 @@ class _CannedMessagesSection(QGroupBox):
         self._list.setMaximumHeight(140)
         self._list.itemDoubleClicked.connect(lambda _it: self._on_edit())
         layout.addWidget(self._list)
-
-        self._refresh()
 
     # ------------------------------------------------------------------
 
@@ -709,8 +695,6 @@ class _UsbStorageSection(QGroupBox):
         bar.addWidget(self._restore)
         bar.addStretch(1)
         layout.addLayout(bar)
-
-        self._refresh()
 
     def _refresh(self) -> None:
         from gui import backend

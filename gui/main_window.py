@@ -59,8 +59,8 @@ SCREEN_W_LANDSCAPE = 480
 SCREEN_H_LANDSCAPE = 320
 SCREEN_W_PORTRAIT  = 320
 SCREEN_H_PORTRAIT  = 480
-STATUS_H = 24
-TABBAR_H = 32
+STATUS_H = 28
+TABBAR_H = 36
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ class _StatusIcon(QLabel):
         self.setToolTip(tooltip)
         self.setProperty("role", "muted")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setFixedSize(14, 14)
+        self.setFixedSize(20, 20)
         f = self.font()
         f.setPointSize(9)
         self.setFont(f)
@@ -233,7 +233,7 @@ class _TabButton(QToolButton):
         self._update_text()
         self.setMinimumHeight(TABBAR_H)
         f = self.font()
-        f.setPointSize(7)  # web UI uses 9 px CSS, we go a touch smaller for Qt metrics.
+        f.setPointSize(9)
         self.setFont(f)
         from PySide6.QtWidgets import QSizePolicy
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)

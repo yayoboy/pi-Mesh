@@ -130,8 +130,7 @@ class _WifiSection(QGroupBox):
         self._networks.itemActivated.connect(self._on_network_activated)
         layout.addWidget(self._networks)
 
-        # Initial state
-        self._refresh_status()
+        # Initial state deferred to first expand via CollapsibleSection.
 
     def _on_scan(self) -> None:
         self._scan()
@@ -492,7 +491,6 @@ class _MqttSection(QGroupBox):
         self._status_timer.setInterval(15000)
         self._status_timer.timeout.connect(self._refresh_status)
         self._status_timer.start()
-        self._refresh_status()
 
     def _refresh_status(self) -> None:
         from gui import backend
@@ -716,9 +714,7 @@ class _DisplaySection(QGroupBox):
         rot_row.addStretch(1)
         layout.addLayout(rot_row)
 
-        self._refresh()
-        # Fetch OS-level brightness/rotation.
-        self._fetch_display()
+        # _refresh() and _fetch_display() deferred to first expand.
 
     # ------------------------------------------------------------------
 
@@ -856,6 +852,12 @@ class Page(QWidget):
         # Wrap forms in a scroll area so the page works on a 320×480 portrait.
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
+        try:
+            from PySide6.QtWidgets import QScroller
+            QScroller.grabGesture(scroll.viewport(),
+                                  QScroller.ScrollerGestureType.TouchGesture)
+        except (ImportError, AttributeError):
+            pass
         body = QWidget()
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
@@ -926,6 +928,15 @@ class Page(QWidget):
         for i, (title, widget) in enumerate(sections):
             wrap = CollapsibleSection(title, body, expanded=(i == 0))
             wrap.add_widget(widget)
+            if i > 0:
+                refresh = getattr(widget, "_refresh", None) or getattr(widget, "_reload", None)
+                fetch = getattr(widget, "_fetch_display", None)
+                if refresh and fetch:
+                    wrap.set_on_first_expand(lambda r=refresh, f=fetch: (r(), f()))
+                elif refresh:
+                    wrap.set_on_first_expand(refresh)
+                elif getattr(widget, "_refresh_status", None):
+                    wrap.set_on_first_expand(widget._refresh_status)
             body_layout.addWidget(wrap)
 
         body_layout.addStretch(1)

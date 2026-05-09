@@ -54,6 +54,6 @@ class Sparkline(QWidget):
                 for i in range(len(run) - 1):
                     x1, y1 = run[i]
                     x2, y2 = run[i + 1]
-                    p.drawLine(x1, y1, x2, y2)
+                    p.drawLine(int(x1), int(y1), int(x2), int(y2))
         finally:
             p.end()
