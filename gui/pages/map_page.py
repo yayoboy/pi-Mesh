@@ -10,9 +10,10 @@ import logging
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Slot
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPixmap, QWheelEvent
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPixmap, QWheelEvent
 from PySide6.QtWidgets import (
     QGraphicsEllipseItem,
+    QGraphicsPathItem,
     QGraphicsPixmapItem,
     QGraphicsScene,
     QGraphicsTextItem,
@@ -74,6 +75,7 @@ class MapView(QGraphicsView):
         self._tile_items: dict[tuple[int, int, int], QGraphicsPixmapItem] = {}
         self._marker_items: dict[str, QGraphicsEllipseItem] = {}
         self._label_items: dict[str, QGraphicsTextItem] = {}
+        self._traceroute_items: dict[str, QGraphicsPathItem] = {}
         self._center_lon = self.DEFAULT_LON
         self._center_lat = self.DEFAULT_LAT
 
@@ -186,6 +188,41 @@ class MapView(QGraphicsView):
         self._marker_items.clear()
         self._label_items.clear()
 
+    def show_traceroute(self, key: str, points: list[tuple[float, float]]) -> None:
+        """Draw a polyline through the given (lon, lat) points.
+
+        ``key`` is an identifier (typically the destination node id) so the
+        same path can be replaced when an updated traceroute arrives.
+        Existing path with the same key is removed first.
+        """
+        self.clear_traceroute(key)
+        if len(points) < 2:
+            return
+        path = QPainterPath()
+        x, y = lonlat_to_pixel(points[0][0], points[0][1], self._zoom)
+        path.moveTo(x, y)
+        for lon, lat in points[1:]:
+            x, y = lonlat_to_pixel(lon, lat, self._zoom)
+            path.lineTo(x, y)
+        item = QGraphicsPathItem(path)
+        pen = QPen(QColor("#ffeb3b"))
+        pen.setWidthF(2.5)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        item.setPen(pen)
+        item.setZValue(0.5)  # above tiles, below markers
+        self._scene.addItem(item)
+        self._traceroute_items[key] = item
+
+    def clear_traceroute(self, key: str | None = None) -> None:
+        if key is None:
+            for item in self._traceroute_items.values():
+                self._scene.removeItem(item)
+            self._traceroute_items.clear()
+            return
+        item = self._traceroute_items.pop(key, None)
+        if item is not None:
+            self._scene.removeItem(item)
+
     def _reposition_markers(self) -> None:
         # When zoom changes, redraw markers at their new pixel coords.
         # Marker state is kept on instance so we can rebuild from cache:
@@ -251,6 +288,7 @@ class Page(QWidget):
 
         if eventbus is not None:
             eventbus.position_updated.connect(self._on_position)
+            eventbus.traceroute_result.connect(self._on_traceroute)
 
     def _zoom(self, delta: int) -> None:
         self._view.set_zoom(self._view.zoom() + delta, recenter=True)
@@ -292,3 +330,35 @@ class Page(QWidget):
         if not node_id or lat is None or lon is None:
             return
         self._view.update_marker(node_id, float(lon), float(lat))
+
+    @Slot(dict)
+    def _on_traceroute(self, event: dict) -> None:
+        """Render the traceroute path from local node through the hop list.
+
+        Uses the position cached in get_nodes() for each hop. Hops without
+        a known position are skipped — partial paths still render the
+        segments we can place.
+        """
+        try:
+            import meshtasticd_client
+            nodes_by_id = {n.get("id"): n for n in meshtasticd_client.get_nodes()}
+            local_id = meshtasticd_client.get_local_id()
+        except Exception:
+            return
+        dest = event.get("node_id") or event.get("id")
+        hops = event.get("hops") or event.get("route") or []
+        path: list[tuple[float, float]] = []
+
+        chain = [local_id, *hops, dest] if dest else [local_id, *hops]
+        for nid in chain:
+            n = nodes_by_id.get(nid)
+            if not n:
+                continue
+            lat = n.get("latitude")
+            lon = n.get("longitude")
+            if lat is None or lon is None:
+                continue
+            path.append((float(lon), float(lat)))
+
+        if dest:
+            self._view.show_traceroute(dest, path)

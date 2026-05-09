@@ -88,6 +88,63 @@ class _DeviceSection(QGroupBox):
         )
 
 
+class _AdminSection(QGroupBox):
+    """Destructive / system-level actions: factory reset, reboot, firmware."""
+
+    def __init__(self, on_factory_reset, on_reboot, parent=None):
+        super().__init__("Admin", parent)
+        self._on_factory_reset = on_factory_reset
+        self._on_reboot = on_reboot
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(4)
+
+        info = QLabel(
+            "Operations below affect the local radio and the Pi. "
+            "Factory reset wipes all radio config — confirm twice."
+        )
+        info.setProperty("role", "muted")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        row = QHBoxLayout()
+        reboot_btn = QPushButton("Reboot Pi")
+        reboot_btn.clicked.connect(self._reboot_clicked)
+        factory_btn = QPushButton("Factory reset radio")
+        factory_btn.clicked.connect(self._factory_reset_clicked)
+        row.addWidget(reboot_btn)
+        row.addWidget(factory_btn)
+        layout.addLayout(row)
+
+    # ------------------------------------------------------------------
+
+    def _reboot_clicked(self) -> None:
+        if QMessageBox.question(
+            self, "Reboot",
+            "Reboot the Raspberry Pi now? Radio and GUI will be unavailable for ~30 s.",
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        self._on_reboot()
+
+    def _factory_reset_clicked(self) -> None:
+        # Two-step confirmation since this is destructive.
+        first = QMessageBox.warning(
+            self, "Factory reset",
+            "This will WIPE the radio configuration. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+        )
+        if first != QMessageBox.StandardButton.Yes:
+            return
+        confirm = QMessageBox.warning(
+            self, "Factory reset (last chance)",
+            "Are you absolutely sure? This cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        self._on_factory_reset()
+
+
 class _MqttSection(QGroupBox):
     """MQTT bridge config: enabled, address, credentials, root prefix, flags."""
 
@@ -410,11 +467,13 @@ class Page(QWidget):
         self._channels = _ChannelsSection(self._save_channel, body)
         self._mqtt = _MqttSection(self._save_mqtt, body)
         self._display = _DisplaySection(self._settings, body)
+        self._admin = _AdminSection(self._do_factory_reset, self._do_reboot, body)
         body_layout.addWidget(self._device)
         body_layout.addWidget(self._lora)
         body_layout.addWidget(self._channels)
         body_layout.addWidget(self._mqtt)
         body_layout.addWidget(self._display)
+        body_layout.addWidget(self._admin)
         body_layout.addStretch(1)
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
@@ -516,6 +575,38 @@ class Page(QWidget):
         loop = asyncio.get_event_loop_policy().get_event_loop()
         if loop.is_running():
             loop.create_task(self._save_channel_async(index, name, psk_b64))
+
+    def _do_reboot(self) -> None:
+        loop = asyncio.get_event_loop_policy().get_event_loop()
+        if loop.is_running():
+            loop.create_task(self._reboot_pi())
+
+    async def _reboot_pi(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient() as c:
+                await c.post("http://127.0.0.1:8080/api/system/reboot")
+        except Exception:
+            log.exception("reboot failed")
+            QMessageBox.warning(self, "Admin", "Failed to issue reboot.")
+
+    def _do_factory_reset(self) -> None:
+        loop = asyncio.get_event_loop_policy().get_event_loop()
+        if loop.is_running():
+            loop.create_task(self._factory_reset_async())
+
+    async def _factory_reset_async(self) -> None:
+        try:
+            import meshtasticd_client
+            await meshtasticd_client.factory_reset()
+        except Exception:
+            log.exception("factory_reset failed")
+            QMessageBox.warning(self, "Admin", "Failed to queue factory reset.")
+            return
+        self._status.setText("factory reset queued")
+        self._status.setProperty("role", "warn")
+        self._status.style().unpolish(self._status)
+        self._status.style().polish(self._status)
 
     async def _save_channel_async(self, index: int, name: str, psk_b64: str) -> None:
         try:
