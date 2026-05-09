@@ -12,7 +12,9 @@ from pathlib import Path
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Slot
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPixmap, QWheelEvent
 from PySide6.QtWidgets import (
+    QComboBox,
     QGraphicsEllipseItem,
+    QGraphicsLineItem,
     QGraphicsPathItem,
     QGraphicsPixmapItem,
     QGraphicsScene,
@@ -21,6 +23,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -37,8 +40,14 @@ from gui.pages.map_math import (
 log = logging.getLogger(__name__)
 
 
-# Where offline tiles live. Configurable per project.
-TILES_ROOT = Path("data/tiles")
+# Where offline tiles live. Each layer is a sub-directory keyed by
+# the layer name (matches the web UI: data/tiles/{layer}/{z}/{x}/{y}.png).
+TILES_BASE = Path("data/tiles")
+LAYER_NAMES = ("osm", "topo", "satellite")
+
+
+def _layer_root(layer: str) -> Path:
+    return TILES_BASE / layer
 
 
 def _load_pixmap(path: Path) -> QPixmap:
@@ -71,11 +80,14 @@ class MapView(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
 
         self._zoom = self.DEFAULT_ZOOM
-        self._tiles = TileLoader(TILES_ROOT, reader=_load_pixmap)
+        self._layer = "osm"
+        self._tiles = TileLoader(_layer_root(self._layer), reader=_load_pixmap)
         self._tile_items: dict[tuple[int, int, int], QGraphicsPixmapItem] = {}
         self._marker_items: dict[str, QGraphicsEllipseItem] = {}
         self._label_items: dict[str, QGraphicsTextItem] = {}
         self._traceroute_items: dict[str, QGraphicsPathItem] = {}
+        self._waypoint_items: dict[int, tuple[QGraphicsEllipseItem, QGraphicsTextItem]] = {}
+        self._neighbor_items: list[QGraphicsLineItem] = []
         self._center_lon = self.DEFAULT_LON
         self._center_lat = self.DEFAULT_LAT
 
@@ -108,6 +120,17 @@ class MapView(QGraphicsView):
         self._center_lat = lat
         cx, cy = lonlat_to_pixel(lon, lat, self._zoom)
         self.centerOn(cx, cy)
+        self._refresh_tiles()
+
+    def set_layer(self, layer: str) -> None:
+        if layer == self._layer:
+            return
+        self._layer = layer
+        # Drop the old layer's tiles and switch the loader's tile root.
+        for item in list(self._tile_items.values()):
+            self._scene.removeItem(item)
+        self._tile_items.clear()
+        self._tiles = TileLoader(_layer_root(layer), reader=_load_pixmap)
         self._refresh_tiles()
 
     # ------------------------------------------------------------------
@@ -223,6 +246,67 @@ class MapView(QGraphicsView):
         if item is not None:
             self._scene.removeItem(item)
 
+    # -- waypoints (mesh-shared) -----------------------------------------
+
+    def update_waypoint(self, wp_id: int, lon: float, lat: float, *, name: str = "") -> None:
+        x, y = lonlat_to_pixel(lon, lat, self._zoom)
+        marker, label = self._waypoint_items.get(wp_id, (None, None))
+        radius = 5
+        color = QColor("#ffeb3b")
+        if marker is None:
+            marker = QGraphicsEllipseItem(x - radius, y - radius, radius * 2, radius * 2)
+            pen = QPen(QColor("#000000"), 1.0)
+            marker.setPen(pen)
+            marker.setBrush(QBrush(color))
+            marker.setZValue(0.7)
+            self._scene.addItem(marker)
+            label = QGraphicsTextItem(name)
+            label.setDefaultTextColor(QColor("#ffeb3b"))
+            label.setZValue(0.8)
+            self._scene.addItem(label)
+        else:
+            marker.setRect(x - radius, y - radius, radius * 2, radius * 2)
+            label.setPlainText(name)
+        label.setPos(x + radius + 2, y - radius - 4)
+        self._waypoint_items[wp_id] = (marker, label)
+
+    def remove_waypoint(self, wp_id: int) -> None:
+        items = self._waypoint_items.pop(wp_id, None)
+        if items is None:
+            return
+        for it in items:
+            self._scene.removeItem(it)
+
+    def clear_waypoints(self) -> None:
+        for items in self._waypoint_items.values():
+            for it in items:
+                self._scene.removeItem(it)
+        self._waypoint_items.clear()
+
+    # -- neighbor links (SNR-coloured straight lines) --------------------
+
+    def set_neighbor_links(self, links: list[tuple[float, float, float, float, float]]) -> None:
+        """``links`` is a list of (a_lon, a_lat, b_lon, b_lat, snr)."""
+        # Wipe old.
+        for item in self._neighbor_items:
+            self._scene.removeItem(item)
+        self._neighbor_items.clear()
+        for a_lon, a_lat, b_lon, b_lat, snr in links:
+            x1, y1 = lonlat_to_pixel(a_lon, a_lat, self._zoom)
+            x2, y2 = lonlat_to_pixel(b_lon, b_lat, self._zoom)
+            line = QGraphicsLineItem(x1, y1, x2, y2)
+            color = (
+                QColor("#4caf50") if snr > 0
+                else QColor("#ff9800") if snr > -10
+                else QColor("#f44336")
+            )
+            pen = QPen(color)
+            pen.setWidthF(1.2)
+            line.setPen(pen)
+            line.setZValue(0.4)
+            self._scene.addItem(line)
+            self._neighbor_items.append(line)
+
     def _reposition_markers(self) -> None:
         # When zoom changes, redraw markers at their new pixel coords.
         # Marker state is kept on instance so we can rebuild from cache:
@@ -254,17 +338,39 @@ class Page(QWidget):
         # Toolbar (top)
         bar = QHBoxLayout()
         bar.setContentsMargins(6, 4, 6, 4)
-        bar.setSpacing(6)
+        bar.setSpacing(4)
         self._zoom_in = QPushButton("+")
         self._zoom_out = QPushButton("−")
-        self._zoom_in.setFixedWidth(36)
-        self._zoom_out.setFixedWidth(36)
-        recenter = QPushButton("Center")
-        self._zoom_label = QLabel("z=5")
+        self._zoom_in.setFixedWidth(28)
+        self._zoom_out.setFixedWidth(28)
+        self._zoom_label = QLabel("z5")
         self._zoom_label.setProperty("role", "muted")
+        self._zoom_label.setFixedWidth(20)
+
+        # Layer switcher (osm / topo / satellite)
+        self._layer_combo = QComboBox(self)
+        for name in LAYER_NAMES:
+            self._layer_combo.addItem(name)
+        self._layer_combo.currentTextChanged.connect(self._on_layer)
+        self._layer_combo.setFixedWidth(80)
+
+        # Neighbor links toggle
+        self._neighbor_toggle = QToolButton(self)
+        self._neighbor_toggle.setText("⌬")
+        self._neighbor_toggle.setToolTip("Show neighbor links")
+        self._neighbor_toggle.setCheckable(True)
+        self._neighbor_toggle.toggled.connect(self._on_toggle_neighbors)
+
+        # Recenter
+        recenter = QPushButton("⌖")
+        recenter.setToolTip("Center on local node")
+        recenter.setFixedWidth(28)
+
         bar.addWidget(self._zoom_in)
         bar.addWidget(self._zoom_out)
         bar.addWidget(self._zoom_label)
+        bar.addWidget(self._layer_combo)
+        bar.addWidget(self._neighbor_toggle)
         bar.addStretch(1)
         bar.addWidget(recenter)
         layout.addLayout(bar)
@@ -277,8 +383,9 @@ class Page(QWidget):
         self._zoom_out.clicked.connect(lambda: self._zoom(-1))
         recenter.clicked.connect(self._recenter_local)
 
-        # Initial markers
+        # Initial markers + waypoints
         self._refresh_all()
+        self._refresh_waypoints()
 
         # Periodic refresh — cheap, catches deletes too.
         self._timer = QTimer(self)
@@ -286,9 +393,17 @@ class Page(QWidget):
         self._timer.timeout.connect(self._refresh_all)
         self._timer.start()
 
+        # Slower waypoints poll so we don't hammer the API.
+        self._wp_timer = QTimer(self)
+        self._wp_timer.setInterval(15000)
+        self._wp_timer.timeout.connect(self._refresh_waypoints)
+        self._wp_timer.start()
+
         if eventbus is not None:
             eventbus.position_updated.connect(self._on_position)
             eventbus.traceroute_result.connect(self._on_traceroute)
+            eventbus.waypoint.connect(lambda _e: self._refresh_waypoints())
+            eventbus.neighbor_info.connect(lambda _e: self._refresh_neighbors_if_visible())
 
     def _zoom(self, delta: int) -> None:
         self._view.set_zoom(self._view.zoom() + delta, recenter=True)
@@ -330,6 +445,78 @@ class Page(QWidget):
         if not node_id or lat is None or lon is None:
             return
         self._view.update_marker(node_id, float(lon), float(lat))
+
+    def _on_layer(self, name: str) -> None:
+        self._view.set_layer(name)
+
+    def _on_toggle_neighbors(self, checked: bool) -> None:
+        if checked:
+            self._refresh_neighbors_if_visible()
+        else:
+            self._view.set_neighbor_links([])
+
+    def _refresh_neighbors_if_visible(self) -> None:
+        if not self._neighbor_toggle.isChecked():
+            return
+        loop = __import__("asyncio").get_event_loop_policy().get_event_loop()
+        if loop.is_running():
+            loop.create_task(self._fetch_neighbors())
+
+    async def _fetch_neighbors(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                r = await c.get("http://127.0.0.1:8080/api/neighbor-info")
+            links_raw = r.json() if r.status_code == 200 else []
+        except Exception:
+            return
+        try:
+            import meshtasticd_client
+            nodes_by_id = {n.get("id"): n for n in meshtasticd_client.get_nodes()}
+        except Exception:
+            return
+        prepared: list[tuple[float, float, float, float, float]] = []
+        for l in links_raw:
+            a = nodes_by_id.get(l.get("from_id"))
+            b = nodes_by_id.get(l.get("neighbor_id"))
+            if not a or not b:
+                continue
+            if a.get("latitude") is None or b.get("latitude") is None:
+                continue
+            prepared.append((
+                float(a["longitude"]), float(a["latitude"]),
+                float(b["longitude"]), float(b["latitude"]),
+                float(l.get("snr") or 0.0),
+            ))
+        self._view.set_neighbor_links(prepared)
+
+    def _refresh_waypoints(self) -> None:
+        loop = __import__("asyncio").get_event_loop_policy().get_event_loop()
+        if loop.is_running():
+            loop.create_task(self._fetch_waypoints())
+
+    async def _fetch_waypoints(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                r = await c.get("http://127.0.0.1:8080/api/waypoints")
+            wps = r.json() if r.status_code == 200 else []
+        except Exception:
+            return
+        seen = set()
+        for wp in wps:
+            wid = wp.get("id")
+            lat = wp.get("lat") or wp.get("latitude")
+            lon = wp.get("lon") or wp.get("longitude")
+            if wid is None or lat is None or lon is None:
+                continue
+            seen.add(wid)
+            self._view.update_waypoint(int(wid), float(lon), float(lat),
+                                       name=wp.get("name") or "")
+        # Drop waypoints that are no longer in the list.
+        for wid in list(self._view._waypoint_items.keys()):
+            if wid not in seen:
+                self._view.remove_waypoint(wid)
 
     @Slot(dict)
     def _on_traceroute(self, event: dict) -> None:
