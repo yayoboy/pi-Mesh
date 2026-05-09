@@ -443,13 +443,23 @@ class _AdminSection(QGroupBox):
 
 
 class _MqttSection(QGroupBox):
-    """MQTT bridge config: enabled, address, credentials, root prefix, flags."""
+    """MQTT bridge config: enabled, address, credentials, root prefix, flags.
+
+    Header label shows the live bridge state from
+    ``/api/config/mqtt/status`` so the user can tell at a glance whether
+    the bridge process is actually connected.
+    """
 
     def __init__(self, on_save, parent=None):
         super().__init__("MQTT", parent)
         self._on_save = on_save
 
+        # Live-status banner above the form.
+        self._live_status = QLabel("…")
+        self._live_status.setProperty("role", "muted")
+
         form = QFormLayout(self)
+        form.addRow("Bridge", self._live_status)
         self._enabled = QPushButton("disabled")
         self._enabled.setCheckable(True)
         self._enabled.toggled.connect(
@@ -491,11 +501,48 @@ class _MqttSection(QGroupBox):
         form.addRow("", flags_b)
 
         save_row = QHBoxLayout()
+        refresh = QPushButton("Refresh status")
+        refresh.clicked.connect(self._refresh_status)
         save = QPushButton("Save MQTT")
         save.clicked.connect(self._save)
+        save_row.addWidget(refresh)
         save_row.addStretch(1)
         save_row.addWidget(save)
         form.addRow(save_row)
+
+        # Background poll of the bridge status so the banner stays fresh.
+        from PySide6.QtCore import QTimer
+        self._status_timer = QTimer(self)
+        self._status_timer.setInterval(15000)
+        self._status_timer.timeout.connect(self._refresh_status)
+        self._status_timer.start()
+        self._refresh_status()
+
+    def _refresh_status(self) -> None:
+        _schedule_qt(self._refresh_status_async())
+
+    async def _refresh_status_async(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=3.0) as c:
+                r = await c.get("http://127.0.0.1:8080/api/config/mqtt/status")
+            d = r.json() if r.status_code == 200 else {}
+        except Exception:
+            d = {}
+        if not d.get("available"):
+            self._live_status.setText("paho-mqtt not installed")
+            self._live_status.setProperty("role", "danger")
+        elif not d.get("enabled"):
+            self._live_status.setText("disabled")
+            self._live_status.setProperty("role", "muted")
+        elif d.get("connected"):
+            self._live_status.setText(f"connected → {d.get('broker') or '?'}")
+            self._live_status.setProperty("role", "ok")
+        else:
+            self._live_status.setText(f"disconnected (configured: {d.get('broker') or '?'})")
+            self._live_status.setProperty("role", "warn")
+        self._live_status.style().unpolish(self._live_status)
+        self._live_status.style().polish(self._live_status)
 
     def fill(self, data: dict) -> None:
         self._enabled.setChecked(bool(data.get("enabled")))

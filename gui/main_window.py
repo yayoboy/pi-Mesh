@@ -228,18 +228,38 @@ class StatusBar(QFrame):
 # ---------------------------------------------------------------------------
 
 class _TabButton(QToolButton):
-    """Touch-friendly tab button: icon glyph on top, tiny label below."""
+    """Touch-friendly tab button: icon glyph on top, tiny label below.
+
+    Optionally renders a small badge in the top-right corner showing an
+    integer counter (used by the Messages tab for unread DM count).
+    """
 
     def __init__(self, label: str, glyph: str, parent=None):
         super().__init__(parent)
         self.setCheckable(True)
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-        self.setText(f"{glyph}\n{label}")
+        self._label = label
+        self._glyph = glyph
+        self._badge = 0
+        self._update_text()
         self.setMinimumHeight(TABBAR_H)
         f = self.font()
         f.setPointSize(7)  # web UI uses 9 px CSS, we go a touch smaller for Qt metrics.
         self.setFont(f)
         self.setSizePolicy(self.sizePolicy().Expanding, self.sizePolicy().Preferred)
+
+    def set_badge(self, count: int) -> None:
+        if count == self._badge:
+            return
+        self._badge = max(0, int(count))
+        self._update_text()
+
+    def _update_text(self) -> None:
+        if self._badge:
+            badge = "9+" if self._badge > 9 else str(self._badge)
+            self.setText(f"{self._glyph}·{badge}\n{self._label}")
+        else:
+            self.setText(f"{self._glyph}\n{self._label}")
 
 
 class TabBar(QFrame):
@@ -263,6 +283,10 @@ class TabBar(QFrame):
     def set_active(self, index: int) -> None:
         for i, btn in enumerate(self._buttons):
             btn.setChecked(i == index)
+
+    def set_badge(self, index: int, count: int) -> None:
+        if 0 <= index < len(self._buttons):
+            self._buttons[index].set_badge(count)
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +347,12 @@ class MainWindow(QMainWindow):
         self._status_timer.timeout.connect(self._refresh_status)
         self._status_timer.start()
 
+        # Slower poll for the unread-message badge on the Msg tab.
+        self._badge_timer = QTimer(self)
+        self._badge_timer.setInterval(5000)
+        self._badge_timer.timeout.connect(self._refresh_msg_badge)
+        self._badge_timer.start()
+
     # ------------------------------------------------------------------
 
     def attach(self, eventbus, settings) -> None:
@@ -362,6 +392,23 @@ class MainWindow(QMainWindow):
             log.exception("failed to build page %s", module_path)
             from gui.pages._stub import StubPage
             return StubPage(label, error=str(exc))
+
+    def _refresh_msg_badge(self) -> None:
+        import asyncio
+        loop = asyncio.get_event_loop_policy().get_event_loop()
+        if loop.is_running():
+            loop.create_task(self._fetch_unread_count())
+
+    async def _fetch_unread_count(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=2.0) as c:
+                r = await c.get("http://127.0.0.1:8080/api/messages/unread-count")
+            count = int((r.json() or {}).get("count", 0)) if r.status_code == 200 else 0
+        except Exception:
+            count = 0
+        # Index 2 in _TABS is the Msg tab.
+        self._tabs.set_badge(2, count)
 
     def _refresh_status(self) -> None:
         try:
