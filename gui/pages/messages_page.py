@@ -18,11 +18,14 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMenu,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QSplitter,
     QStackedWidget,
     QTabBar,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -41,6 +44,8 @@ def _schedule(coro) -> None:
 class _BroadcastView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._oldest_id: int | None = None  # for "load more" pagination
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
@@ -55,22 +60,37 @@ class _BroadcastView(QWidget):
         self.info = QLabel("")
         self.info.setProperty("role", "muted")
         head.addWidget(self.info)
+
+        # Clear-history trash button
+        clear = QToolButton(self)
+        clear.setText("🗑")
+        clear.setToolTip("Clear history")
+        clear.clicked.connect(self._on_clear)
+        head.addWidget(clear)
         layout.addLayout(head)
 
         self.list = QListWidget(self)
-        self.list.setUniformItemSizes(True)
+        self.list.setUniformItemSizes(False)
+        self.list.setWordWrap(True)
         f = self.list.font()
         f.setFamily("monospace")
         self.list.setFont(f)
+        # Top "Load more" item is inserted on demand and removed once consumed.
+        self.list.itemActivated.connect(self._maybe_load_more)
         layout.addWidget(self.list, 1)
 
         comp = QHBoxLayout()
         self.input = QLineEdit(self)
         self.input.setPlaceholderText("Type a message…")
         self.input.returnPressed.connect(self._on_send)
+        canned = QToolButton(self)
+        canned.setText("☰")
+        canned.setToolTip("Canned messages")
+        canned.clicked.connect(self._show_canned_menu)
         send = QPushButton("Send")
         send.clicked.connect(self._on_send)
         comp.addWidget(self.input, 1)
+        comp.addWidget(canned)
         comp.addWidget(send)
         layout.addLayout(comp)
 
@@ -85,16 +105,26 @@ class _BroadcastView(QWidget):
         try:
             import config as cfg
             import database
-            msgs = await database.get_messages(cfg.DB_PATH, channel=self.channel.value(), limit=200)
+            msgs = await database.get_messages(cfg.DB_PATH, channel=self.channel.value(), limit=50)
         except Exception:
             log.exception("messages reload failed")
             msgs = []
 
         self.list.clear()
+        self._oldest_id = msgs[0]["id"] if msgs and "id" in msgs[0] else None
+        if self._oldest_id:
+            self._add_load_more_item()
         for m in msgs:
             self._append(m)
         self.info.setText(f"{len(msgs)} msgs")
         self._scroll_bottom()
+
+    def _add_load_more_item(self) -> None:
+        item = QListWidgetItem("↑ Load older messages")
+        item.setData(Qt.ItemDataRole.UserRole, "load_more")
+        item.setForeground(Qt.GlobalColor.gray)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.list.insertItem(0, item)
 
     def _append(self, msg: dict) -> None:
         item = QListWidgetItem(format_message(msg))
@@ -104,9 +134,99 @@ class _BroadcastView(QWidget):
             item.setFont(f)
         self.list.addItem(item)
 
+    def _prepend_below_loader(self, msg: dict) -> None:
+        item = QListWidgetItem(format_message(msg))
+        if msg.get("is_outgoing"):
+            f = item.font()
+            f.setItalic(True)
+            item.setFont(f)
+        # Insert just after the loader (index 1) so loader stays at top.
+        idx = 1 if self.list.count() and self.list.item(0).data(Qt.ItemDataRole.UserRole) == "load_more" else 0
+        self.list.insertItem(idx, item)
+
     def _scroll_bottom(self) -> None:
         if self.list.count() > 0:
             self.list.scrollToItem(self.list.item(self.list.count() - 1))
+
+    def _maybe_load_more(self, item: QListWidgetItem) -> None:
+        if item is None or item.data(Qt.ItemDataRole.UserRole) != "load_more":
+            return
+        if not self._oldest_id:
+            return
+        _schedule(self._load_older(self._oldest_id))
+
+    async def _load_older(self, before_id: int) -> None:
+        try:
+            import config as cfg
+            import database
+            older = await database.get_messages(
+                cfg.DB_PATH, channel=self.channel.value(), limit=50, before_id=before_id,
+            )
+        except Exception:
+            log.exception("load older failed")
+            return
+        if not older:
+            # Nothing more — drop the loader.
+            top = self.list.item(0)
+            if top and top.data(Qt.ItemDataRole.UserRole) == "load_more":
+                self.list.takeItem(0)
+            self._oldest_id = None
+            return
+        # Replace loader with new oldest_id, then prepend in chronological
+        # order so the visible row order stays correct.
+        top = self.list.item(0)
+        if top and top.data(Qt.ItemDataRole.UserRole) == "load_more":
+            self.list.takeItem(0)
+        for m in reversed(older):
+            self._prepend_below_loader(m)
+        self._oldest_id = older[0].get("id")
+        if self._oldest_id:
+            self._add_load_more_item()
+
+    def _on_clear(self) -> None:
+        if QMessageBox.question(
+            self, "Messages", "Clear all message history (broadcast + DM)?",
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        _schedule(self._clear_async())
+
+    async def _clear_async(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as c:
+                await c.delete("http://127.0.0.1:8080/api/messages")
+        except Exception:
+            log.exception("clear messages failed")
+            return
+        self.list.clear()
+        self.info.setText("cleared")
+
+    def _show_canned_menu(self) -> None:
+        _schedule(self._populate_and_show_canned())
+
+    async def _populate_and_show_canned(self) -> None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                r = await c.get("http://127.0.0.1:8080/api/canned-messages")
+            items = r.json() if r.status_code == 200 else []
+        except Exception:
+            items = []
+        if not items:
+            QMessageBox.information(self, "Canned", "No canned messages yet.\nManage them via the API.")
+            return
+        menu = QMenu(self)
+        for it in items:
+            text = it.get("text") or ""
+            if not text:
+                continue
+            short = text if len(text) <= 32 else text[:30] + "…"
+            menu.addAction(short, lambda t=text: self._insert_canned(t))
+        menu.exec(self.mapToGlobal(self.input.geometry().bottomLeft()))
+
+    def _insert_canned(self, text: str) -> None:
+        self.input.setText(text)
+        self.input.setFocus()
 
     # Slots --------------------------------------------------------------
 

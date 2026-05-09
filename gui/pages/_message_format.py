@@ -8,9 +8,10 @@ import time
 def format_message(msg: dict, *, now: int | None = None) -> str:
     """Render a message row as a single line.
 
-    Format: ``[age] src: text [✓]``
+    Format: ``[age] src: text [· SNR dB] [· N hop] [✓]``
     - age is "Ns", "Nm", "Nh", or "Nd" relative to ``now``.
     - src is "me" for outgoing, otherwise the node id / "?" if missing.
+    - SNR (``rx_snr``) and hop count are appended when present.
     - "✓" suffix appears only on outgoing messages with ack truthy.
     """
     ts = msg.get("ts") or 0
@@ -29,5 +30,13 @@ def format_message(msg: dict, *, now: int | None = None) -> str:
         age = "—"
     src = "me" if msg.get("is_outgoing") else (msg.get("node_id") or "?")
     text = (msg.get("text") or "").replace("\n", " ").strip()
-    ack = " ✓" if msg.get("is_outgoing") and msg.get("ack") else ""
-    return f"[{age}] {src}: {text}{ack}"
+    parts = [f"[{age}] {src}: {text}"]
+    snr = msg.get("rx_snr")
+    if isinstance(snr, (int, float)):
+        parts.append(f"{snr:+.1f}dB")
+    hops = msg.get("hop_count")
+    if hops:
+        parts.append(f"{hops}hop")
+    if msg.get("is_outgoing") and msg.get("ack"):
+        parts.append("✓")
+    return " · ".join(parts)
