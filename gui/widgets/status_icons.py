@@ -111,7 +111,11 @@ class SignalIcon(_IconBase):
 
 
 class GpsIcon(_IconBase):
-    """Pin + dot inside, dimmed when no fix."""
+    """Map-pin teardrop, dimmed when no fix.
+
+    Path mirrors the SVG in templates/base.html (viewBox 0 0 24 24, scaled
+    to 14×14): pin outline + 2.5 px center circle.
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -123,15 +127,33 @@ class GpsIcon(_IconBase):
         self.update()
 
     def _draw(self, p: QPainter) -> None:
-        pen = QPen(self._color, 1.5)
+        from PySide6.QtGui import QPainterPath
+        pen = QPen(self._color, 1.2)
         p.setPen(pen)
-        # Stylized teardrop pin: triangle below, circle on top.
-        path = QPolygonF([QPointF(7, 13), QPointF(2, 6), QPointF(12, 6)])
-        p.drawPolyline(path)
-        p.drawEllipse(4, 1, 6, 6)
+        # Map 24x24 viewBox to 14x14 with a 1 px margin.
+        s = 12.0 / 24.0
+        ox, oy = 1.0, 1.0
+
+        def x(v: float) -> float: return ox + v * s
+        def y(v: float) -> float: return oy + v * s
+
+        # Pin outline: M12 2 C 8.13 2  5 5.13  5 9 C 5 14.25  12 22  12 22 C 12 22  19 14.25  19 9 C 19 5.13  15.87 2  12 2 z
+        path = QPainterPath()
+        path.moveTo(x(12), y(2))
+        path.cubicTo(x(8.13), y(2),    x(5),  y(5.13), x(5),  y(9))
+        path.cubicTo(x(5),    y(14.25), x(12), y(22),    x(12), y(22))
+        path.cubicTo(x(12),   y(22),    x(19), y(14.25), x(19), y(9))
+        path.cubicTo(x(19),   y(5.13),  x(15.87), y(2),  x(12), y(2))
+        p.drawPath(path)
+
+        # Center dot — filled when there's a fix, hollow otherwise.
+        cx, cy = x(12), y(9)
+        r = 2.5 * s
         if self._has_fix:
             p.setBrush(QBrush(self._color))
-            p.drawEllipse(6, 3, 2, 2)
+        else:
+            p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawEllipse(QPointF(cx, cy), r, r)
 
 
 class ConnIcon(_IconBase):

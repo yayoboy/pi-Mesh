@@ -708,6 +708,20 @@ class Page(QWidget):
             body_layout.addWidget(section)
             self._modules.append(section)
 
+        # Hardware-side sections — direct REST hits, no radio dependency.
+        from gui.pages._hardware_sections import (
+            _ApSection,
+            _GpioSection,
+            _I2cSection,
+            _RtcSection,
+            _UsbStorageSection,
+        )
+        body_layout.addWidget(_GpioSection(body))
+        body_layout.addWidget(_I2cSection(body))
+        body_layout.addWidget(_RtcSection(body))
+        body_layout.addWidget(_ApSection(body))
+        body_layout.addWidget(_UsbStorageSection(body))
+
         body_layout.addStretch(1)
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
