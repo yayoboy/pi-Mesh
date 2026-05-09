@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import Qt, QSize, QTimer
-from PySide6.QtGui import QFont, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -28,6 +28,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from gui.widgets.status_icons import BatteryIcon, ConnIcon, GpsIcon, SignalIcon
 
 log = logging.getLogger(__name__)
 
@@ -104,13 +106,16 @@ class StatusBar(QFrame):
         root.addWidget(self._name)
         root.addStretch(1)
 
-        # Icons (right side). Glyphs chosen from common Unicode symbols
-        # available in the default Pi OS sans-serif font; replaced by SVG
-        # in a follow-up commit.
-        self._batt = _StatusIcon("▮", tooltip="Battery")
-        self._lora = _StatusIcon("∿", tooltip="LoRa signal")
-        self._gps  = _StatusIcon("◉", tooltip="GPS")
-        self._conn = _StatusIcon("○", tooltip="Board")
+        # Vector icons drawn with QPainter so we don't depend on font
+        # glyph availability (Unicode emojis varied across distros).
+        self._batt = BatteryIcon(self)
+        self._batt.set_tooltip("Battery")
+        self._lora = SignalIcon(self)
+        self._lora.set_tooltip("LoRa signal")
+        self._gps = GpsIcon(self)
+        self._gps.set_tooltip("GPS")
+        self._conn = ConnIcon(self)
+        self._conn.set_tooltip("Board")
         self._rot  = QToolButton(self)
         self._rot.setText("⟳")
         self._rot.setFixedSize(14, 14)
@@ -147,25 +152,10 @@ class StatusBar(QFrame):
                      snr: float | None = None,
                      gps_fix: bool | None = None) -> None:
         self._name.setText(local_name or local_id or "pi-Mesh")
-        self._conn.setProperty("role", "ok" if connected else "danger")
-        self._conn.setText("●" if connected else "○")
-        if battery is None:
-            self._batt.setText("▯")
-        elif battery > 75:
-            self._batt.setText("▮▮▮▮")
-        elif battery > 50:
-            self._batt.setText("▮▮▮ ")
-        elif battery > 25:
-            self._batt.setText("▮▮  ")
-        else:
-            self._batt.setText("▮   ")
-        if snr is not None:
-            self._lora.setProperty("role", "ok" if snr > 0 else "warn")
-        self._gps.setProperty("role", "ok" if gps_fix else "muted")
-        # Re-polish role-dependent QSS.
-        for w in (self._conn, self._lora, self._gps):
-            w.style().unpolish(w)
-            w.style().polish(w)
+        self._conn.set_connected(connected)
+        self._batt.set_level(None if battery is None else battery / 100.0)
+        self._lora.set_strength(snr)
+        self._gps.set_fix(bool(gps_fix))
 
     # Slots --------------------------------------------------------------
 
