@@ -2,8 +2,9 @@
 Description=pi-Mesh native Qt GUI (kiosk)
 After=network.target meshtasticd.service
 Requires=meshtasticd.service
-# Mutually exclusive with the web kiosk; enabling one stops the other.
-Conflicts=kiosk.service
+# Mutually exclusive with the web kiosk and with pimesh.service: pimesh-gui
+# embeds uvicorn in-process and binds the same port, so they cannot coexist.
+Conflicts=kiosk.service pimesh.service
 
 [Service]
 User=pimesh

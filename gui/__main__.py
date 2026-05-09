@@ -1,10 +1,6 @@
-"""`python -m gui` entrypoint.
+"""``python -m gui`` entry point. Delegates to :mod:`gui.app`."""
 
-Per ora delega allo smoke test della Fase 0. Verrà sostituito in Task 1.5
-quando arriva la MainWindow vera.
-"""
-
-from gui._smoke import main
+from gui.app import main
 
 
 if __name__ == "__main__":
