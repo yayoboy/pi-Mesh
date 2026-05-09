@@ -13,18 +13,28 @@ import time
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
+    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPlainTextEdit,
+    QPushButton,
     QSplitter,
     QVBoxLayout,
     QWidget,
 )
 
 from gui.pages._telemetry_format import format_telemetry_row
+from gui.widgets.sparkline import Sparkline
 
 log = logging.getLogger(__name__)
+
+
+def _schedule(coro) -> None:
+    loop = asyncio.get_event_loop_policy().get_event_loop()
+    if loop.is_running():
+        loop.create_task(coro)
 
 
 class Page(QWidget):
@@ -50,13 +60,25 @@ class Page(QWidget):
         left_layout.addWidget(self._nodes, 1)
         splitter.addWidget(left)
 
-        # Right: telemetry rows
+        # Right: telemetry rows + battery sparkline + export
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
+
+        head = QHBoxLayout()
         self._right_label = QLabel("Select a node")
         self._right_label.setProperty("role", "muted")
-        right_layout.addWidget(self._right_label)
+        head.addWidget(self._right_label, 1)
+        csv_btn = QPushButton("CSV")
+        json_btn = QPushButton("JSON")
+        csv_btn.setFixedWidth(46)
+        json_btn.setFixedWidth(46)
+        csv_btn.clicked.connect(lambda: self._export("csv"))
+        json_btn.clicked.connect(lambda: self._export("json"))
+        head.addWidget(csv_btn)
+        head.addWidget(json_btn)
+        right_layout.addLayout(head)
+
         self._rows = QPlainTextEdit(right)
         self._rows.setReadOnly(True)
         self._rows.setMaximumBlockCount(500)
@@ -64,6 +86,16 @@ class Page(QWidget):
         f.setFamily("monospace")
         self._rows.setFont(f)
         right_layout.addWidget(self._rows, 1)
+
+        spark_row = QHBoxLayout()
+        spark_lbl = QLabel("Battery")
+        spark_lbl.setProperty("role", "muted")
+        spark_row.addWidget(spark_lbl)
+        self._spark = Sparkline(capacity=120, color="#4caf50", parent=right)
+        self._spark.setMinimumHeight(28)
+        spark_row.addWidget(self._spark, 1)
+        right_layout.addLayout(spark_row)
+
         splitter.addWidget(right)
         # ~1/3 nodes list, 2/3 telemetry rows on a 480 px landscape display.
         splitter.setSizes([160, 320])
@@ -104,26 +136,78 @@ class Page(QWidget):
         try:
             import config as cfg
             import database
-            rows = await database.get_telemetry(cfg.DB_PATH, node_id=node_id, limit=100)
+            rows = await database.get_telemetry(cfg.DB_PATH, node_id=node_id, limit=200)
         except Exception:
             log.exception("get_telemetry failed")
             rows = []
         self._rows.clear()
+        # Re-populate the battery sparkline from oldest → newest so the
+        # rightmost sample is the latest reading.
+        self._spark.clear()
+        battery_samples: list[tuple[int, float]] = []
         for r in rows:
             self._rows.appendPlainText(format_telemetry_row(r))
+            data = r.get("data") or {}
+            if r.get("ttype") == "device" and data.get("battery_level") is not None:
+                try:
+                    battery_samples.append((int(r.get("ts") or 0), float(data["battery_level"])))
+                except (TypeError, ValueError):
+                    pass
+        battery_samples.sort(key=lambda x: x[0])
+        for _, v in battery_samples:
+            self._spark.push(v)
 
     @Slot(dict)
     def _on_telemetry_event(self, event: dict) -> None:
         if event.get("id") != self._selected_node:
             return
-        # Synthesize a row so format matches.
         row = {
             "ts": event.get("ts") or int(time.time()),
             "ttype": event.get("ttype") or "?",
             "data": event.get("data") or {},
         }
-        # Insert at top.
+        # Insert at top of the rows view.
         cursor = self._rows.textCursor()
         cursor.movePosition(cursor.MoveOperation.Start)
         self._rows.setTextCursor(cursor)
         self._rows.insertPlainText(format_telemetry_row(row) + "\n")
+        # Live battery sparkline append.
+        if row["ttype"] == "device":
+            v = (row.get("data") or {}).get("battery_level")
+            if v is not None:
+                try:
+                    self._spark.push(float(v))
+                except (TypeError, ValueError):
+                    pass
+
+    # -- Export ---------------------------------------------------------
+
+    def _export(self, fmt: str) -> None:
+        if not self._selected_node:
+            QMessageBox.information(self, "Telemetry", "Select a node first.")
+            return
+        _schedule(self._export_async(self._selected_node, fmt))
+
+    async def _export_async(self, node_id: str, fmt: str) -> None:
+        from datetime import datetime
+        from pathlib import Path
+        out_dir = Path("data/exports")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        safe_id = node_id.replace("/", "_").replace("!", "")
+        out_path = out_dir / f"telemetry-{safe_id}-{datetime.now():%Y%m%d-%H%M%S}.{fmt}"
+        url = (
+            f"http://127.0.0.1:8080/api/export/telemetry"
+            f"?node_id={node_id}&format={fmt}&limit=2000"
+        )
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=30.0) as c:
+                r = await c.get(url)
+            if r.status_code != 200:
+                QMessageBox.warning(self, "Export", f"Export failed: {r.status_code}")
+                return
+            out_path.write_bytes(r.content)
+        except Exception as exc:
+            QMessageBox.warning(self, "Export", f"Export error: {exc}")
+            return
+        QMessageBox.information(self, "Export", f"Saved to {out_path}")
