@@ -171,10 +171,12 @@ class Page(QWidget):
         node_id = item.data(Qt.ItemDataRole.UserRole)
         if not node_id:
             return
-        # Future: open node detail view. For now, jump to telemetry page.
-        win = self.window()
-        if hasattr(win, "show_telemetry"):
-            win.show_telemetry()
+        node = next((n for n in self._nodes if n.get("id") == node_id), None)
+        if node is None:
+            return
+        from gui.pages._node_detail import NodeDetailDialog
+        dlg = NodeDetailDialog(node, parent=self.window())
+        dlg.exec()
 
 
 def _matches(node: dict, needle: str) -> bool:
