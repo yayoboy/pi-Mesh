@@ -128,6 +128,55 @@ async def test_get_settings_singleton_raises_when_not_initialised():
 
 
 @pytest.mark.asyncio
+async def test_subscribe_fires_on_set():
+    async def saver(k, v):
+        pass
+
+    s = Settings(saver=saver, loop=asyncio.get_running_loop())
+    received = []
+    s.subscribe("display.theme", lambda v: received.append(v))
+
+    s.set("display.theme", "light")
+    s.set("display.theme", "hc")
+    s.set("other.key", "value")  # different key, must not fire
+
+    await s.flush()
+    assert received == ["light", "hc"]
+
+
+@pytest.mark.asyncio
+async def test_subscribe_callback_exception_is_swallowed(caplog):
+    async def saver(k, v):
+        pass
+
+    s = Settings(saver=saver, loop=asyncio.get_running_loop())
+
+    def bad(_v):
+        raise RuntimeError("subscriber error")
+
+    s.subscribe("k", bad)
+
+    with caplog.at_level("ERROR"):
+        s.set("k", "v")
+
+    assert s.get("k") == "v"
+    assert any("subscriber" in rec.message.lower() for rec in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_subscribe_multiple_callbacks_fire_in_order():
+    async def saver(k, v):
+        pass
+
+    s = Settings(saver=saver, loop=asyncio.get_running_loop())
+    log_calls = []
+    s.subscribe("x", lambda v: log_calls.append(("a", v)))
+    s.subscribe("x", lambda v: log_calls.append(("b", v)))
+    s.set("x", "1")
+    assert log_calls == [("a", "1"), ("b", "1")]
+
+
+@pytest.mark.asyncio
 async def test_init_from_database_round_trip(tmp_path):
     import database
 

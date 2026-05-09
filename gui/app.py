@@ -89,6 +89,11 @@ async def _async_main(app, window, *, embed_uvicorn: bool) -> None:
 
     apply_theme(app, settings.get("display.theme", "dark") or "dark")
 
+    # Hot-reload: when display.theme changes (from the Config page or via
+    # /api/config/display_theme), re-apply the palette without restarting.
+    settings.subscribe("display.theme", lambda v: apply_theme(app, (v or "dark")))
+    settings.subscribe("pimesh-accent", lambda _v: apply_theme(app, settings.get("display.theme", "dark") or "dark"))
+
     await meshtasticd_client.load_nodes_from_db()
 
     bus = EventBus()
