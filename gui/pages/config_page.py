@@ -903,27 +903,34 @@ class Page(QWidget):
         self._admin = _AdminSection(
             self._do_factory_reset, self._do_reboot, self._do_pi_factory_reset, body,
         )
-        body_layout.addWidget(self._device)
-        body_layout.addWidget(self._lora)
-        body_layout.addWidget(self._channels)
-        body_layout.addWidget(self._mqtt)
-        body_layout.addWidget(self._display)
-        body_layout.addWidget(self._wifi)
-        body_layout.addWidget(self._admin)
+
+        # Wrap each section in a CollapsibleSection so the whole Config page
+        # fits more comfortably on a 320×480 screen. First item defaults to
+        # expanded, the rest are collapsed.
+        from gui.widgets.collapsible import CollapsibleSection
+
+        sections: list[tuple[str, QWidget]] = [
+            ("Device", self._device),
+            ("LoRa", self._lora),
+            ("Channels", self._channels),
+            ("MQTT", self._mqtt),
+            ("Display", self._display),
+            ("WiFi", self._wifi),
+            ("Admin", self._admin),
+        ]
 
         # Module configs (telemetry, canned, range test, neighbor info,
         # store-and-forward, external notification, ambient lighting,
-        # detection sensor, serial). All driven by ModuleSpec data so
-        # adding a new module is a one-line spec edit.
+        # detection sensor, serial). All driven by ModuleSpec data.
         from gui.pages._module_section import ModuleSection
         from gui.pages._module_specs import ALL_MODULE_SPECS
         self._modules: list[ModuleSection] = []
         for spec in ALL_MODULE_SPECS:
             section = ModuleSection(spec, body)
-            body_layout.addWidget(section)
             self._modules.append(section)
+            sections.append((spec.title, section))
 
-        # Hardware-side sections — direct REST hits, no radio dependency.
+        # Hardware-side sections.
         from gui.pages._hardware_sections import (
             _AlertsSection,
             _ApSection,
@@ -935,15 +942,22 @@ class Page(QWidget):
             _SerialSection,
             _UsbStorageSection,
         )
-        body_layout.addWidget(_SerialSection(body))
-        body_layout.addWidget(_GpioSection(body))
-        body_layout.addWidget(_I2cSection(body))
-        body_layout.addWidget(_RtcSection(body))
-        body_layout.addWidget(_ApSection(body))
-        body_layout.addWidget(_AlertsSection(body))
-        body_layout.addWidget(_MapConfigSection(body))
-        body_layout.addWidget(_CannedMessagesSection(body))
-        body_layout.addWidget(_UsbStorageSection(body))
+        sections.extend([
+            ("Serial port",      _SerialSection(body)),
+            ("GPIO devices",     _GpioSection(body)),
+            ("I2C scan",         _I2cSection(body)),
+            ("RTC",              _RtcSection(body)),
+            ("AP mode",          _ApSection(body)),
+            ("Alerts",           _AlertsSection(body)),
+            ("Map config",       _MapConfigSection(body)),
+            ("Canned messages",  _CannedMessagesSection(body)),
+            ("USB storage",      _UsbStorageSection(body)),
+        ])
+
+        for i, (title, widget) in enumerate(sections):
+            wrap = CollapsibleSection(title, body, expanded=(i == 0))
+            wrap.add_widget(widget)
+            body_layout.addWidget(wrap)
 
         body_layout.addStretch(1)
         scroll.setWidget(body)

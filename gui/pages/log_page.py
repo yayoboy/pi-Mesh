@@ -255,4 +255,5 @@ class Page(QWidget):
         except Exception as exc:
             QMessageBox.warning(self, "Log", f"Export failed: {exc}")
             return
-        QMessageBox.information(self, "Log", f"Saved to {out_path}")
+        from gui.widgets.toast import show_toast
+        show_toast(self, f"Saved {out_path.name}", role="ok")

@@ -366,6 +366,10 @@ class MainWindow(QMainWindow):
             from gui.widgets.vkb import VkbController
             self._vkb_controller = VkbController(self)
 
+        # Toast host so any descendant can call show_toast(self, …).
+        from gui.widgets.toast import ToastHost
+        ToastHost.for_window(self)
+
         self._select_tab(0)
 
     def _select_tab(self, index: int) -> None:

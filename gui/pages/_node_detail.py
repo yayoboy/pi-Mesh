@@ -72,6 +72,7 @@ class NodeDetailDialog(QDialog):
         self._node = node
         self.setWindowTitle(node.get("short_name") or node.get("id") or "Node")
         self.setModal(True)
+        self._fade_anim = None  # held to keep alive through the animation
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -151,6 +152,11 @@ class NodeDetailDialog(QDialog):
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
         layout.addWidget(buttons)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        from gui.widgets.animations import fade_in
+        self._fade_anim = fade_in(self, duration_ms=140)
 
     # ------------------------------------------------------------------
 
@@ -244,6 +250,7 @@ class NodeDetailDialog(QDialog):
 
     async def _post_admin(self, nid: str, operation: str, ok_msg: str, *, warn: bool = False) -> None:
         self._set_status(f"sending {operation}…")
+        from gui.widgets.toast import show_toast
         try:
             import httpx
             async with httpx.AsyncClient(timeout=10.0) as c:
@@ -252,6 +259,7 @@ class NodeDetailDialog(QDialog):
                 )
             if r.status_code == 200:
                 self._set_status(f"✓ {ok_msg}", role="warn" if warn else "ok")
+                show_toast(self, ok_msg, role="warn" if warn else "ok")
                 return
             err = ""
             try:
@@ -259,8 +267,10 @@ class NodeDetailDialog(QDialog):
             except Exception:
                 err = r.text[:160]
             self._set_status(f"✗ {operation} failed: {err}", role="danger")
+            show_toast(self, f"{operation} failed", role="danger")
         except Exception as exc:
             self._set_status(f"✗ {operation} error: {exc}", role="danger")
+            show_toast(self, f"{operation} error", role="danger")
 
     # -- Forget ------------------------------------------------------
 

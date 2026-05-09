@@ -213,7 +213,8 @@ class _BroadcastView(QWidget):
         except Exception:
             items = []
         if not items:
-            QMessageBox.information(self, "Canned", "No canned messages yet.\nManage them via the API.")
+            from gui.widgets.toast import show_toast
+            show_toast(self, "No canned messages — add some in Config", role="warn")
             return
         menu = QMenu(self)
         for it in items:

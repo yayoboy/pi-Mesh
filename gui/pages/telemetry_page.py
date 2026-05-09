@@ -184,7 +184,8 @@ class Page(QWidget):
 
     def _export(self, fmt: str) -> None:
         if not self._selected_node:
-            QMessageBox.information(self, "Telemetry", "Select a node first.")
+            from gui.widgets.toast import show_toast
+            show_toast(self, "Select a node first", role="warn")
             return
         _schedule(self._export_async(self._selected_node, fmt))
 
@@ -210,4 +211,5 @@ class Page(QWidget):
         except Exception as exc:
             QMessageBox.warning(self, "Export", f"Export error: {exc}")
             return
-        QMessageBox.information(self, "Export", f"Saved to {out_path}")
+        from gui.widgets.toast import show_toast
+        show_toast(self, f"Saved {out_path.name}", role="ok")
