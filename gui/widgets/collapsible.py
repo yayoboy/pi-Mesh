@@ -29,8 +29,12 @@ class CollapsibleSection(QFrame):
         self._first_expand_done = expanded
 
         self._toggle = QToolButton(self)
+        self._toggle.setFixedHeight(44)
+        # 1px transparent border by default so :focus can replace it with
+        # the accent colour without shifting the layout (border:none would
+        # block the global QSS focus rule because inline styles win).
         self._toggle.setStyleSheet(
-            "QToolButton { border: none; padding: 4px 6px; font-weight: 600; }"
+            "QToolButton { border: 1px solid transparent; padding: 3px 11px; font-weight: 600; }"
         )
         self._toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._toggle.setArrowType(Qt.ArrowType.RightArrow)
@@ -38,6 +42,12 @@ class CollapsibleSection(QFrame):
         self._toggle.setCheckable(True)
         self._toggle.setChecked(expanded)
         self._toggle.toggled.connect(self._on_toggled)
+        # Reachable by keyboard. Space/Enter toggle the checked state for
+        # free (QToolButton with setCheckable=True), so expand/collapse via
+        # keyboard works without extra wiring. The accessible name helps
+        # the Config page's eventFilter route Up/Down between sections.
+        self._toggle.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._toggle.setAccessibleName(f"Section {title}")
 
         self._body = QWidget(self)
         self._body_layout = QVBoxLayout(self._body)
@@ -57,6 +67,11 @@ class CollapsibleSection(QFrame):
 
     def add_widget(self, w: QWidget) -> None:
         self._body_layout.addWidget(w)
+
+    def header_button(self) -> QToolButton:
+        """The clickable header — exposed so callers (e.g. ConfigPage's
+        keyboard handler) can move focus between sections."""
+        return self._toggle
 
     def set_on_first_expand(self, callback) -> None:
         self._on_first_expand = callback

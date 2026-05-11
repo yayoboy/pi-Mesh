@@ -12,7 +12,6 @@ from pathlib import Path
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPixmap, QWheelEvent
 from PySide6.QtWidgets import (
-    QComboBox,
     QGraphicsEllipseItem,
     QGraphicsLineItem,
     QGraphicsPathItem,
@@ -29,8 +28,6 @@ from PySide6.QtWidgets import (
 )
 
 from gui.pages.map_math import (
-    MAX_ZOOM,
-    MIN_ZOOM,
     TILE_SIZE,
     TileLoader,
     lonlat_to_pixel,
@@ -38,12 +35,15 @@ from gui.pages.map_math import (
     visible_tiles,
 )
 
+MIN_ZOOM = 7
+MAX_ZOOM = 12
+
 log = logging.getLogger(__name__)
 
 
 # Where offline tiles live. Each layer is a sub-directory keyed by
 # the layer name (matches the web UI: data/tiles/{layer}/{z}/{x}/{y}.png).
-TILES_BASE = Path("data/tiles")
+TILES_BASE = Path("static/tiles")
 LAYER_NAMES = ("osm", "topo", "satellite")
 
 
@@ -59,18 +59,21 @@ def _load_pixmap(path: Path) -> QPixmap:
 
 
 class MapView(QGraphicsView):
-    """Pan/zoom view that renders tiles + node markers in scene coordinates.
-
-    Scene coords use the Web Mercator pixel space at the current zoom. On
-    zoom change the scene is rebuilt; markers are kept in a dict keyed by
-    node id so we can update without re-creating.
+    """Viewport-centric tile map. The scene is always viewport-sized;
+    tiles and overlays are positioned relative to the stored center
+    (lon/lat). Pan is handled via mouse events, not QGraphicsView scrolling.
     """
 
-    location_double_clicked = Signal(float, float)  # (lon, lat)
+    location_double_clicked = Signal(float, float)
+    zoom_changed = Signal()
+    # Emitted when the user presses Home on a focused MapView; the page
+    # routes it to `_recenter_local` (which has access to the local node's
+    # current GPS fix and falls back to defaults).
+    home_requested = Signal()
 
     DEFAULT_LAT = 41.9
     DEFAULT_LON = 12.5
-    DEFAULT_ZOOM = 5
+    DEFAULT_ZOOM = 7
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -79,14 +82,16 @@ class MapView(QGraphicsView):
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
-        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        # Keyboard navigation: pan with arrows, zoom with +/-, cycle nodes
+        # with [/], recenter on local with Home. See keyPressEvent.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self._zoom = self.DEFAULT_ZOOM
         self._layer = "osm"
         self._tiles = TileLoader(_layer_root(self._layer), reader=_load_pixmap)
         self._tile_items: dict[tuple[int, int, int], QGraphicsPixmapItem] = {}
         self._marker_items: dict[str, QGraphicsEllipseItem] = {}
+        self._marker_coords: dict[str, tuple[float, float]] = {}
         self._label_items: dict[str, QGraphicsTextItem] = {}
         self._traceroute_items: dict[str, QGraphicsPathItem] = {}
         self._waypoint_items: dict[int, tuple[QGraphicsEllipseItem, QGraphicsTextItem]] = {}
@@ -94,10 +99,28 @@ class MapView(QGraphicsView):
         self._neighbor_items: list[QGraphicsLineItem] = []
         self._center_lon = self.DEFAULT_LON
         self._center_lat = self.DEFAULT_LAT
-
-        self.set_zoom(self._zoom, recenter=True)
+        self._drag_last = None
+        self._initialized = False
+        # Marker cycle state for [/] navigation.
+        self._focused_marker_id: str | None = None
+        # Per-key dedup window: Qt linuxfb runs an internal evdev reader
+        # alongside our `evdevkeyboard` generic plugin, so each press fires
+        # twice. ShortcutManager handles the QShortcut path; raw arrow
+        # keys reach keyPressEvent below and need their own debounce.
+        self._kbd_last: tuple[int, float] = (0, 0.0)
 
     # ------------------------------------------------------------------
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if not self._initialized:
+            self._initialized = True
+            self._rebuild()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if self._initialized:
+            self._rebuild()
 
     def zoom(self) -> int:
         return self._zoom
@@ -107,68 +130,63 @@ class MapView(QGraphicsView):
         if zoom == self._zoom and not recenter:
             return
         self._zoom = zoom
-        # Wipe scene and rebuild at the new zoom.
-        for item in list(self._tile_items.values()):
-            self._scene.removeItem(item)
-        self._tile_items.clear()
-
-        if recenter:
-            cx, cy = lonlat_to_pixel(self._center_lon, self._center_lat, zoom)
-            self.centerOn(cx, cy)
-
-        self._refresh_tiles()
-        self._reposition_markers()
+        self._rebuild()
 
     def set_center(self, lon: float, lat: float) -> None:
         self._center_lon = lon
         self._center_lat = lat
-        cx, cy = lonlat_to_pixel(lon, lat, self._zoom)
-        self.centerOn(cx, cy)
-        self._refresh_tiles()
+        self._rebuild()
 
     def set_layer(self, layer: str) -> None:
         if layer == self._layer:
             return
         self._layer = layer
-        # Drop the old layer's tiles and switch the loader's tile root.
         for item in list(self._tile_items.values()):
             self._scene.removeItem(item)
         self._tile_items.clear()
         self._tiles = TileLoader(_layer_root(layer), reader=_load_pixmap)
-        self._refresh_tiles()
+        self._rebuild()
 
     # ------------------------------------------------------------------
-    # Tiles
+    # Core rebuild: positions everything relative to viewport center
+
+    def _rebuild(self) -> None:
+        vp = self.viewport().size()
+        if vp.width() < 2 or vp.height() < 2:
+            return
+        self._scene.setSceneRect(0, 0, vp.width(), vp.height())
+        self._refresh_tiles()
 
     def _refresh_tiles(self) -> None:
         vp = self.viewport().size()
-        # Center in scene coords:
-        scene_center = self.mapToScene(self.viewport().rect().center())
-        # Convert back to lon/lat to feed visible_tiles().
-        # (We don't strictly need lon/lat: we could compute tile bounds from
-        # scene_center directly — but visible_tiles is the API we have.)
-        from gui.pages.map_math import pixel_to_lonlat
-        lon, lat = pixel_to_lonlat(scene_center.x(), scene_center.y(), self._zoom)
+        vw, vh = vp.width(), vp.height()
+        cx, cy = lonlat_to_pixel(self._center_lon, self._center_lat, self._zoom)
+        half_w, half_h = vw / 2.0, vh / 2.0
 
         wanted: set[tuple[int, int, int]] = set()
-        for tx, ty in visible_tiles(lon, lat, self._zoom, vp.width(), vp.height()):
+        for tx, ty in visible_tiles(self._center_lon, self._center_lat,
+                                     self._zoom, vw, vh):
             wanted.add((self._zoom, tx, ty))
 
-        # Remove tiles no longer visible.
         for key in list(self._tile_items.keys()):
             if key not in wanted:
                 self._scene.removeItem(self._tile_items.pop(key))
 
-        # Add missing tiles.
         for z, tx, ty in wanted:
             key = (z, tx, ty)
+            tile_px = tx * TILE_SIZE
+            tile_py = ty * TILE_SIZE
+            sx = tile_px - cx + half_w
+            sy = tile_py - cy + half_h
+
             if key in self._tile_items:
+                self._tile_items[key].setPos(sx, sy)
                 continue
             pm = self._tiles.get(z, tx, ty)
             if pm is None or (hasattr(pm, "isNull") and pm.isNull()):
                 continue
             item = QGraphicsPixmapItem(pm)
-            item.setPos(tx * TILE_SIZE, ty * TILE_SIZE)
+            item.setPos(sx, sy)
             item.setZValue(-1)
             self._scene.addItem(item)
             self._tile_items[key] = item
@@ -176,9 +194,17 @@ class MapView(QGraphicsView):
     # ------------------------------------------------------------------
     # Markers
 
+    def _to_scene(self, lon: float, lat: float) -> tuple[float, float]:
+        """Convert lon/lat to scene (viewport) coordinates."""
+        vp = self.viewport().size()
+        cx, cy = lonlat_to_pixel(self._center_lon, self._center_lat, self._zoom)
+        px, py = lonlat_to_pixel(lon, lat, self._zoom)
+        return px - cx + vp.width() / 2.0, py - cy + vp.height() / 2.0
+
     def update_marker(self, node_id: str, lon: float, lat: float, *, label: str | None = None,
                       is_local: bool = False) -> None:
-        x, y = lonlat_to_pixel(lon, lat, self._zoom)
+        self._marker_coords[node_id] = (lon, lat)
+        x, y = self._to_scene(lon, lat)
         radius = 6 if not is_local else 9
         color = QColor("#4a9eff") if not is_local else QColor("#ff5722")
 
@@ -214,22 +240,18 @@ class MapView(QGraphicsView):
             self._scene.removeItem(item)
         self._marker_items.clear()
         self._label_items.clear()
+        self._marker_coords.clear()
+        self._focused_marker_id = None
 
     def show_traceroute(self, key: str, points: list[tuple[float, float]]) -> None:
-        """Draw a polyline through the given (lon, lat) points.
-
-        ``key`` is an identifier (typically the destination node id) so the
-        same path can be replaced when an updated traceroute arrives.
-        Existing path with the same key is removed first.
-        """
         self.clear_traceroute(key)
         if len(points) < 2:
             return
         path = QPainterPath()
-        x, y = lonlat_to_pixel(points[0][0], points[0][1], self._zoom)
+        x, y = self._to_scene(points[0][0], points[0][1])
         path.moveTo(x, y)
         for lon, lat in points[1:]:
-            x, y = lonlat_to_pixel(lon, lat, self._zoom)
+            x, y = self._to_scene(lon, lat)
             path.lineTo(x, y)
         item = QGraphicsPathItem(path)
         pen = QPen(QColor("#ffeb3b"))
@@ -253,7 +275,7 @@ class MapView(QGraphicsView):
     # -- waypoints (mesh-shared) -----------------------------------------
 
     def update_waypoint(self, wp_id: int, lon: float, lat: float, *, name: str = "") -> None:
-        x, y = lonlat_to_pixel(lon, lat, self._zoom)
+        x, y = self._to_scene(lon, lat)
         marker, label = self._waypoint_items.get(wp_id, (None, None))
         radius = 5
         color = QColor("#ffeb3b")
@@ -291,7 +313,7 @@ class MapView(QGraphicsView):
 
     def update_custom_marker(self, marker_id: int, lon: float, lat: float, *,
                              label: str = "", icon_type: str = "poi") -> None:
-        x, y = lonlat_to_pixel(lon, lat, self._zoom)
+        x, y = self._to_scene(lon, lat)
         marker, text = self._custom_marker_items.get(marker_id, (None, None))
         radius = 5
         # Distinguish from waypoints (yellow) and node markers (blue/orange).
@@ -328,14 +350,12 @@ class MapView(QGraphicsView):
     # -- neighbor links (SNR-coloured straight lines) --------------------
 
     def set_neighbor_links(self, links: list[tuple[float, float, float, float, float]]) -> None:
-        """``links`` is a list of (a_lon, a_lat, b_lon, b_lat, snr)."""
-        # Wipe old.
         for item in self._neighbor_items:
             self._scene.removeItem(item)
         self._neighbor_items.clear()
         for a_lon, a_lat, b_lon, b_lat, snr in links:
-            x1, y1 = lonlat_to_pixel(a_lon, a_lat, self._zoom)
-            x2, y2 = lonlat_to_pixel(b_lon, b_lat, self._zoom)
+            x1, y1 = self._to_scene(a_lon, a_lat)
+            x2, y2 = self._to_scene(b_lon, b_lat)
             line = QGraphicsLineItem(x1, y1, x2, y2)
             color = (
                 QColor("#4caf50") if snr > 0
@@ -349,11 +369,36 @@ class MapView(QGraphicsView):
             self._scene.addItem(line)
             self._neighbor_items.append(line)
 
-    def _reposition_markers(self) -> None:
-        # When zoom changes, redraw markers at their new pixel coords.
-        # Marker state is kept on instance so we can rebuild from cache:
-        # for now, callers (the page) re-issue update_marker for every node.
-        pass
+    # ------------------------------------------------------------------
+    # Mouse pan
+
+    def mousePressEvent(self, ev) -> None:
+        if ev.button() == Qt.MouseButton.LeftButton:
+            self._drag_last = ev.pos()
+            ev.accept()
+        else:
+            super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev) -> None:
+        if self._drag_last is not None:
+            dx = ev.pos().x() - self._drag_last.x()
+            dy = ev.pos().y() - self._drag_last.y()
+            self._drag_last = ev.pos()
+            cx, cy = lonlat_to_pixel(self._center_lon, self._center_lat, self._zoom)
+            self._center_lon, self._center_lat = pixel_to_lonlat(
+                cx - dx, cy - dy, self._zoom
+            )
+            self._rebuild()
+            ev.accept()
+        else:
+            super().mouseMoveEvent(ev)
+
+    def mouseReleaseEvent(self, ev) -> None:
+        if ev.button() == Qt.MouseButton.LeftButton:
+            self._drag_last = None
+            ev.accept()
+        else:
+            super().mouseReleaseEvent(ev)
 
     # ------------------------------------------------------------------
     # Wheel zoom
@@ -363,15 +408,101 @@ class MapView(QGraphicsView):
         if delta == 0:
             return
         new_zoom = self._zoom + (1 if delta > 0 else -1)
-        self.set_zoom(new_zoom, recenter=True)
+        new_zoom = max(MIN_ZOOM, min(MAX_ZOOM, new_zoom))
+        if new_zoom != self._zoom:
+            self._zoom = new_zoom
+            self._rebuild()
+            self.zoom_changed.emit()
         ev.accept()
 
-    # Double-click → emit a (lon, lat) signal for the page to handle.
     def mouseDoubleClickEvent(self, ev) -> None:
-        scene_p = self.mapToScene(ev.pos())
-        lon, lat = pixel_to_lonlat(scene_p.x(), scene_p.y(), self._zoom)
+        vp = self.viewport().size()
+        cx, cy = lonlat_to_pixel(self._center_lon, self._center_lat, self._zoom)
+        px = cx + (ev.pos().x() - vp.width() / 2.0)
+        py = cy + (ev.pos().y() - vp.height() / 2.0)
+        lon, lat = pixel_to_lonlat(px, py, self._zoom)
         self.location_double_clicked.emit(float(lon), float(lat))
         ev.accept()
+
+    # ------------------------------------------------------------------
+    # Keyboard navigation
+    #   arrows         pan (40px step at current zoom)
+    #   + / =          zoom in
+    #   - / _          zoom out
+    #   Home           recenter on local node (page handles via signal)
+    #   [ / ]          cycle markers (centers map on previous/next node)
+    # Esc is intentionally left alone so Qt's default (dialog reject etc)
+    # still works elsewhere.
+
+    _PAN_PX = 40
+
+    def keyPressEvent(self, ev) -> None:
+        import time as _t
+        key = ev.key()
+        now = _t.monotonic()
+        # Time-only dedup: Qt linuxfb's two evdev readers can deliver the
+        # same physical press under DIFFERENT Qt.Key values (e.g. Equal vs
+        # Plus for the same scancode depending on Shift state), so a
+        # per-key window misses half the duplicates. 50ms is short enough
+        # not to block intentional fast key repeats (human limit ~100ms).
+        _last_key, last_ts = self._kbd_last
+        # 250ms is wide because the duplicate from the second evdev reader
+        # often arrives queued behind a heavy `_rebuild` (tile refresh),
+        # not microseconds after the press. Pan/zoom can be triggered at
+        # most 4x/s with this — well above any human pace.
+        if now - last_ts < 0.25:
+            ev.accept()
+            return
+        self._kbd_last = (key, now)
+
+        if key == Qt.Key.Key_Left:
+            self._pan_pixels(-self._PAN_PX, 0)
+        elif key == Qt.Key.Key_Right:
+            self._pan_pixels(self._PAN_PX, 0)
+        elif key == Qt.Key.Key_Up:
+            self._pan_pixels(0, -self._PAN_PX)
+        elif key == Qt.Key.Key_Down:
+            self._pan_pixels(0, self._PAN_PX)
+        elif key in (Qt.Key.Key_Plus, Qt.Key.Key_Equal):
+            new_z = self._zoom + 1
+            if new_z != self._zoom:
+                self.set_zoom(new_z)
+                self.zoom_changed.emit()
+        elif key in (Qt.Key.Key_Minus, Qt.Key.Key_Underscore):
+            new_z = self._zoom - 1
+            if new_z != self._zoom:
+                self.set_zoom(new_z)
+                self.zoom_changed.emit()
+        elif key == Qt.Key.Key_Home:
+            self.home_requested.emit()
+        elif key == Qt.Key.Key_BracketLeft:
+            self._cycle_marker(-1)
+        elif key == Qt.Key.Key_BracketRight:
+            self._cycle_marker(+1)
+        else:
+            super().keyPressEvent(ev)
+            return
+        ev.accept()
+
+    def _pan_pixels(self, dx: int, dy: int) -> None:
+        cx, cy = lonlat_to_pixel(self._center_lon, self._center_lat, self._zoom)
+        self._center_lon, self._center_lat = pixel_to_lonlat(
+            cx + dx, cy + dy, self._zoom
+        )
+        self._rebuild()
+
+    def _cycle_marker(self, direction: int) -> None:
+        ids = list(self._marker_coords.keys())
+        if not ids:
+            return
+        if self._focused_marker_id in ids:
+            idx = ids.index(self._focused_marker_id)
+            idx = (idx + direction) % len(ids)
+        else:
+            idx = 0 if direction > 0 else len(ids) - 1
+        self._focused_marker_id = ids[idx]
+        lon, lat = self._marker_coords[self._focused_marker_id]
+        self.set_center(lon, lat)
 
 
 class Page(QWidget):
@@ -390,18 +521,19 @@ class Page(QWidget):
         bar.setSpacing(4)
         self._zoom_in = QPushButton("+")
         self._zoom_out = QPushButton("−")
-        self._zoom_in.setFixedWidth(28)
-        self._zoom_out.setFixedWidth(28)
-        self._zoom_label = QLabel("z5")
+        self._zoom_in.setFixedSize(44, 44)
+        self._zoom_out.setFixedSize(44, 44)
+        self._zoom_label = QLabel(f"z{MapView.DEFAULT_ZOOM}")
         self._zoom_label.setProperty("role", "muted")
-        self._zoom_label.setFixedWidth(20)
+        # Was setFixedWidth(20) which truncated "z=9" to "z=" after a zoom
+        # change — keyboard zoom made the truncation visible. Min width
+        # 32px fits "z=18" comfortably without forcing layout shifts.
+        self._zoom_label.setMinimumWidth(32)
 
-        # Layer switcher (osm / topo / satellite)
-        self._layer_combo = QComboBox(self)
-        for name in LAYER_NAMES:
-            self._layer_combo.addItem(name)
-        self._layer_combo.currentTextChanged.connect(self._on_layer)
-        self._layer_combo.setFixedWidth(80)
+        self._layer_idx = 0
+        self._layer_btn = QPushButton(LAYER_NAMES[0], self)
+        self._layer_btn.setFixedWidth(80)
+        self._layer_btn.clicked.connect(self._cycle_layer)
 
         # Neighbor links toggle
         self._neighbor_toggle = QToolButton(self)
@@ -413,18 +545,18 @@ class Page(QWidget):
         # Recenter
         recenter = QPushButton("⌖")
         recenter.setToolTip("Center on local node")
-        recenter.setFixedWidth(28)
+        recenter.setFixedSize(44, 44)
 
         # Markers / waypoints list
         markers_btn = QToolButton(self)
-        markers_btn.setText("⚑")
+        markers_btn.setText("Pin")
         markers_btn.setToolTip("Custom markers / waypoints")
         markers_btn.clicked.connect(self._show_markers_dialog)
 
         bar.addWidget(self._zoom_in)
         bar.addWidget(self._zoom_out)
         bar.addWidget(self._zoom_label)
-        bar.addWidget(self._layer_combo)
+        bar.addWidget(self._layer_btn)
         bar.addWidget(self._neighbor_toggle)
         bar.addStretch(1)
         bar.addWidget(markers_btn)
@@ -456,8 +588,13 @@ class Page(QWidget):
         self._wp_timer.timeout.connect(self._refresh_waypoints)
         self._wp_timer.start()
 
+        self._view.zoom_changed.connect(self._on_wheel_zoom)
+
         # Double-click on map → open new-location dialog.
         self._view.location_double_clicked.connect(self._on_double_click_location)
+        # Keyboard Home key on a focused MapView -> recenter on the local
+        # node (or DEFAULT_LAT/LON if no GPS fix yet).
+        self._view.home_requested.connect(self._recenter_local)
 
         if eventbus is not None:
             eventbus.position_updated.connect(self._on_position)
@@ -465,9 +602,14 @@ class Page(QWidget):
             eventbus.waypoint.connect(lambda _e: self._refresh_waypoints())
             eventbus.neighbor_info.connect(lambda _e: self._refresh_neighbors_if_visible())
 
+    def _on_wheel_zoom(self) -> None:
+        self._zoom_label.setText(f"z{self._view.zoom()}")
+        self._refresh_all()
+
     def _zoom(self, delta: int) -> None:
         self._view.set_zoom(self._view.zoom() + delta, recenter=True)
-        self._zoom_label.setText(f"z={self._view.zoom()}")
+        self._zoom_label.setText(f"z{self._view.zoom()}")
+        self._refresh_all()
 
     def _recenter_local(self) -> None:
         try:
@@ -477,6 +619,12 @@ class Page(QWidget):
             local = None
         if local and local.get("latitude") is not None:
             self._view.set_center(local["longitude"], local["latitude"])
+
+    def set_initial_focus(self) -> None:
+        """Park focus on the MapView so the QMK keyboard can immediately
+        pan/zoom/cycle markers. The MapView itself owns the keyPressEvent
+        for arrows, +/-, Home, [, ]."""
+        self._view.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _refresh_all(self) -> None:
         try:
@@ -510,7 +658,10 @@ class Page(QWidget):
     def view(self) -> "MapView":
         return self._view
 
-    def _on_layer(self, name: str) -> None:
+    def _cycle_layer(self) -> None:
+        self._layer_idx = (self._layer_idx + 1) % len(LAYER_NAMES)
+        name = LAYER_NAMES[self._layer_idx]
+        self._layer_btn.setText(name)
         self._view.set_layer(name)
 
     def _on_toggle_neighbors(self, checked: bool) -> None:

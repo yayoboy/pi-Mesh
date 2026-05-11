@@ -52,7 +52,7 @@ def _row_html(node: dict, *, now: int | None = None) -> str:
     sub = " · ".join(parts)
 
     weight = "700" if node.get("is_local") else "500"
-    short_color = "var(--accent)" if node.get("is_local") else "var(--text)"
+    short_color = "#4a9eff" if node.get("is_local") else "#e0e0e0"
     return (
         f'<div style="font-weight:{weight}; color:{short_color};">'
         f'  <span style="font-size:13px;">{short}</span>'
@@ -103,9 +103,32 @@ class Page(QWidget):
         self._nodes: list[dict] = []
         self._refresh()
 
+        # Keyboard navigation order: list -> search -> refresh -> back to list.
+        # The list is first so a bare F2 lands focus on something the user
+        # can immediately operate with arrow keys + Enter, without dragging
+        # in the on-screen keyboard (which would happen if we put _search
+        # at the head of the chain).
+        QWidget.setTabOrder(self._list, self._search)
+        QWidget.setTabOrder(self._search, refresh)
+
         if eventbus is not None:
             eventbus.node_updated.connect(self._on_node_event)
             eventbus.position_updated.connect(self._on_node_event)
+
+    # ------------------------------------------------------------------
+
+    def set_initial_focus(self) -> None:
+        """Called by MainWindow._select_tab after this page becomes current.
+
+        Parks focus on the node list (not on the search box) so the QMK
+        keyboard's Up/Down/Enter act immediately on items. Putting focus on
+        the search box would auto-show the on-screen keyboard, which is
+        unwanted on a physical-keyboard workflow.
+        """
+        log.warning("nodes_page.set_initial_focus: count=%d", self._list.count())
+        self._list.setFocus(Qt.FocusReason.OtherFocusReason)
+        if self._list.count() > 0 and self._list.currentRow() < 0:
+            self._list.setCurrentRow(0)
 
     # ------------------------------------------------------------------
 

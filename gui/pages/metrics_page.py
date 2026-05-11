@@ -128,15 +128,15 @@ class _NodeTelemetryCard(QFrame):
 
         cells: list[str] = []
         if device.get("battery_level") is not None:
-            cells.append(f"🔋 {device['battery_level']}%")
+            cells.append(f"Bat {device['battery_level']}%")
         if device.get("voltage") is not None:
-            cells.append(f"⚡ {device['voltage']:.2f}V")
+            cells.append(f"{device['voltage']:.2f}V")
         if env.get("temperature") is not None:
-            cells.append(f"🌡 {env['temperature']:.1f}°C")
+            cells.append(f"{env['temperature']:.1f}°C")
         if env.get("relative_humidity") is not None:
-            cells.append(f"💧 {env['relative_humidity']:.0f}%")
+            cells.append(f"RH {env['relative_humidity']:.0f}%")
         if env.get("barometric_pressure") is not None:
-            cells.append(f"📶 {env['barometric_pressure']:.0f}hPa")
+            cells.append(f"{env['barometric_pressure']:.0f}hPa")
         self._ensure_labels(len(cells))
         for lbl, text in zip(self._labels, cells):
             lbl.setText(text)
@@ -155,6 +155,9 @@ class Page(QWidget):
 
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
+        # Saved so set_initial_focus() can park keyboard focus on the
+        # scroll viewport — arrow keys/PgUp/PgDn then scroll natively.
+        self._scroll = scroll
         body = QWidget()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -250,6 +253,11 @@ class Page(QWidget):
         if eventbus is not None:
             eventbus.rpi_telemetry.connect(self._on_event)
             eventbus.telemetry.connect(lambda _e: self._refresh_board_sync())
+
+    def set_initial_focus(self) -> None:
+        """Focus the scroll area so the QMK keyboard's arrows/PgUp/PgDn
+        scroll the metrics. QScrollArea handles those natively."""
+        self._scroll.setFocus(Qt.FocusReason.OtherFocusReason)
 
     # ------------------------------------------------------------------
 

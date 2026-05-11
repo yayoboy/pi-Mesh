@@ -67,6 +67,7 @@ QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
     border: 1px solid {border};
     border-radius: 4px;
     padding: 4px 8px;
+    min-height: 36px;
     selection-background-color: {accent};
 }}
 
@@ -79,7 +80,7 @@ QListView, QTreeView, QTableView {{
 QListView::item:selected,
 QTreeView::item:selected,
 QTableView::item:selected {{
-    background: {panel};
+    background: rgba(74, 158, 255, 0.20);
     color: {accent};
 }}
 
@@ -93,13 +94,13 @@ QHeaderView::section {{
 
 QScrollBar:vertical {{
     background: {bg};
-    width: 6px;
+    width: 14px;
     margin: 0;
 }}
 QScrollBar::handle:vertical {{
     background: {muted};
-    border-radius: 3px;
-    min-height: 24px;
+    border-radius: 7px;
+    min-height: 32px;
 }}
 QScrollBar::add-line:vertical,
 QScrollBar::sub-line:vertical {{
@@ -108,13 +109,13 @@ QScrollBar::sub-line:vertical {{
 
 QScrollBar:horizontal {{
     background: {bg};
-    height: 6px;
+    height: 14px;
     margin: 0;
 }}
 QScrollBar::handle:horizontal {{
     background: {muted};
-    border-radius: 3px;
-    min-width: 24px;
+    border-radius: 7px;
+    min-width: 32px;
 }}
 QScrollBar::add-line:horizontal,
 QScrollBar::sub-line:horizontal {{
@@ -139,6 +140,34 @@ QToolTip {{
     color: {text};
     border: 1px solid {border};
     padding: 4px 6px;
+}}
+
+/* Keyboard focus indicators — needed because the GUI is fully navigable
+   from a QMK keyboard. Qt's `outline` QSS property is unreliable across
+   widget types (it works on QLineEdit-like widgets but not on QListView,
+   QToolButton, etc.), so we explicitly set a coloured border on focus for
+   each widget class that the user can actually focus. Widgets that have
+   `border: none` by default (lists, tool buttons) get a 1px accent border
+   that costs no layout because we reserve the same 1px in their default
+   rule. */
+QPushButton:focus,
+QLineEdit:focus,
+QTextEdit:focus,
+QPlainTextEdit:focus,
+QComboBox:focus,
+QSpinBox:focus,
+QDoubleSpinBox:focus {{
+    border: 1px solid {accent};
+}}
+QListView:focus,
+QListWidget:focus,
+QTreeView:focus,
+QTableView:focus {{
+    border: 1px solid {accent};
+}}
+QToolButton:focus {{
+    border: 1px solid {accent};
+    border-radius: 3px;
 }}
 """
 

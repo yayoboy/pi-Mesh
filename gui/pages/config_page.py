@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import QEvent, Qt, Slot
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -878,7 +878,13 @@ class Page(QWidget):
         # expanded, the rest are collapsed.
         from gui.widgets.collapsible import CollapsibleSection
 
+        # User-editable keyboard shortcuts. Goes at the top so users coming
+        # from the QMK workflow find it immediately after pressing F5.
+        from gui.pages._shortcuts_section import Section as _ShortcutsSection
+        self._shortcuts_section = _ShortcutsSection(body)
+
         sections: list[tuple[str, QWidget]] = [
+            ("Tasti", self._shortcuts_section),
             ("Device", self._device),
             ("LoRa", self._lora),
             ("Channels", self._channels),
@@ -925,6 +931,7 @@ class Page(QWidget):
             ("Bots",             _BotsSection(body)),
         ])
 
+        self._wraps: list[CollapsibleSection] = []
         for i, (title, widget) in enumerate(sections):
             wrap = CollapsibleSection(title, body, expanded=(i == 0))
             wrap.add_widget(widget)
@@ -938,12 +945,65 @@ class Page(QWidget):
                 elif getattr(widget, "_refresh_status", None):
                     wrap.set_on_first_expand(widget._refresh_status)
             body_layout.addWidget(wrap)
+            self._wraps.append(wrap)
 
         body_layout.addStretch(1)
         scroll.setWidget(body)
         layout.addWidget(scroll, 1)
+        # Keep a reference so the eventFilter can scroll a newly-focused
+        # section header into view.
+        self._scroll = scroll
+        # Catch Up/Down on each section header — `installEventFilter(self)`
+        # would only see events sent to Page itself, not to the child
+        # QToolButtons that actually own the focus; by installing the
+        # filter on every header button we intercept the arrow keys
+        # before Qt's default focus-chain (which on a QScrollArea would
+        # scroll the body instead of moving focus between headers).
+        for wrap in self._wraps:
+            wrap.header_button().installEventFilter(self)
 
         self._reload()
+
+    # ------------------------------------------------------------------
+
+    def set_initial_focus(self) -> None:
+        """Park focus on the first collapsible section header so the QMK
+        keyboard can immediately use Up/Down to walk through sections and
+        Space/Enter to expand/collapse them."""
+        if self._wraps:
+            btn = self._wraps[0].header_button()
+            btn.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._scroll.ensureWidgetVisible(btn)
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            if key in (Qt.Key.Key_Up, Qt.Key.Key_Down):
+                # Dedup: Qt linuxfb runs an internal evdev-keyboard reader
+                # alongside our explicit `evdevkeyboard` generic plugin,
+                # so each physical keypress arrives twice. ShortcutManager
+                # already debounces QShortcut activations; this filter
+                # operates on raw KeyPress events instead, so it needs its
+                # own short window per (key, focus widget).
+                import time as _t
+                now = _t.monotonic()
+                last_key, last_ts = getattr(self, "_arrow_last", (0, 0.0))
+                if last_key == key and (now - last_ts) < 0.1:
+                    return True
+                self._arrow_last = (key, now)
+
+                fw = self.focusWidget()
+                for idx, wrap in enumerate(self._wraps):
+                    if fw is wrap.header_button():
+                        new_idx = idx - 1 if key == Qt.Key.Key_Up else idx + 1
+                        if 0 <= new_idx < len(self._wraps):
+                            target = self._wraps[new_idx].header_button()
+                            target.setFocus(Qt.FocusReason.OtherFocusReason)
+                            self._scroll.ensureWidgetVisible(target, 0, 40)
+                        return True
+                    # If focus isn't on a header, let the default handler
+                    # run (so arrow keys still scroll the body normally).
+        return super().eventFilter(obj, event)
 
     # ------------------------------------------------------------------
 

@@ -22,9 +22,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
-    QSplitter,
     QStackedWidget,
-    QTabBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -63,7 +61,7 @@ class _BroadcastView(QWidget):
 
         # Clear-history trash button
         clear = QToolButton(self)
-        clear.setText("🗑")
+        clear.setText("Del")
         clear.setToolTip("Clear history")
         clear.clicked.connect(self._on_clear)
         head.addWidget(clear)
@@ -84,7 +82,7 @@ class _BroadcastView(QWidget):
         self.input.setPlaceholderText("Type a message…")
         self.input.returnPressed.connect(self._on_send)
         canned = QToolButton(self)
-        canned.setText("☰")
+        canned.setText("...")
         canned.setToolTip("Canned messages")
         canned.clicked.connect(self._show_canned_menu)
         send = QPushButton("Send")
@@ -95,6 +93,11 @@ class _BroadcastView(QWidget):
         layout.addLayout(comp)
 
         _schedule(self._reload_async())
+
+    def set_initial_focus(self) -> None:
+        """Focus the compose input so the QMK keyboard can type immediately.
+        Enter sends (already wired via returnPressed)."""
+        self.input.setFocus(Qt.FocusReason.OtherFocusReason)
 
     # ------------------------------------------------------------------
 
@@ -270,39 +273,52 @@ class _BroadcastView(QWidget):
 
 
 class _DmView(QWidget):
-    """Threads list + thread messages + composer."""
+    """Threads list → thread detail as a stacked navigation (no splitter).
+
+    On a 320px screen a horizontal splitter makes both panes too narrow.
+    Instead we use a QStackedWidget: page 0 = thread list, page 1 = conversation.
+    A "Back" button returns to the thread list.
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._peer_id: str | None = None
 
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(0)
 
-        split = QSplitter(Qt.Orientation.Horizontal, self)
-        layout.addWidget(split, 1)
+        self._stack = QStackedWidget(self)
+        layout.addWidget(self._stack, 1)
 
-        # Left: threads list
-        left = QWidget()
-        ll = QVBoxLayout(left)
-        ll.setContentsMargins(0, 0, 0, 0)
-        ll.setSpacing(2)
-        ll.addWidget(QLabel("Threads"))
-        self.threads = QListWidget(left)
-        self.threads.itemSelectionChanged.connect(self._on_thread_selected)
-        ll.addWidget(self.threads, 1)
-        split.addWidget(left)
+        # Page 0: threads list
+        threads_page = QWidget()
+        tl = QVBoxLayout(threads_page)
+        tl.setContentsMargins(0, 0, 0, 0)
+        tl.setSpacing(2)
+        tl.addWidget(QLabel("Threads"))
+        self.threads = QListWidget(threads_page)
+        self.threads.itemClicked.connect(self._on_thread_selected_item)
+        tl.addWidget(self.threads, 1)
+        self._stack.addWidget(threads_page)
 
-        # Right: thread + composer
-        right = QWidget()
-        rl = QVBoxLayout(right)
+        # Page 1: conversation + composer
+        conv_page = QWidget()
+        rl = QVBoxLayout(conv_page)
         rl.setContentsMargins(0, 0, 0, 0)
         rl.setSpacing(2)
+
+        head = QHBoxLayout()
+        back_btn = QPushButton("<")
+        back_btn.setFixedSize(36, 36)
+        back_btn.clicked.connect(lambda: self._stack.setCurrentIndex(0))
+        head.addWidget(back_btn)
         self.peer_lbl = QLabel("(select a thread)")
         self.peer_lbl.setProperty("role", "muted")
-        rl.addWidget(self.peer_lbl)
-        self.msgs = QListWidget(right)
+        head.addWidget(self.peer_lbl, 1)
+        rl.addLayout(head)
+
+        self.msgs = QListWidget(conv_page)
         self.msgs.setUniformItemSizes(True)
         f = self.msgs.font()
         f.setFamily("monospace")
@@ -310,19 +326,28 @@ class _DmView(QWidget):
         rl.addWidget(self.msgs, 1)
 
         comp = QHBoxLayout()
-        self.input = QLineEdit(right)
-        self.input.setPlaceholderText("Type a DM…")
+        self.input = QLineEdit(conv_page)
+        self.input.setPlaceholderText("Type a DM...")
         self.input.returnPressed.connect(self._on_send)
         send = QPushButton("Send")
         send.clicked.connect(self._on_send)
         comp.addWidget(self.input, 1)
         comp.addWidget(send)
         rl.addLayout(comp)
-        split.addWidget(right)
-        # 1/3 threads, 2/3 messages on a 480 px screen.
-        split.setSizes([160, 320])
+        self._stack.addWidget(conv_page)
 
         _schedule(self._reload_threads())
+
+    def set_initial_focus(self) -> None:
+        """If we're on the threads list, focus that (so Up/Down/Enter can
+        pick a thread without auto-opening the VKB). If a conversation is
+        already open, focus the compose input."""
+        if self._stack.currentIndex() == 0:
+            self.threads.setFocus(Qt.FocusReason.OtherFocusReason)
+            if self.threads.count() > 0 and self.threads.currentRow() < 0:
+                self.threads.setCurrentRow(0)
+        else:
+            self.input.setFocus(Qt.FocusReason.OtherFocusReason)
 
     # ------------------------------------------------------------------
 
@@ -353,14 +378,13 @@ class _DmView(QWidget):
                 item.setFont(f)
             self.threads.addItem(item)
 
-    @Slot()
-    def _on_thread_selected(self) -> None:
-        items = self.threads.selectedItems()
-        if not items:
+    def _on_thread_selected_item(self, item: QListWidgetItem) -> None:
+        peer = item.data(Qt.ItemDataRole.UserRole)
+        if not peer:
             return
-        peer = items[0].data(Qt.ItemDataRole.UserRole)
         self._peer_id = peer
         self.peer_lbl.setText(peer or "")
+        self._stack.setCurrentIndex(1)
         _schedule(self._load_messages(peer))
 
     async def _load_messages(self, peer: str) -> None:
@@ -421,12 +445,23 @@ class Page(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(2)
 
-        # Mode tabs at the top: Broadcast / DMs.
-        self._tabs = QTabBar(self)
-        self._tabs.addTab("Broadcast")
-        self._tabs.addTab("DMs")
-        self._tabs.currentChanged.connect(self._on_tab_changed)
-        layout.addWidget(self._tabs)
+        # Mode toggle at the top: Broadcast / DMs — QPushButtons for
+        # visual consistency with the rest of the app (QTabBar has its own
+        # styling that doesn't match the dark theme).
+        tab_row = QHBoxLayout()
+        tab_row.setSpacing(0)
+        tab_row.setContentsMargins(4, 2, 4, 2)
+        self._btn_broadcast = QPushButton("Broadcast")
+        self._btn_dm = QPushButton("DMs")
+        for btn in (self._btn_broadcast, self._btn_dm):
+            btn.setCheckable(True)
+            btn.setMinimumHeight(36)
+        self._btn_broadcast.setChecked(True)
+        self._btn_broadcast.clicked.connect(lambda: self._on_tab_changed(0))
+        self._btn_dm.clicked.connect(lambda: self._on_tab_changed(1))
+        tab_row.addWidget(self._btn_broadcast, 1)
+        tab_row.addWidget(self._btn_dm, 1)
+        layout.addLayout(tab_row)
 
         self._stack = QStackedWidget(self)
         self._broadcast = _BroadcastView(self._stack)
@@ -439,11 +474,20 @@ class Page(QWidget):
             eventbus.message_received.connect(self._on_incoming)
             eventbus.ack_received.connect(self._broadcast.on_ack)
 
+    def set_initial_focus(self) -> None:
+        """Delegate to the active sub-view's set_initial_focus()."""
+        current = self._stack.currentWidget()
+        fn = getattr(current, "set_initial_focus", None)
+        if callable(fn):
+            fn()
+
     @Slot(int)
     def _on_tab_changed(self, idx: int) -> None:
         self._stack.setCurrentIndex(idx)
+        self._btn_broadcast.setChecked(idx == 0)
+        self._btn_dm.setChecked(idx == 1)
         if idx == 1:
-            self._dm.reload()  # refresh threads each time DM tab is opened
+            self._dm.reload()
 
     @Slot(dict)
     def _on_incoming(self, event: dict) -> None:

@@ -208,6 +208,10 @@ class VkbController(QObject):
         super().__init__(host)
         self._host = host
         self._target: QWidget | None = None
+        # When False, focus on a text widget will NOT auto-show the keyboard.
+        # Toggled by F24 shortcut so a user with a physical keyboard can
+        # suppress the on-screen one without setting PIMESH_GUI_NO_VKB.
+        self._enabled: bool = True
 
         self._kbd = VirtualKeyboard(parent=host)
         self._kbd.hide()
@@ -241,8 +245,9 @@ class VkbController(QObject):
     def _on_focus_changed(self, old: QWidget | None, new: QWidget | None) -> None:
         if isinstance(new, (QLineEdit, QPlainTextEdit, QTextEdit)):
             self._target = new
-            self._reposition()
-            self._kbd.show()
+            if self._enabled:
+                self._reposition()
+                self._kbd.show()
         else:
             # Hide only if focus left a text widget (clicking on the VKB
             # itself transfers focus to a button, but the buttons have
@@ -252,6 +257,21 @@ class VkbController(QObject):
     def hide_keyboard(self) -> None:
         self._target = None
         self._kbd.hide()
+
+    def toggle(self) -> bool:
+        """Enable/disable the auto-show-on-focus behavior. Returns new state.
+
+        When disabling, any currently visible keyboard is hidden right away
+        so the user gets immediate feedback. When re-enabling, the keyboard
+        will reappear on the next text-widget focus.
+        """
+        self._enabled = not self._enabled
+        if not self._enabled:
+            self._kbd.hide()
+        return self._enabled
+
+    def is_enabled(self) -> bool:
+        return self._enabled
 
     # ------------------------------------------------------------------
 

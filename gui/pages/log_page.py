@@ -42,19 +42,39 @@ _MAX_LINES = 2000
 def format_log_line(event: dict) -> str:
     """Render a log event dict as a single human-readable line.
 
-    Mirrors the columns shown in the existing web UI: time placeholder
-    delegated to the GUI clock, then "from • SNR • portnum • details".
+    Columns: ``HH:MM:SS  from · SNR · PORT · payload-summary [hops=N]``.
+
+    The ``summary`` field comes pre-built from ``meshtasticd_client``
+    (battery/voltage for TELEMETRY, lat/lon for POSITION, text for chat,
+    etc.). Before this commit we ignored it, so every TELEMETRY line
+    rendered identically as "… · SNR ? · TELEMETRY_APP hops=3" even when
+    the payloads were materially different. The portnum is also shortened
+    (TELEMETRY_APP → TELEMETRY) to make room for the summary on the
+    320px-wide screen.
     """
+    ts = event.get("ts")
+    ts_s = ""
+    if isinstance(ts, (int, float)) and ts > 0:
+        from datetime import datetime
+        ts_s = datetime.fromtimestamp(ts).strftime("%H:%M:%S") + " "
+
     src = event.get("from") or event.get("id") or "?"
     snr = event.get("snr")
     snr_s = f"SNR {snr:+.1f}" if isinstance(snr, (int, float)) else "SNR ?"
+
     port = event.get("portnum") or event.get("decoded_portnum") or "?"
-    extra = ""
+    short_port = port.replace("_APP", "") if isinstance(port, str) else port
+
+    summary = event.get("summary") or ""
+    if not summary and event.get("text"):
+        summary = event["text"]
+
+    line = f"{ts_s}{src} · {snr_s} · {short_port}"
+    if summary:
+        line += f" · {summary}"
     if event.get("hop_limit") is not None:
-        extra += f" hops={event['hop_limit']}"
-    if event.get("text"):
-        extra += f" \"{event['text']}\""
-    return f"{src} · {snr_s} · {port}{extra}"
+        line += f" [hops={event['hop_limit']}]"
+    return line
 
 
 class Page(QWidget):
@@ -109,8 +129,11 @@ class Page(QWidget):
         self._view = QPlainTextEdit(self)
         self._view.setReadOnly(True)
         self._view.setMaximumBlockCount(_MAX_LINES)
-        self._view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self._view.setWordWrapMode(QTextOption.WrapMode.NoWrap)
+        # Wrap long lines so the full payload summary stays visible on the
+        # 480px-wide kiosk display. Was NoWrap which forced the user to
+        # scroll horizontally and pushed the timestamp prefix off-screen.
+        self._view.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self._view.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
         f = self._view.font()
         f.setFamily("monospace")
         self._view.setFont(f)
@@ -120,6 +143,11 @@ class Page(QWidget):
 
         if eventbus is not None:
             eventbus.log_line.connect(self._on_event)
+
+    def set_initial_focus(self) -> None:
+        """Focus the read-only log view so PgUp/PgDn/arrows scroll
+        through the log lines via QPlainTextEdit's native handling."""
+        self._view.setFocus(Qt.FocusReason.OtherFocusReason)
 
     # ------------------------------------------------------------------
 
