@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>pi-Mesh</title>
-  <script src="/static/tailwind.js"></script>
+  <!-- Tailwind precompilato (build one-off: vedi docs/DEVELOPMENT nel README).
+       Sostituisce il runtime Play CDN da 407KB che compilava a ogni load. -->
+  <link rel="stylesheet" href="/static/tailwind.css">
   <script defer src="/static/alpine.min.js"></script>
   <style>
     :root {
@@ -32,6 +34,17 @@
     select option { color: var(--text) !important; background: var(--bg) !important; }
     .tab-active { color: var(--accent); }
     .tab-active svg { stroke: var(--accent); }
+    /* Controlli form condivisi — usati dalle macro in templates/_forms.html */
+    .section-head { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+    .cfg-col   { display: flex; flex-direction: column; gap: 8px; }
+    .cfg-row   { display: flex; gap: 8px; flex-wrap: wrap; }
+    .cfg-field { display: flex; flex-direction: column; gap: 3px; }
+    .cfg-label { font-size: 10px; color: var(--muted); }
+    .cfg-input { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 7px 8px; font-size: 12px; }
+    .cfg-check { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    .cfg-status { font-size: 10px; color: #4caf50; }
+    .btn-accent { background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: 7px 14px; font-size: 12px; cursor: pointer; align-self: flex-start; }
+    .hint { font-size: 10px; color: var(--muted); }
   </style>
   <script>window.MAP_LOCAL_TILES = "{{ map_local_tiles }}";</script>
   <script>

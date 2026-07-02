@@ -436,6 +436,17 @@ pytest tests/ -v
 
 All tests run without hardware — serial, Meshtastic, and DB are mocked.
 
+### Web UI structure
+
+- `templates/base.html` — shell (status bar, tab bar, themes, shared `.cfg-*` form classes)
+- `templates/_forms.html` — Jinja macros for form controls (`text`, `number`, `select`, `toggle`, `save`); new config sections should use these
+- `templates/config/_board.html`, `_pi.html`, `_ui.html` — config sections split by sidebar group; page logic lives in `static/config.js`
+- `static/tailwind.css` — **pre-built** Tailwind (no runtime on the Pi). After adding new Tailwind utility classes to templates or JS, regenerate it with:
+
+```bash
+bash scripts/build-tailwind.sh   # requires Node, dev machine only
+```
+
 ### Deploy to Pi
 
 ```bash

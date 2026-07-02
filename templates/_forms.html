@@ -1,0 +1,48 @@
+{# _forms.html — macro Jinja per i controlli form della UI web.
+   Le classi .cfg-* / .btn-accent / .section-head sono definite in base.html.
+
+   Uso:
+     {% import '_forms.html' as f %}
+     {{ f.section_title('LoRa') }}
+     <div class="cfg-col">
+       {{ f.toggle('lora.enabled', 'Abilitato') }}
+       {{ f.number('lora.hops', 'Hop limit', width='80px') }}
+       {{ f.save('/api/config/lora', 'lora') }}
+     </div>
+#}
+
+{% macro section_title(text) -%}
+<div class="section-head">{{ text }}</div>
+{%- endmacro %}
+
+{% macro text(model, label, width='240px', type='text', placeholder='') -%}
+<div class="cfg-field">
+  <label class="cfg-label">{{ label }}</label>
+  <input type="{{ type }}" x-model="{{ model }}"{% if placeholder %} placeholder="{{ placeholder }}"{% endif %} class="cfg-input" style="max-width:{{ width }};">
+</div>
+{%- endmacro %}
+
+{% macro number(model, label, width='100px', step='', min='', max='') -%}
+<div class="cfg-field">
+  <label class="cfg-label">{{ label }}</label>
+  <input type="number"{% if step %} step="{{ step }}"{% endif %}{% if min != '' %} min="{{ min }}"{% endif %}{% if max != '' %} max="{{ max }}"{% endif %} x-model.number="{{ model }}" class="cfg-input" style="width:{{ width }};">
+</div>
+{%- endmacro %}
+
+{% macro toggle(model, label) -%}
+<label class="cfg-check"><input type="checkbox" x-model="{{ model }}"> {{ label }}</label>
+{%- endmacro %}
+
+{% macro select(model, label, options) -%}
+<div class="cfg-field">
+  <label class="cfg-label">{{ label }}</label>
+  <select x-model="{{ model }}" class="cfg-input" style="max-width:240px;">
+    {% for o in options %}<option>{{ o }}</option>{% endfor %}
+  </select>
+</div>
+{%- endmacro %}
+
+{% macro save(endpoint, model) -%}
+<button @click="saveModule('{{ endpoint }}', {{ model }})" class="btn-accent">Salva</button>
+<div x-show="moduleStatus" x-text="moduleStatus" class="cfg-status"></div>
+{%- endmacro %}
