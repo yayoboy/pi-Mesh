@@ -139,7 +139,8 @@ nano config.env.local
 Key settings:
 
 ```env
-# USB serial port of the Meshtastic radio
+# USB serial port of the Meshtastic radio (any board model),
+# or tcp://host[:port] for meshtasticd (native LoRa HAT) / remote boards
 SERIAL_PATH=/dev/ttyACM0
 
 # SQLite database path

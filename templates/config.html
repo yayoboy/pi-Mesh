@@ -1187,6 +1187,200 @@
       </div>
     </template>
 
+    <!-- POSITION (device) -->
+    <template x-if="section === 'position'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Posizione / GPS</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Modalità GPS</label>
+            <select x-model="devPosition.gps_mode" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+              <option>DISABLED</option><option>ENABLED</option><option>NOT_PRESENT</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Broadcast posizione (s, 0=default)</label>
+            <input type="number" x-model.number="devPosition.position_broadcast_secs" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="devPosition.position_broadcast_smart_enabled"> Smart broadcast</label>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Intervallo update GPS (s, 0=default)</label>
+            <input type="number" x-model.number="devPosition.gps_update_interval" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="devPosition.fixed_position"> Posizione fissa</label>
+          <div x-show="devPosition.fixed_position" style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:10px;color:var(--muted);">Lat</label>
+              <input type="number" step="0.000001" x-model.number="devPosition.fixed_lat" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:110px;">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:10px;color:var(--muted);">Lon</label>
+              <input type="number" step="0.000001" x-model.number="devPosition.fixed_lon" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:110px;">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:10px;color:var(--muted);">Alt (m)</label>
+              <input type="number" x-model.number="devPosition.fixed_alt" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:70px;">
+            </div>
+          </div>
+          <button @click="saveModule('/api/config/device/position', devPosition)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">Salva</button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- POWER (device) -->
+    <template x-if="section === 'power'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Power</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="devPower.is_power_saving"> Power saving</label>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Spegni dopo (s su batteria, 0=mai)</label>
+            <input type="number" x-model.number="devPower.on_battery_shutdown_after_secs" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Wait bluetooth (s)</label>
+            <input type="number" x-model.number="devPower.wait_bluetooth_secs" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:10px;color:var(--muted);">Super deep sleep (s)</label>
+              <input type="number" x-model.number="devPower.sds_secs" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:10px;color:var(--muted);">Light sleep (s)</label>
+              <input type="number" x-model.number="devPower.ls_secs" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:10px;color:var(--muted);">Min wake (s)</label>
+              <input type="number" x-model.number="devPower.min_wake_secs" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+            </div>
+          </div>
+          <button @click="saveModule('/api/config/device/power', devPower)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">Salva</button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- DISPLAY OLED (device) -->
+    <template x-if="section === 'devdisplay'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Schermo board (OLED)</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Screen on (s, 0=default)</label>
+            <input type="number" x-model.number="devDisplay.screen_on_secs" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Carosello schermate (s, 0=off)</label>
+            <input type="number" x-model.number="devDisplay.auto_screen_carousel_secs" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:100px;">
+          </div>
+          <div style="display:flex;gap:8px;">
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:10px;color:var(--muted);">Unità</label>
+              <select x-model="devDisplay.units" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+                <option>METRIC</option><option>IMPERIAL</option>
+              </select>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:10px;color:var(--muted);">Display mode</label>
+              <select x-model="devDisplay.displaymode" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+                <option>DEFAULT</option><option>TWOCOLOR</option><option>INVERTED</option><option>COLOR</option>
+              </select>
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="devDisplay.flip_screen"> Schermo capovolto</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="devDisplay.compass_north_top"> Bussola nord in alto</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="devDisplay.heading_bold"> Heading bold</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="devDisplay.wake_on_tap_or_motion"> Wake su tap/movimento</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="devDisplay.use_12h_clock"> Orologio 12h</label>
+          <button @click="saveModule('/api/config/device/display', devDisplay)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">Salva</button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- NETWORK (device) -->
+    <template x-if="section === 'network'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Rete board (WiFi/Eth)</div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:8px;">Configura la rete della board Meshtastic, non quella del Raspberry (per quella: Pi → WiFi).</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="devNetwork.wifi_enabled"> WiFi abilitato</label>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">SSID</label>
+            <input type="text" x-model="devNetwork.wifi_ssid" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;max-width:240px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Password</label>
+            <input type="password" x-model="devNetwork.wifi_psk" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;max-width:240px;">
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="devNetwork.eth_enabled"> Ethernet abilitata</label>
+          <div style="display:flex;gap:8px;">
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <label style="font-size:10px;color:var(--muted);">Address mode</label>
+              <select x-model="devNetwork.address_mode" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+                <option>DHCP</option><option>STATIC</option>
+              </select>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;flex:1;">
+              <label style="font-size:10px;color:var(--muted);">Server NTP</label>
+              <input type="text" x-model="devNetwork.ntp_server" placeholder="meshtastic.pool.ntp.org" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;max-width:200px;">
+            </div>
+          </div>
+          <button @click="saveModule('/api/config/device/network', devNetwork)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">Salva</button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- BLUETOOTH (device) -->
+    <template x-if="section === 'bluetooth'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Bluetooth board</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="devBluetooth.enabled"> Abilitato</label>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Pairing</label>
+            <select x-model="devBluetooth.mode" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+              <option>RANDOM_PIN</option><option>FIXED_PIN</option><option>NO_PIN</option>
+            </select>
+          </div>
+          <div x-show="devBluetooth.mode === 'FIXED_PIN'" style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">PIN fisso (6 cifre)</label>
+            <input type="number" x-model.number="devBluetooth.fixed_pin" style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;width:110px;">
+          </div>
+          <button @click="saveModule('/api/config/device/bluetooth', devBluetooth)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">Salva</button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- SECURITY (device) -->
+    <template x-if="section === 'security'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Sicurezza</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:10px;color:var(--muted);">Chiave pubblica (sola lettura)</label>
+            <input type="text" :value="devSecurity.public_key_b64" readonly style="background:var(--panel);color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:10px;font-family:monospace;max-width:340px;">
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="devSecurity.serial_enabled"> Console seriale abilitata</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="devSecurity.admin_channel_enabled"> Admin via canale legacy</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" x-model="devSecurity.debug_log_api_enabled"> Debug log API</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#ff9800;"><input type="checkbox" x-model="devSecurity.is_managed"> Nodo gestito (is_managed) — blocca le modifiche locali!</label>
+          <button @click="saveModule('/api/config/device/security', devSecurity)"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 14px;font-size:12px;cursor:pointer;align-self:flex-start;">Salva</button>
+          <div x-show="moduleStatus" x-text="moduleStatus" style="font-size:10px;color:#4caf50;"></div>
+        </div>
+      </div>
+    </template>
+
   </div><!-- /CONTENT -->
 
     <!-- Factory Reset Modal -->
@@ -1267,6 +1461,9 @@ function configPage() {
     groups: [
       { id: 'board', label: 'Board', sections: [
         { id: 'node', label: 'Nodo' }, { id: 'lora', label: 'LoRa' }, { id: 'channels', label: 'Canali' },
+        { id: 'position', label: 'Posizione' }, { id: 'power', label: 'Power' },
+        { id: 'devdisplay', label: 'Schermo' }, { id: 'network', label: 'Rete' },
+        { id: 'bluetooth', label: 'Bluetooth' }, { id: 'security', label: 'Sicurezza' },
         { id: 'mqtt', label: 'MQTT' }, { id: 'alert', label: 'Alert' },
         { id: 'extnotif', label: 'ExtNotif' }, { id: 'sf', label: 'S&F' }, { id: 'telmod', label: 'Telemetry' },
         { id: 'cannedmod', label: 'CannedMod' }, { id: 'rangetest', label: 'RangeTest' },
@@ -1303,6 +1500,8 @@ function configPage() {
     cannedStatus: '',
     extNotif: {}, storeForward: {}, telMod: {}, cannedMod: {},
     rangeTest: {}, detSensor: {}, ambLight: {}, neighInfo: {}, serialMod: {},
+    devPosition: {}, devPower: {}, devDisplay: {}, devNetwork: {},
+    devBluetooth: {}, devSecurity: {},
     moduleStatus: '',
 
     loaded: { node: false, lora: false, channels: false },
@@ -1337,6 +1536,17 @@ function configPage() {
       if (s === 'ambilight') await this.loadAmbLight()
       if (s === 'neighinfo') await this.loadNeighInfo()
       if (s === 'serial')    await this.loadSerialMod()
+      if (s === 'position')  await this.loadDevSection('position', 'devPosition')
+      if (s === 'power')     await this.loadDevSection('power', 'devPower')
+      if (s === 'devdisplay') await this.loadDevSection('display', 'devDisplay')
+      if (s === 'network')   await this.loadDevSection('network', 'devNetwork')
+      if (s === 'bluetooth') await this.loadDevSection('bluetooth', 'devBluetooth')
+      if (s === 'security')  await this.loadDevSection('security', 'devSecurity')
+    },
+
+    async loadDevSection(endpoint, prop) {
+      const r = await fetch(`/api/config/device/${endpoint}`)
+      if (r.ok) this[prop] = await r.json()
     },
 
     async loadNode() {
