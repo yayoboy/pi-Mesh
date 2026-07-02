@@ -109,7 +109,8 @@ A touch-friendly web dashboard for [Meshtastic](https://meshtastic.org/) LoRa me
 |-----------|---------|
 | Raspberry Pi 3 A+ or newer | 512 MB RAM minimum |
 | Meshtastic radio | Connected via USB — Heltec V3/V4, T-Beam, RAK, etc. |
-| 3.5" 320×480 touchscreen | Portrait and landscape layouts both supported |
+| 3.5" 320×480 touchscreen | SPI (fbtft) — portrait and landscape layouts both supported |
+| **or** HDMI display | GPU-accelerated kiosk via KMS + cog/WPE — see [Display HDMI](#7--hdmi-display-gpu-accelerated-kiosk) |
 
 > Pi-Mesh talks directly to the radio via `meshtastic.SerialInterface`. The `meshtasticd` daemon is **not required** for ESP32-based boards.
 
@@ -138,7 +139,8 @@ nano config.env.local
 Key settings:
 
 ```env
-# USB serial port of the Meshtastic radio
+# USB serial port of the Meshtastic radio (any board model),
+# or tcp://host[:port] for meshtasticd (native LoRa HAT) / remote boards
 SERIAL_PATH=/dev/ttyACM0
 
 # SQLite database path
@@ -237,6 +239,55 @@ See the porting plan at:
 - `docs/plans/2026-05-07-qt-gui-port-design.md` — architecture and stack.
 - `docs/plans/2026-05-07-qt-gui-port-implementation.md` — task-by-task plan.
 - `docs/plans/2026-05-07-qt-gui-port-feature-parity.md` — feature inventory.
+
+### 7 — HDMI display (GPU-accelerated kiosk)
+
+Instead of the SPI touchscreen, the web UI can run full screen on an HDMI
+display with real GPU acceleration: the vc4 KMS driver drives the display at
+60 Hz (no SPI bottleneck, no tearing, no fbtft kernel thread eating CPU) and
+**cog** — the WPE WebKit kiosk browser — composites scrolling, CSS animations
+and the Leaflet map on the GPU. No X server involved: cog talks directly to
+KMS/DRM, which keeps the RAM budget close to the surf+X11 kiosk even on a
+512 MB Pi 3 A+.
+
+| 1024×600 (7" touch, scale 2) | 1920×1080 (scale 2, multi-column) |
+|---|---|
+| ![Nodes HDMI 1024×600](docs/screenshots/hdmi-1024x600-nodes.png) | ![Nodes HDMI 1080p](docs/screenshots/hdmi-1080p-nodes.png) |
+| ![Messages HDMI 1024×600](docs/screenshots/hdmi-1024x600-messages.png) | ![Metrics HDMI 1080p](docs/screenshots/hdmi-1080p-metrics.png) |
+
+**Setup** (installs cog, enables `vc4-kms-v3d` with a reduced CMA pool,
+disables the SPI overlay, installs `kiosk-hdmi.service`):
+
+```bash
+sudo bash scripts/setup-display-hdmi.sh
+sudo reboot
+```
+
+**How it scales.** The UI is designed around a ~512 CSS px landscape layout.
+`start-kiosk-hdmi.sh` reads the native mode from `/sys/class/drm` and picks a
+`cog --scale` factor automatically: a 1024×600 panel runs at scale 2 (same
+density as the SPI layout, but crisp), a 1080p monitor runs at scale 2 with a
+960 px viewport where the UI switches to multi-column layouts (wider node
+list, 3-column metrics grid, capped config forms). Override in `config.env`
+with `PIMESH_HDMI_SCALE=1.5`.
+
+**RAM notes (512 MB).** KMS reserves a CMA pool for GPU buffers; the setup
+script pins it to 96 MB (`PIMESH_CMA` to change) instead of the default
+256 MB+, and comments out `gpu_mem` (ignored under KMS). Dropping X11 +
+matchbox roughly offsets the CMA cost versus the surf kiosk. Chromium-based
+kiosks are **not** viable in 512 MB.
+
+**Coexistence.** `kiosk-hdmi.service` declares
+`Conflicts=kiosk.service pimesh-gui.service` — only one frontend runs at a
+time. The SPI kiosk stays installed; to go back:
+
+```bash
+sudo bash scripts/setup-display-hdmi.sh --uninstall
+# restore the config.txt backup printed by the script, then reboot
+```
+
+Rotation from the status bar UI only applies to the SPI display (`tft35a`
+overlay); on HDMI, rotate the monitor or set a `video=` kernel parameter.
 
 ---
 
@@ -384,6 +435,17 @@ pytest tests/ -v
 ```
 
 All tests run without hardware — serial, Meshtastic, and DB are mocked.
+
+### Web UI structure
+
+- `templates/base.html` — shell (status bar, tab bar, themes, shared `.cfg-*` form classes)
+- `templates/_forms.html` — Jinja macros for form controls (`text`, `number`, `select`, `toggle`, `save`); new config sections should use these
+- `templates/config/_board.html`, `_pi.html`, `_ui.html` — config sections split by sidebar group; page logic lives in `static/config.js`
+- `static/tailwind.css` — **pre-built** Tailwind (no runtime on the Pi). After adding new Tailwind utility classes to templates or JS, regenerate it with:
+
+```bash
+bash scripts/build-tailwind.sh   # requires Node, dev machine only
+```
 
 ### Deploy to Pi
 

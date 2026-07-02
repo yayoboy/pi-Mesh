@@ -236,13 +236,32 @@ async def get_mqtt_config(db_path: str) -> dict:
     }
 
 
+_LOCAL_CONFIG_SECTIONS = frozenset(
+    {'device', 'position', 'power', 'network', 'display', 'lora', 'bluetooth', 'security'})
+
+
+def _write_local_config(section: str, updates: dict) -> None:
+    """Apply updates in place to localConfig/moduleConfig.<section>, then
+    persist with writeConfig().
+
+    In-place mutation preserves every field we are not changing (a freshly
+    built protobuf would silently zero them), and writeConfig() is the write
+    API that actually exists in meshtastic 2.x — Node.setConfig does not.
+    """
+    node = _interface.localNode
+    root = node.localConfig if section in _LOCAL_CONFIG_SECTIONS else node.moduleConfig
+    target = getattr(root, section)
+    for key, value in updates.items():
+        setattr(target, key, value)
+    node.writeConfig(section)
+
+
 def _do_set_node_config(long_name: str, short_name: str, role: str) -> None:
     """Sync helper — runs in command queue thread."""
     _interface.localNode.setOwner(long_name, short_name)
     from meshtastic.protobuf import config_pb2
     role_val = config_pb2.Config.DeviceConfig.Role.Value(role)
-    dev_cfg = config_pb2.Config.DeviceConfig(role=role_val)
-    _interface.localNode.setConfig(config_pb2.Config(device=dev_cfg))
+    _write_local_config('device', {'role': role_val})
 
 
 async def set_node_config(long_name: str, short_name: str, role: str) -> None:
@@ -258,8 +277,7 @@ def _do_set_lora_config(region: str, preset: str) -> None:
     from meshtastic.protobuf import config_pb2
     region_val = config_pb2.Config.LoRaConfig.RegionCode.Value(region)
     preset_val = config_pb2.Config.LoRaConfig.ModemPreset.Value(preset)
-    lora_cfg = config_pb2.Config.LoRaConfig(region=region_val, modem_preset=preset_val)
-    _interface.localNode.setConfig(config_pb2.Config(lora=lora_cfg))
+    _write_local_config('lora', {'region': region_val, 'modem_preset': preset_val})
 
 
 async def set_lora_config(region: str, preset: str) -> None:
@@ -309,42 +327,26 @@ async def send_admin(dest_node_id: str, operation: str, payload: dict | None = N
     _op = operation
 
     def _do():
-        from meshtastic.protobuf import admin_pb2, portnums_pb2
         try:
-            dest_num = int(_dest.lstrip('!'), 16)
+            int(_dest.lstrip('!'), 16)
         except ValueError:
             raise RuntimeError(f'Invalid node id: {_dest}')
 
         if _op == 'request_position':
-            _interface.localNode.sendPosition(destinationId=_dest, wantResponse=True)
+            _interface.sendPosition(destinationId=_dest, wantResponse=True)
         elif _op == 'request_telemetry':
-            # Send empty admin message to trigger telemetry response
-            admin_msg = admin_pb2.AdminMessage()
-            admin_msg.get_device_metadata_request = True
-            _interface.sendData(
-                admin_msg.SerializeToString(),
-                destinationId=_dest,
-                portNum=portnums_pb2.PortNum.ADMIN_APP,
-                wantAck=True,
-            )
-        elif _op == 'reboot':
-            admin_msg = admin_pb2.AdminMessage()
-            admin_msg.reboot_seconds = 2
-            _interface.sendData(
-                admin_msg.SerializeToString(),
-                destinationId=_dest,
-                portNum=portnums_pb2.PortNum.ADMIN_APP,
-                wantAck=True,
-            )
-        elif _op == 'factory_reset':
-            admin_msg = admin_pb2.AdminMessage()
-            admin_msg.factory_reset = 1
-            _interface.sendData(
-                admin_msg.SerializeToString(),
-                destinationId=_dest,
-                portNum=portnums_pb2.PortNum.ADMIN_APP,
-                wantAck=True,
-            )
+            _interface.sendTelemetry(destinationId=_dest, wantResponse=True)
+        elif _op in ('reboot', 'factory_reset'):
+            # getNode() gives a Node whose admin sends go through
+            # ensureSessionKey(): required by firmware 2.5+ (PKC/session
+            # passkey) — raw AdminMessages on ADMIN_APP get rejected there.
+            # Channels are not needed for these operations, skip the
+            # (slow) remote channel fetch.
+            node = _interface.getNode(_dest, requestChannels=False)
+            if _op == 'reboot':
+                node.reboot(secs=2)
+            else:
+                node.factoryReset()
         else:
             raise RuntimeError(f'Unknown admin operation: {_op}')
 
@@ -353,22 +355,18 @@ async def send_admin(dest_node_id: str, operation: str, payload: dict | None = N
 
 def _do_set_mqtt_config(params: dict) -> None:
     """Sync helper — runs in command queue thread."""
-    from meshtastic.protobuf import module_config_pb2
-    mqtt_cfg = module_config_pb2.ModuleConfig.MQTTConfig(
-        enabled=params.get('enabled', False),
-        address=params.get('address', ''),
-        username=params.get('username', ''),
-        password=params.get('password', ''),
-        encryption_enabled=params.get('encryption_enabled', False),
-        json_enabled=params.get('json_enabled', False),
-        tls_enabled=params.get('tls_enabled', False),
-        root=params.get('root', ''),
-        proxy_to_client_enabled=params.get('proxy_to_client_enabled', False),
-        map_reporting_enabled=params.get('map_reporting_enabled', False),
-    )
-    _interface.localNode.setConfig(
-        module_config_pb2.ModuleConfig(mqtt=mqtt_cfg)
-    )
+    _write_local_config('mqtt', {
+        'enabled': params.get('enabled', False),
+        'address': params.get('address', ''),
+        'username': params.get('username', ''),
+        'password': params.get('password', ''),
+        'encryption_enabled': params.get('encryption_enabled', False),
+        'json_enabled': params.get('json_enabled', False),
+        'tls_enabled': params.get('tls_enabled', False),
+        'root': params.get('root', ''),
+        'proxy_to_client_enabled': params.get('proxy_to_client_enabled', False),
+        'map_reporting_enabled': params.get('map_reporting_enabled', False),
+    })
 
 
 async def set_mqtt_config(params: dict) -> None:
@@ -410,17 +408,15 @@ async def get_external_notification_config(db_path: str) -> dict:
 
 
 def _do_set_external_notification_config(params: dict) -> None:
-    from meshtastic.protobuf import module_config_pb2
-    cfg = module_config_pb2.ModuleConfig.ExternalNotificationConfig(
-        enabled=params.get('enabled', False),
-        output_pin=params.get('output_pin', 0),
-        active_high=params.get('active_high', False),
-        alert_message=params.get('alert_message', False),
-        alert_bell=params.get('alert_bell', False),
-        use_pwm=params.get('use_pwm', False),
-        nag_timeout=params.get('nag_timeout', 0),
-    )
-    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(external_notification=cfg))
+    _write_local_config('external_notification', {
+        'enabled': params.get('enabled', False),
+        'output_pin': params.get('output_pin', 0),
+        'active_high': params.get('active_high', False),
+        'alert_message': params.get('alert_message', False),
+        'alert_bell': params.get('alert_bell', False),
+        'use_pwm': params.get('use_pwm', False),
+        'nag_timeout': params.get('nag_timeout', 0),
+    })
 
 
 async def set_external_notification_config(params: dict) -> None:
@@ -457,14 +453,12 @@ async def get_store_forward_config(db_path: str) -> dict:
 
 
 def _do_set_store_forward_config(params: dict) -> None:
-    from meshtastic.protobuf import module_config_pb2
-    cfg = module_config_pb2.ModuleConfig.StoreAndForwardConfig(
-        enabled=params.get('enabled', False),
-        heartbeat=params.get('heartbeat', False),
-        history_return_max=params.get('history_return_max', 0),
-        history_return_window=params.get('history_return_window', 0),
-    )
-    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(store_forward=cfg))
+    _write_local_config('store_forward', {
+        'enabled': params.get('enabled', False),
+        'heartbeat': params.get('heartbeat', False),
+        'history_return_max': params.get('history_return_max', 0),
+        'history_return_window': params.get('history_return_window', 0),
+    })
 
 
 async def set_store_forward_config(params: dict) -> None:
@@ -503,15 +497,13 @@ async def get_telemetry_module_config(db_path: str) -> dict:
 
 
 def _do_set_telemetry_module_config(params: dict) -> None:
-    from meshtastic.protobuf import module_config_pb2
-    cfg = module_config_pb2.ModuleConfig.TelemetryConfig(
-        device_update_interval=params.get('device_update_interval', 0),
-        environment_update_interval=params.get('environment_update_interval', 0),
-        environment_measurement_enabled=params.get('environment_measurement_enabled', False),
-        air_quality_enabled=params.get('air_quality_enabled', False),
-        power_measurement_enabled=params.get('power_measurement_enabled', False),
-    )
-    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(telemetry=cfg))
+    _write_local_config('telemetry', {
+        'device_update_interval': params.get('device_update_interval', 0),
+        'environment_update_interval': params.get('environment_update_interval', 0),
+        'environment_measurement_enabled': params.get('environment_measurement_enabled', False),
+        'air_quality_enabled': params.get('air_quality_enabled', False),
+        'power_measurement_enabled': params.get('power_measurement_enabled', False),
+    })
 
 
 async def set_telemetry_module_config(params: dict) -> None:
@@ -547,13 +539,11 @@ async def get_canned_message_module_config(db_path: str) -> dict:
 
 
 def _do_set_canned_message_module_config(params: dict) -> None:
-    from meshtastic.protobuf import module_config_pb2
-    cfg = module_config_pb2.ModuleConfig.CannedMessageConfig(
-        rotary1_enabled=params.get('rotary1_enabled', False),
-        send_bell=params.get('send_bell', False),
-        free_text_sms_enabled=params.get('free_text_sms_enabled', False),
-    )
-    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(canned_message=cfg))
+    _write_local_config('canned_message', {
+        'rotary1_enabled': params.get('rotary1_enabled', False),
+        'send_bell': params.get('send_bell', False),
+        'free_text_sms_enabled': params.get('free_text_sms_enabled', False),
+    })
 
 
 async def set_canned_message_module_config(params: dict) -> None:
@@ -588,13 +578,11 @@ async def get_range_test_config(db_path: str) -> dict:
 
 
 def _do_set_range_test_config(params: dict) -> None:
-    from meshtastic.protobuf import module_config_pb2
-    cfg = module_config_pb2.ModuleConfig.RangeTestConfig(
-        enabled=params.get('enabled', False),
-        sender=params.get('sender', 0),
-        save=params.get('save', False),
-    )
-    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(range_test=cfg))
+    _write_local_config('range_test', {
+        'enabled': params.get('enabled', False),
+        'sender': params.get('sender', 0),
+        'save': params.get('save', False),
+    })
 
 
 async def set_range_test_config(params: dict) -> None:
@@ -635,17 +623,15 @@ async def get_detection_sensor_config(db_path: str) -> dict:
 
 
 def _do_set_detection_sensor_config(params: dict) -> None:
-    from meshtastic.protobuf import module_config_pb2
-    cfg = module_config_pb2.ModuleConfig.DetectionSensorConfig(
-        enabled=params.get('enabled', False),
-        minimum_broadcast_secs=params.get('minimum_broadcast_secs', 0),
-        state_broadcast_secs=params.get('state_broadcast_secs', 0),
-        name=params.get('name', ''),
-        monitor_pin=params.get('monitor_pin', 0),
-        use_pullup=params.get('use_pullup', False),
-        detection_triggered_high=params.get('detection_triggered_high', False),
-    )
-    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(detection_sensor=cfg))
+    _write_local_config('detection_sensor', {
+        'enabled': params.get('enabled', False),
+        'minimum_broadcast_secs': params.get('minimum_broadcast_secs', 0),
+        'state_broadcast_secs': params.get('state_broadcast_secs', 0),
+        'name': params.get('name', ''),
+        'monitor_pin': params.get('monitor_pin', 0),
+        'use_pullup': params.get('use_pullup', False),
+        'detection_triggered_high': params.get('detection_triggered_high', False),
+    })
 
 
 async def set_detection_sensor_config(params: dict) -> None:
@@ -683,15 +669,13 @@ async def get_ambient_lighting_config(db_path: str) -> dict:
 
 
 def _do_set_ambient_lighting_config(params: dict) -> None:
-    from meshtastic.protobuf import module_config_pb2
-    cfg = module_config_pb2.ModuleConfig.AmbientLightingConfig(
-        led_state=params.get('led_state', False),
-        current=params.get('current', 0),
-        red=params.get('red', 0),
-        green=params.get('green', 0),
-        blue=params.get('blue', 0),
-    )
-    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(ambient_lighting=cfg))
+    _write_local_config('ambient_lighting', {
+        'led_state': params.get('led_state', False),
+        'current': params.get('current', 0),
+        'red': params.get('red', 0),
+        'green': params.get('green', 0),
+        'blue': params.get('blue', 0),
+    })
 
 
 async def set_ambient_lighting_config(params: dict) -> None:
@@ -727,13 +711,11 @@ async def get_neighbor_info_module_config(db_path: str) -> dict:
 
 
 def _do_set_neighbor_info_module_config(params: dict) -> None:
-    from meshtastic.protobuf import module_config_pb2
-    cfg = module_config_pb2.ModuleConfig.NeighborInfoConfig(
-        enabled=params.get('enabled', False),
-        update_interval=params.get('update_interval', 0),
-        transmit_over_lora=params.get('transmit_over_lora', False),
-    )
-    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(neighbor_info=cfg))
+    _write_local_config('neighbor_info', {
+        'enabled': params.get('enabled', False),
+        'update_interval': params.get('update_interval', 0),
+        'transmit_over_lora': params.get('transmit_over_lora', False),
+    })
 
 
 async def set_neighbor_info_module_config(params: dict) -> None:
@@ -780,16 +762,15 @@ def _do_set_serial_module_config(params: dict) -> None:
         mode_val = module_config_pb2.ModuleConfig.SerialConfig.Mode.Value(params.get('mode', 'DEFAULT'))
     except ValueError:
         pass
-    cfg = module_config_pb2.ModuleConfig.SerialConfig(
-        enabled=params.get('enabled', False),
-        echo=params.get('echo', False),
-        rxd=params.get('rxd', 0),
-        txd=params.get('txd', 0),
-        timeout=params.get('timeout', 0),
-        mode=mode_val,
-        override_console_serial_port=params.get('override_console_serial_port', False),
-    )
-    _interface.localNode.setConfig(module_config_pb2.ModuleConfig(serial=cfg))
+    _write_local_config('serial', {
+        'enabled': params.get('enabled', False),
+        'echo': params.get('echo', False),
+        'rxd': params.get('rxd', 0),
+        'txd': params.get('txd', 0),
+        'timeout': params.get('timeout', 0),
+        'mode': mode_val,
+        'override_console_serial_port': params.get('override_console_serial_port', False),
+    })
 
 
 async def set_serial_module_config(params: dict) -> None:
@@ -815,6 +796,271 @@ async def set_channel(idx: int, name: str, psk_b64: str) -> None:
         raise RuntimeError('Board not connected')
     _i, _n, _p = idx, name, psk_b64
     await _command_queue.put(lambda: _do_set_channel(_i, _n, _p))
+
+
+# --- Device-level config sections (position, power, display, network, bluetooth, security) ---
+
+async def _get_cached_section(db_path: str, cache_key: str, reader, defaults: dict) -> dict:
+    """Shared read pattern: live read + cache when connected, cache fallback,
+    defaults as last resort. `reader` is a sync callable run in the executor."""
+    if _connected and _interface:
+        try:
+            loop = asyncio.get_event_loop()
+            data = await loop.run_in_executor(None, reader)
+            data['cached'] = False
+            await database.set_config_cache(db_path, cache_key, data)
+            return data
+        except Exception as e:
+            logger.error('get %s config failed: %s', cache_key, e)
+    cached = await database.get_config_cache(db_path, cache_key)
+    if cached:
+        cached['cached'] = True
+        return cached
+    return {**defaults, 'cached': True}
+
+
+POSITION_DEFAULTS = {
+    'position_broadcast_secs': 0, 'position_broadcast_smart_enabled': False,
+    'fixed_position': False, 'gps_mode': 'DISABLED', 'gps_update_interval': 0,
+    'fixed_lat': None, 'fixed_lon': None, 'fixed_alt': 0,
+}
+
+
+async def get_position_config(db_path: str) -> dict:
+    def _read():
+        pc = _interface.localNode.localConfig.position
+        return {
+            'position_broadcast_secs': pc.position_broadcast_secs,
+            'position_broadcast_smart_enabled': pc.position_broadcast_smart_enabled,
+            'fixed_position': pc.fixed_position,
+            'gps_mode': pc.GpsMode.Name(pc.gps_mode),
+            'gps_update_interval': pc.gps_update_interval,
+        }
+    return await _get_cached_section(db_path, 'position', _read, POSITION_DEFAULTS)
+
+
+def _do_set_position_config(params: dict) -> None:
+    from meshtastic.protobuf import config_pb2
+    fixed = bool(params.get('fixed_position', False))
+    lat, lon = params.get('fixed_lat'), params.get('fixed_lon')
+    if fixed and lat is not None and lon is not None:
+        # setFixedPosition sends the admin message that stores the position
+        # AND raises the fixed_position flag on the node.
+        _interface.localNode.setFixedPosition(
+            float(lat), float(lon), int(params.get('fixed_alt') or 0))
+    elif not fixed and _interface.localNode.localConfig.position.fixed_position:
+        _interface.localNode.removeFixedPosition()
+    _write_local_config('position', {
+        'position_broadcast_secs': params.get('position_broadcast_secs', 0),
+        'position_broadcast_smart_enabled': params.get('position_broadcast_smart_enabled', False),
+        'fixed_position': fixed,
+        'gps_mode': config_pb2.Config.PositionConfig.GpsMode.Value(
+            params.get('gps_mode', 'DISABLED')),
+        'gps_update_interval': params.get('gps_update_interval', 0),
+    })
+
+
+async def set_position_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_position_config(_p))
+
+
+POWER_DEFAULTS = {
+    'is_power_saving': False, 'on_battery_shutdown_after_secs': 0,
+    'wait_bluetooth_secs': 0, 'sds_secs': 0, 'ls_secs': 0, 'min_wake_secs': 0,
+}
+
+
+async def get_power_config(db_path: str) -> dict:
+    def _read():
+        pc = _interface.localNode.localConfig.power
+        return {
+            'is_power_saving': pc.is_power_saving,
+            'on_battery_shutdown_after_secs': pc.on_battery_shutdown_after_secs,
+            'wait_bluetooth_secs': pc.wait_bluetooth_secs,
+            'sds_secs': pc.sds_secs,
+            'ls_secs': pc.ls_secs,
+            'min_wake_secs': pc.min_wake_secs,
+        }
+    return await _get_cached_section(db_path, 'power', _read, POWER_DEFAULTS)
+
+
+def _do_set_power_config(params: dict) -> None:
+    _write_local_config('power', {
+        'is_power_saving': params.get('is_power_saving', False),
+        'on_battery_shutdown_after_secs': params.get('on_battery_shutdown_after_secs', 0),
+        'wait_bluetooth_secs': params.get('wait_bluetooth_secs', 0),
+        'sds_secs': params.get('sds_secs', 0),
+        'ls_secs': params.get('ls_secs', 0),
+        'min_wake_secs': params.get('min_wake_secs', 0),
+    })
+
+
+async def set_power_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_power_config(_p))
+
+
+DISPLAY_DEVICE_DEFAULTS = {
+    'screen_on_secs': 0, 'auto_screen_carousel_secs': 0, 'compass_north_top': False,
+    'flip_screen': False, 'units': 'METRIC', 'displaymode': 'DEFAULT',
+    'heading_bold': False, 'wake_on_tap_or_motion': False, 'use_12h_clock': False,
+}
+
+
+async def get_display_device_config(db_path: str) -> dict:
+    """Display config of the Meshtastic board (OLED), not the Pi display."""
+    def _read():
+        dc = _interface.localNode.localConfig.display
+        return {
+            'screen_on_secs': dc.screen_on_secs,
+            'auto_screen_carousel_secs': dc.auto_screen_carousel_secs,
+            'compass_north_top': dc.compass_north_top,
+            'flip_screen': dc.flip_screen,
+            'units': dc.DisplayUnits.Name(dc.units),
+            'displaymode': dc.DisplayMode.Name(dc.displaymode),
+            'heading_bold': dc.heading_bold,
+            'wake_on_tap_or_motion': dc.wake_on_tap_or_motion,
+            'use_12h_clock': dc.use_12h_clock,
+        }
+    return await _get_cached_section(db_path, 'display_device', _read, DISPLAY_DEVICE_DEFAULTS)
+
+
+def _do_set_display_device_config(params: dict) -> None:
+    from meshtastic.protobuf import config_pb2
+    _write_local_config('display', {
+        'screen_on_secs': params.get('screen_on_secs', 0),
+        'auto_screen_carousel_secs': params.get('auto_screen_carousel_secs', 0),
+        'compass_north_top': params.get('compass_north_top', False),
+        'flip_screen': params.get('flip_screen', False),
+        'units': config_pb2.Config.DisplayConfig.DisplayUnits.Value(
+            params.get('units', 'METRIC')),
+        'displaymode': config_pb2.Config.DisplayConfig.DisplayMode.Value(
+            params.get('displaymode', 'DEFAULT')),
+        'heading_bold': params.get('heading_bold', False),
+        'wake_on_tap_or_motion': params.get('wake_on_tap_or_motion', False),
+        'use_12h_clock': params.get('use_12h_clock', False),
+    })
+
+
+async def set_display_device_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_display_device_config(_p))
+
+
+NETWORK_DEFAULTS = {
+    'wifi_enabled': False, 'wifi_ssid': '', 'wifi_psk': '',
+    'eth_enabled': False, 'ntp_server': '', 'address_mode': 'DHCP',
+}
+
+
+async def get_network_config(db_path: str) -> dict:
+    def _read():
+        nc = _interface.localNode.localConfig.network
+        return {
+            'wifi_enabled': nc.wifi_enabled,
+            'wifi_ssid': nc.wifi_ssid,
+            'wifi_psk': nc.wifi_psk,
+            'eth_enabled': nc.eth_enabled,
+            'ntp_server': nc.ntp_server,
+            'address_mode': nc.AddressMode.Name(nc.address_mode),
+        }
+    return await _get_cached_section(db_path, 'network', _read, NETWORK_DEFAULTS)
+
+
+def _do_set_network_config(params: dict) -> None:
+    from meshtastic.protobuf import config_pb2
+    _write_local_config('network', {
+        'wifi_enabled': params.get('wifi_enabled', False),
+        'wifi_ssid': params.get('wifi_ssid', ''),
+        'wifi_psk': params.get('wifi_psk', ''),
+        'eth_enabled': params.get('eth_enabled', False),
+        'ntp_server': params.get('ntp_server', ''),
+        'address_mode': config_pb2.Config.NetworkConfig.AddressMode.Value(
+            params.get('address_mode', 'DHCP')),
+    })
+
+
+async def set_network_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_network_config(_p))
+
+
+BLUETOOTH_DEFAULTS = {'enabled': False, 'mode': 'RANDOM_PIN', 'fixed_pin': 123456}
+
+
+async def get_bluetooth_config(db_path: str) -> dict:
+    def _read():
+        bc = _interface.localNode.localConfig.bluetooth
+        return {
+            'enabled': bc.enabled,
+            'mode': bc.PairingMode.Name(bc.mode),
+            'fixed_pin': bc.fixed_pin,
+        }
+    return await _get_cached_section(db_path, 'bluetooth', _read, BLUETOOTH_DEFAULTS)
+
+
+def _do_set_bluetooth_config(params: dict) -> None:
+    from meshtastic.protobuf import config_pb2
+    _write_local_config('bluetooth', {
+        'enabled': params.get('enabled', False),
+        'mode': config_pb2.Config.BluetoothConfig.PairingMode.Value(
+            params.get('mode', 'RANDOM_PIN')),
+        'fixed_pin': params.get('fixed_pin', 123456),
+    })
+
+
+async def set_bluetooth_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_bluetooth_config(_p))
+
+
+SECURITY_DEFAULTS = {
+    'is_managed': False, 'serial_enabled': True,
+    'debug_log_api_enabled': False, 'admin_channel_enabled': False,
+    'public_key_b64': '',
+}
+
+
+async def get_security_config(db_path: str) -> dict:
+    def _read():
+        import base64
+        sc = _interface.localNode.localConfig.security
+        return {
+            'is_managed': sc.is_managed,
+            'serial_enabled': sc.serial_enabled,
+            'debug_log_api_enabled': sc.debug_log_api_enabled,
+            'admin_channel_enabled': sc.admin_channel_enabled,
+            # Read-only: the key pair is never writable from the UI.
+            'public_key_b64': base64.b64encode(sc.public_key).decode() if sc.public_key else '',
+        }
+    return await _get_cached_section(db_path, 'security', _read, SECURITY_DEFAULTS)
+
+
+def _do_set_security_config(params: dict) -> None:
+    _write_local_config('security', {
+        'is_managed': params.get('is_managed', False),
+        'serial_enabled': params.get('serial_enabled', True),
+        'debug_log_api_enabled': params.get('debug_log_api_enabled', False),
+        'admin_channel_enabled': params.get('admin_channel_enabled', False),
+    })
+
+
+async def set_security_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_security_config(_p))
 
 
 # --- Internal ---
@@ -1336,7 +1582,15 @@ async def connect() -> None:
     while True:
         try:
             logger.warning(f'Connecting to board at {cfg.SERIAL_PATH}')
-            _interface = meshtastic.serial_interface.SerialInterface(cfg.SERIAL_PATH)
+            if cfg.SERIAL_PATH.startswith('tcp://'):
+                # meshtasticd (LoRa HAT nativo sul Pi) o board remota:
+                # SERIAL_PATH=tcp://host[:porta], default porta 4403.
+                import meshtastic.tcp_interface
+                host, _, port = cfg.SERIAL_PATH[6:].partition(':')
+                _interface = meshtastic.tcp_interface.TCPInterface(
+                    host, portNumber=int(port or 4403))
+            else:
+                _interface = meshtastic.serial_interface.SerialInterface(cfg.SERIAL_PATH)
             _connected = True
             backoff = 15
             logger.warning(f'Connected to board at {cfg.SERIAL_PATH}')

@@ -25,7 +25,7 @@
   function build() {
     _kbd = document.createElement('div')
     _kbd.id = 'vkbd'
-    _kbd.style.cssText = 'display:none;position:fixed;bottom:32px;left:0;right:0;z-index:9999;' +
+    _kbd.style.cssText = 'display:none;position:fixed;bottom:var(--tb-h,32px);left:0;right:0;z-index:9999;' +
       'background:#1a1a2e;border-top:1px solid #333;padding:0 2px 4px;touch-action:manipulation;'
 
     // Preview bar showing current input value

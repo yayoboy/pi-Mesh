@@ -1,9 +1,38 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+/* Bolle messaggi (ex static/style.css, ora inline: base.html non linka più
+   quel foglio) + regole responsive per display larghi. */
+.conv-sidebar { width: 130px; }
+.msg-row { padding: 4px 12px; max-width: 100%; }
+.msg-row.outgoing { text-align: right; }
+.msg-bubble {
+  display: inline-block;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  max-width: 85%;
+  word-break: break-word;
+  text-align: left;
+  font-size: 12px;
+}
+.msg-row.outgoing .msg-bubble { background: var(--accent); border-color: var(--accent); color: #fff; }
+.msg-meta { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.msg-ack.delivered { color: #4caf50; }
+
+@media (min-width: 640px) {
+  .conv-sidebar { width: 180px; }
+  .msg-bubble { max-width: 70%; font-size: 13px; padding: 6px 10px; }
+}
+@media (min-width: 960px) {
+  .msg-bubble { max-width: 55%; }
+}
+</style>
 <div x-data="messagesPage()" style="display:flex;height:100%;overflow:hidden;">
 
-  <!-- SIDEBAR LEFT 130px -->
-  <div style="width:130px;border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;">
+  <!-- SIDEBAR LEFT (130px, più larga su display HDMI) -->
+  <div class="conv-sidebar" style="border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;">
     <div style="padding:8px 6px 4px;font-size:10px;color:var(--accent);font-weight:bold;text-transform:uppercase;letter-spacing:.06em;">Conv</div>
 
     <!-- Broadcast entry -->

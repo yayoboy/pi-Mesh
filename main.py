@@ -16,7 +16,7 @@ import rpi_telemetry
 
 logging.basicConfig(level=getattr(logging, cfg.LOG_LEVEL, logging.WARNING))
 
-from routers import nodes, map_router, log_router, commands, ws_router, messages_router, config_router, metrics_router, canned_router, module_config_router, waypoints_router, neighbor_router, admin_router, bots_router
+from routers import nodes, map_router, log_router, commands, ws_router, messages_router, config_router, metrics_router, canned_router, module_config_router, device_config_router, waypoints_router, neighbor_router, admin_router, bots_router
 
 from bots import runner as bots_runner
 
@@ -120,6 +120,7 @@ app.include_router(commands.router)
 app.include_router(ws_router.router)
 app.include_router(canned_router.router)
 app.include_router(module_config_router.router)
+app.include_router(device_config_router.router)
 app.include_router(waypoints_router.router)
 app.include_router(neighbor_router.router)
 app.include_router(admin_router.router)

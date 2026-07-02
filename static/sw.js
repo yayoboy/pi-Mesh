@@ -1,9 +1,10 @@
 // Service Worker — network-first for static assets
-const CACHE = 'pi-mesh-v3'
+const CACHE = 'pi-mesh-v4'
 const STATIC = [
-  '/static/style.css',
+  '/static/tailwind.css',
   '/static/app.js',
   '/static/map.js',
+  '/static/config.js',
   '/static/chart.min.js',
 ]
 

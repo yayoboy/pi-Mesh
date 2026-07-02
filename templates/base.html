@@ -2,9 +2,11 @@
 <html lang="it" class="h-full bg-gray-950">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=320, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>pi-Mesh</title>
-  <script src="/static/tailwind.js"></script>
+  <!-- Tailwind precompilato (build one-off: vedi docs/DEVELOPMENT nel README).
+       Sostituisce il runtime Play CDN da 407KB che compilava a ogni load. -->
+  <link rel="stylesheet" href="/static/tailwind.css">
   <script defer src="/static/alpine.min.js"></script>
   <style>
     :root {
@@ -14,12 +16,35 @@
       --border: #1a2233;
       --text: #c9d1e0;
       --muted: #4a5568;
+      /* Altezze barre: crescono sui viewport larghi (display HDMI). */
+      --sb-h: 24px;
+      --tb-h: 32px;
+    }
+    /* Display larghi (HDMI 800×480+ o 1080p con cog --scale): barre più
+       generose e testo leggibile. Il breakpoint è in CSS px, quindi vale
+       dopo lo scaling del browser. */
+    @media (min-width: 640px) {
+      :root { --sb-h: 30px; --tb-h: 44px; }
+      #statusbar #node-name { font-size: 11px !important; }
+      #tabbar .tab { font-size: 11px !important; }
+      #tabbar .tab svg { width: 20px; height: 20px; }
     }
     body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; -webkit-user-select: none; user-select: none; }
     select, input[type="text"], input[type="number"], input[type="password"], textarea { color: var(--text) !important; background: var(--panel) !important; -webkit-appearance: none; appearance: none; }
     select option { color: var(--text) !important; background: var(--bg) !important; }
     .tab-active { color: var(--accent); }
     .tab-active svg { stroke: var(--accent); }
+    /* Controlli form condivisi — usati dalle macro in templates/_forms.html */
+    .section-head { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+    .cfg-col   { display: flex; flex-direction: column; gap: 8px; }
+    .cfg-row   { display: flex; gap: 8px; flex-wrap: wrap; }
+    .cfg-field { display: flex; flex-direction: column; gap: 3px; }
+    .cfg-label { font-size: 10px; color: var(--muted); }
+    .cfg-input { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 7px 8px; font-size: 12px; }
+    .cfg-check { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    .cfg-status { font-size: 10px; color: #4caf50; }
+    .btn-accent { background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: 7px 14px; font-size: 12px; cursor: pointer; align-self: flex-start; }
+    .hint { font-size: 10px; color: var(--muted); }
   </style>
   <script>window.MAP_LOCAL_TILES = "{{ map_local_tiles }}";</script>
   <script>
@@ -47,7 +72,7 @@
 
   <!-- Status bar -->
   <div id="statusbar" x-data="{ sysModal: '', rotateOpen: false, currentRotation: 0 }" x-init="fetch('/api/config/display').then(r=>r.json()).then(d=>{ currentRotation = d.rotation || 0 }).catch(()=>{})" class="flex items-center justify-between px-3 py-1 text-xs"
-       style="background:var(--panel);border-bottom:1px solid var(--border);height:24px;">
+       style="background:var(--panel);border-bottom:1px solid var(--border);height:var(--sb-h);">
     <span id="node-name" style="color:var(--muted);font-size:10px;">pi-Mesh</span>
     <div class="flex gap-3 items-center">
       <!-- Battery -->
@@ -150,12 +175,12 @@
   </div>
 
   <!-- Content area -->
-  <main id="content" class="flex-1 overflow-hidden" style="height:calc(100vh - 24px - 48px);">
+  <main id="content" class="flex-1 overflow-hidden" style="height:calc(100vh - var(--sb-h) - var(--tb-h));">
     {% block content %}{% endblock %}
   </main>
 
   <!-- Tabbar fissa in basso -->
-  <nav id="tabbar" class="flex items-stretch shrink-0" style="height:32px;background:var(--panel);border-top:1px solid var(--border);">
+  <nav id="tabbar" class="flex items-stretch shrink-0" style="height:var(--tb-h);background:var(--panel);border-top:1px solid var(--border);">
 
     {% set tabs = [
       ('nodes',    '/nodes',    'Nodi',    'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z'),

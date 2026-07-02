@@ -1,0 +1,107 @@
+{# Sezioni UI: tema, mappa, canned messages. #}
+    <!-- TEMA -->
+    <template x-if="section === 'theme'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:10px;">Tema UI</div>
+        <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+          <button @click="applyTheme('dark')"  style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="currentTheme==='dark'?'background:var(--accent);color:#fff;border-color:var(--accent);':'background:var(--panel);color:var(--text);'">Dark</button>
+          <button @click="applyTheme('light')" style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="currentTheme==='light'?'background:var(--accent);color:#fff;border-color:var(--accent);':'background:var(--panel);color:var(--text);'">Light</button>
+          <button @click="applyTheme('hc')"    style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="currentTheme==='hc'?'background:var(--accent);color:#fff;border-color:var(--accent);':'background:var(--panel);color:var(--text);'">HC</button>
+          <button @click="applyTheme('custom')" style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="currentTheme==='custom'?'background:var(--accent);color:#fff;border-color:var(--accent);':'background:var(--panel);color:var(--text);'">Custom</button>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">Colore accento</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+          <template x-for="c in accentSwatches" :key="c">
+            <button @click="applyAccent(c)"
+                    style="width:48px;height:48px;border-radius:50%;padding:0;cursor:pointer;flex-shrink:0;"
+                    :style="'background:' + c + ';border:2px solid ' + (currentAccent===c ? '#fff' : 'transparent') + ';'"></button>
+          </template>
+        </div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Colori personalizzati</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+          <template x-for="v in themeVars" :key="v.key">
+            <div @click="openColorPicker(v.key, v.label, v.value)" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px;border-radius:4px;border:1px solid var(--border);">
+              <span style="width:36px;height:36px;border-radius:4px;flex-shrink:0;border:1px solid var(--border);" :style="'background:' + v.value"></span>
+              <div style="min-width:0;">
+                <span style="font-size:9px;color:var(--muted);display:block;" x-text="v.label"></span>
+                <span style="font-size:8px;font-family:monospace;color:var(--text);opacity:0.6;" x-text="v.value"></span>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div style="display:flex;gap:6px;margin-top:10px;">
+          <button @click="resetThemeVars()" style="flex:1;min-height:32px;font-size:11px;border-radius:4px;cursor:pointer;background:var(--panel);color:var(--text);border:1px solid var(--border);">Reset</button>
+          <button @click="saveCustomTheme()" style="flex:1;min-height:32px;font-size:11px;border-radius:4px;cursor:pointer;background:var(--accent);color:#fff;border:none;">Salva tema</button>
+        </div>
+      </div>
+    </template>
+
+    <!-- MAPPA -->
+    <template x-if="section === 'mappa'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:10px;">Mappa</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <!-- Tile locali toggle -->
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <div style="font-size:11px;font-weight:600;">Tile locali</div>
+              <div style="font-size:10px;color:var(--muted);">Usa tile offline invece del CDN</div>
+            </div>
+            <button @click="mappa.local_tiles = !mappa.local_tiles; saveMappa()"
+                    :disabled="!mappa.tiles_present || mappa.saving"
+                    :style="!mappa.tiles_present ? 'background:var(--panel);border-color:var(--border);color:var(--muted);opacity:0.5;cursor:not-allowed' : mappa.local_tiles ? 'background:#1a3a2a;border-color:#22c55e;color:#22c55e;cursor:pointer' : 'background:var(--panel);border-color:var(--border);color:var(--muted);cursor:pointer'"
+                    style="border:1px solid;border-radius:12px;padding:3px 10px;font-size:10px;"
+                    x-text="mappa.local_tiles ? 'ON' : 'OFF'"></button>
+          </div>
+
+          <!-- Regione -->
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:11px;color:var(--muted);">Regione</span>
+            <span style="font-size:11px;" x-text="mappa.region || '—'"></span>
+          </div>
+
+          <!-- Stato tile -->
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:11px;color:var(--muted);">Tile locali</span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:4px;"
+                  :style="mappa.tiles_present ? 'background:#1a3a2a;color:#22c55e' : 'background:var(--panel);color:var(--muted)'"
+                  x-text="mappa.tiles_present ? '✓ presenti' : '✗ assenti'"></span>
+          </div>
+
+          <p x-show="!mappa.tiles_present" style="font-size:10px;color:var(--muted);">
+            Esegui <code style="background:var(--panel);padding:2px 4px;border-radius:2px;">scripts/manage-tiles.sh</code> dal Mac/PC per trasferire le tile al Pi.
+          </p>
+        </div>
+      </div>
+    </template>
+
+    <!-- CANNED MESSAGES -->
+    <template x-if="section === 'canned'">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">
+          Messaggi rapidi
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <input x-model="cannedNew" placeholder="Testo messaggio..."
+                 @keydown.enter.prevent="addCanned()"
+                 style="flex:1;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
+          <button @click="addCanned()"
+                  style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:7px 12px;font-size:12px;cursor:pointer;">
+            + Aggiungi
+          </button>
+        </div>
+        <div x-show="cannedStatus" x-text="cannedStatus"
+             style="font-size:10px;color:#4caf50;margin-bottom:8px;"></div>
+        <template x-if="cannedMessages.length === 0">
+          <div style="color:var(--muted);font-size:11px;">Nessun messaggio predefinito.</div>
+        </template>
+        <template x-for="m in cannedMessages" :key="m.id">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;">
+            <span x-text="m.text" style="flex:1;font-size:12px;color:var(--text);"></span>
+            <button @click="deleteCanned(m.id)"
+                    style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;line-height:1;">✕</button>
+          </div>
+        </template>
+      </div>
+    </template>
