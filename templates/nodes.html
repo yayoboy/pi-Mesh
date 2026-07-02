@@ -43,6 +43,19 @@
   background: rgba(74,158,255,0.08);
 }
 
+/* --- Display larghi (HDMI): colonna lista più ampia, testi leggibili --- */
+@media (min-width: 640px) {
+  .node-list-col { width: 260px; }
+  .node-list-item { font-size: 12px; padding: 10px 12px; }
+  .stat-val { font-size: 14px; }
+  .stat-lbl { font-size: 10px; }
+  .action-btn { font-size: 12px; padding: 8px 6px; }
+}
+@media (min-width: 960px) {
+  .node-list-col { width: 320px; }
+  .node-detail-col { padding: 16px 24px; }
+}
+
 /* --- Shared stat boxes and action buttons --- */
 .stat-grid { display: flex; gap: 6px; }
 .stat-box {

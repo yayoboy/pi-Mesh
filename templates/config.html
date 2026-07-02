@@ -1,9 +1,18 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+/* Display larghi (HDMI): sidebar più leggibile, form a larghezza contenuta. */
+.cfg-sidebar { width: 80px; }
+@media (min-width: 640px) {
+  .cfg-sidebar { width: 150px; }
+  .cfg-sidebar > div > div { font-size: 11px !important; }
+  .cfg-content > * { max-width: 640px; }
+}
+</style>
 <div x-data="configPage()" style="display:flex;height:100%;overflow:hidden;">
 
-  <!-- SIDEBAR 80px -->
-  <div style="width:80px;border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;background:#0a0d14;">
+  <!-- SIDEBAR (80px, più larga su display HDMI) -->
+  <div class="cfg-sidebar" style="border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;background:#0a0d14;">
     <div style="padding:8px 8px 4px;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Config</div>
     <template x-for="g in groups" :key="g.id">
       <div>
@@ -30,7 +39,7 @@
   </div>
 
   <!-- CONTENT AREA -->
-  <div style="flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;">
+  <div class="cfg-content" style="flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;">
 
     <!-- NODO -->
     <template x-if="section === 'node'">
