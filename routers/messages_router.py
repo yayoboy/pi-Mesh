@@ -1,4 +1,13 @@
-# routers/messages_router.py
+"""Pagina messaggi, cronologia broadcast e thread DM.
+
+  GET    /messages                   — pagina HTML
+  GET    /api/messages               — cronologia canale (paginata, before_id)
+  DELETE /api/messages               — svuota la cronologia
+  GET    /api/dm/threads             — conversazioni dirette con unread
+  GET    /api/dm/messages            — messaggi di un thread DM
+  POST   /api/dm/read                — marca un thread come letto
+  GET    /api/messages/unread-count  — badge unread totale per la tabbar
+"""
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates

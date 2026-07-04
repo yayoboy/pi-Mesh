@@ -1,4 +1,11 @@
-# routers/map_router.py
+"""Pagina mappa, nodi georeferenziati e POI custom.
+
+  GET    /map                   — pagina HTML (Leaflet)
+  GET    /api/map/nodes         — nodi con coordinate valide
+  GET    /api/map/markers       — POI custom salvati
+  POST   /api/map/markers       — crea POI
+  DELETE /api/map/markers/{id}  — elimina POI
+"""
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates

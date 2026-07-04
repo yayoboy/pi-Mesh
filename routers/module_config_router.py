@@ -1,4 +1,11 @@
-# routers/module_config_router.py
+"""Config dei moduli Meshtastic — GET/POST /api/config/module/<nome>.
+
+Moduli coperti: external-notification, store-forward, telemetry,
+canned-message, range-test, detection-sensor, ambient-lighting,
+neighbor-info, serial. Pattern uniforme: GET legge dalla board (o cache
+se offline), POST valida col modello Pydantic e accoda la scrittura;
+503 se la board non è connessa.
+"""
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel

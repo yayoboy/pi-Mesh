@@ -1,4 +1,12 @@
-# routers/metrics_router.py
+"""Pagina metriche e telemetria (Pi + board mesh).
+
+  GET /metrics               — pagina HTML
+  GET /api/telemetry         — serie storiche per nodo/tipo (query: node_id,
+                               ttype, hours)
+  GET /api/telemetry/latest  — ultimo campione per ogni nodo
+  GET /api/rpi/telemetry     — metriche di sistema del Raspberry
+  GET /api/export/telemetry  — export CSV o JSON (?format=)
+"""
 import asyncio
 import csv
 import io

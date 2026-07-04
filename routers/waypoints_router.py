@@ -1,4 +1,7 @@
-# routers/waypoints_router.py
+"""Waypoint Meshtastic: lista, eliminazione e invio alla mesh.
+
+  GET /api/waypoints, DELETE /api/waypoints/{id}, POST /api/waypoints/send
+"""
 import time
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel

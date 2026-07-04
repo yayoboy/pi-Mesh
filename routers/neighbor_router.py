@@ -1,4 +1,4 @@
-# routers/neighbor_router.py
+"""GET /api/neighbor-info — archi di vicinato per la topologia mappa."""
 from fastapi import APIRouter
 import database
 

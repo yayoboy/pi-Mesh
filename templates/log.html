@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{# Pagina Log — pacchetti radio live via SSE (/api/log/stream) con
+   filtri e export. #}
 {% block content %}
 <div x-data="logPage()" x-init="init()" class="h-full flex flex-col overflow-hidden">
 

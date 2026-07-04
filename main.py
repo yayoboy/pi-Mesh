@@ -1,4 +1,19 @@
-# main.py
+"""main.py — Applicazione FastAPI di pi-Mesh (versione web UI).
+
+Punto d'ingresso del backend: crea l'app, registra tutti i router
+(pagine HTML + API REST + WebSocket) e gestisce il ciclo di vita:
+
+  lifespan  → init DB, carica i nodi in cache, avvia la connessione alla
+              board (meshtasticd_client.connect, in background), il bridge
+              MQTT, il runner dei bot e i task di broadcast
+  shutdown  → arresto ordinato di bot, bridge, board e DB
+
+I task in background fanno da collante fra i sottosistemi:
+  _broadcast_task      — inoltra gli eventi della board a tutti i client WS
+  _rpi_telemetry_task  — ogni 10s invia le metriche del Pi via WS
+
+Avvio: ``uvicorn main:app`` (vedi systemd/pimesh.service).
+"""
 import asyncio
 import logging
 

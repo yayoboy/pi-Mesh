@@ -1,4 +1,10 @@
-# routers/nodes.py
+"""Pagina e API dei nodi mesh.
+
+  GET    /nodes                — pagina HTML (templates/nodes.html)
+  GET    /api/nodes            — lista nodi dalla cache del client
+  DELETE /api/nodes/{node_id}  — dimentica un nodo (con ?purge=1 elimina
+                                 anche messaggi e telemetria associati)
+"""
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates

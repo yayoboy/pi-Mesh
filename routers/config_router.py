@@ -1,4 +1,12 @@
-# routers/config_router.py
+"""Pagina Config e API di configurazione: board (nodo, LoRa, canali,
+MQTT) e sistema Pi (GPIO/I2C, WiFi/AP, RTC, porta seriale, display,
+alert, tile USB, reboot/shutdown).
+
+Le sezioni della board leggono live con fallback sulla cache DB (vedi
+meshtasticd_client); le impostazioni Pi agiscono su config.env, systemd
+o /boot. I moduli Meshtastic sono in module_config_router, le config
+device-level (position, power, ...) in device_config_router.
+"""
 import asyncio
 import os
 import subprocess

@@ -1,4 +1,10 @@
-# config.py
+"""config.py — Configurazione globale letta dalle variabili d'ambiente.
+
+I valori arrivano da config.env / config.env.local (caricati da systemd
+con EnvironmentFile o da uvicorn con --env-file); qui ci sono solo i
+default. SERIAL_PATH accetta un device seriale (/dev/tty...) oppure
+``tcp://host[:porta]`` per meshtasticd o una board remota.
+"""
 import os
 
 SERIAL_PATH    = os.getenv('SERIAL_PATH', '/dev/ttyACM0')
