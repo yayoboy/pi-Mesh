@@ -110,7 +110,7 @@ A touch-friendly web dashboard for [Meshtastic](https://meshtastic.org/) LoRa me
 | Raspberry Pi 3 A+ or newer | 512 MB RAM minimum |
 | Meshtastic radio | Connected via USB — Heltec V3/V4, T-Beam, RAK, etc. |
 | 3.5" 320×480 touchscreen | SPI (fbtft) — portrait and landscape layouts both supported |
-| **or** HDMI display | GPU-accelerated kiosk via KMS + cog/WPE — see [Display HDMI](#7--hdmi-display-gpu-accelerated-kiosk) |
+| **or** HDMI display | GPU-accelerated kiosk via KMS + cog/WPE — see [Display HDMI](#6--hdmi-display-gpu-accelerated-kiosk) |
 
 > Pi-Mesh talks directly to the radio via `meshtastic.SerialInterface`. The `meshtasticd` daemon is **not required** for ESP32-based boards.
 
@@ -196,51 +196,11 @@ static/tiles/satellite/{z}/{x}/{y}.png
 
 Then add `data-local-tiles="1"` to the `<html>` tag in `templates/base.html`.
 
-### 6 — Native Qt GUI (experimental)
+> **Note:** this repository is the **web UI** version of pi-Mesh. The native
+> Qt (PySide6) kiosk lives in a separate repository; the historical porting
+> plans remain in `docs/plans/2026-05-07-qt-gui-port-*.md` for reference.
 
-A native PySide6 + QtWidgets kiosk is being ported in parallel as a faster
-alternative to the surf/WebKit-based kiosk. It runs in the same Python process
-as the FastAPI backend (via `qasync`), shares the live event queue with the
-WebSocket broadcaster, and reuses every backend module — so the LAN browser
-stays available.
-
-**Install** (`setup.sh` does this automatically; manual steps if needed):
-
-```bash
-sudo apt install -y libegl1 libxcb-cursor0 libxkbcommon0 libfontconfig1
-# Try pip first; on ARM Pi OS Bookworm wheels typically don't match glibc:
-pip install -r requirements-gui.txt || {
-    sudo apt install -y python3-pyside6.qtcore python3-pyside6.qtgui \
-                        python3-pyside6.qtwidgets python3-pyside6.qtsvg
-    python -m venv --system-site-packages venv   # recreate so the venv sees apt PySide6
-}
-```
-
-**Enable as the kiosk** (replaces the surf-based kiosk):
-
-```bash
-sudo systemctl disable --now kiosk.service     # if currently enabled
-sudo cp systemd/pimesh-gui.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now pimesh-gui
-```
-
-`pimesh-gui.service` declares `Conflicts=kiosk.service` so the two cannot run
-simultaneously.
-
-**Run interactively** (without systemd, useful for development):
-
-```bash
-DISPLAY=:0 python -m gui
-```
-
-See the porting plan at:
-
-- `docs/plans/2026-05-07-qt-gui-port-design.md` — architecture and stack.
-- `docs/plans/2026-05-07-qt-gui-port-implementation.md` — task-by-task plan.
-- `docs/plans/2026-05-07-qt-gui-port-feature-parity.md` — feature inventory.
-
-### 7 — HDMI display (GPU-accelerated kiosk)
+### 6 — HDMI display (GPU-accelerated kiosk)
 
 Instead of the SPI touchscreen, the web UI can run full screen on an HDMI
 display with real GPU acceleration: the vc4 KMS driver drives the display at
@@ -277,9 +237,10 @@ script pins it to 96 MB (`PIMESH_CMA` to change) instead of the default
 matchbox roughly offsets the CMA cost versus the surf kiosk. Chromium-based
 kiosks are **not** viable in 512 MB.
 
-**Coexistence.** `kiosk-hdmi.service` declares
-`Conflicts=kiosk.service pimesh-gui.service` — only one frontend runs at a
-time. The SPI kiosk stays installed; to go back:
+**Coexistence.** `kiosk-hdmi.service` declares `Conflicts=kiosk.service`
+(plus the legacy `pimesh-gui.service`, for systems upgraded from older
+installs) — only one kiosk frontend runs at a time. The SPI kiosk stays
+installed; to go back:
 
 ```bash
 sudo bash scripts/setup-display-hdmi.sh --uninstall

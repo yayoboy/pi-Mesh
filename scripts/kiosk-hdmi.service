@@ -2,8 +2,9 @@
 Description=Kiosk Browser HDMI (cog/WPE su KMS/DRM)
 After=network.target pimesh.service
 Requires=pimesh.service
-# Un solo frontend alla volta: o il kiosk SPI (surf+X11), o la GUI Qt,
-# o questo kiosk HDMI.
+# Un solo frontend alla volta: o il kiosk SPI (surf+X11) o questo kiosk HDMI.
+# pimesh-gui.service e' la GUI Qt legacy: resta nei Conflicts come guardia
+# per i sistemi aggiornati da versioni precedenti.
 Conflicts=kiosk.service pimesh-gui.service
 
 [Service]
