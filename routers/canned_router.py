@@ -1,4 +1,7 @@
-# routers/canned_router.py
+"""CRUD dei messaggi predefiniti (testi rapidi della pagina Messaggi).
+
+  GET/POST /api/canned-messages, PUT/DELETE /api/canned-messages/{id}
+"""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import database

@@ -1,5 +1,11 @@
-# routers/device_config_router.py — config device-level della board Meshtastic
-# (position, power, display OLED, network, bluetooth, security).
+"""Config device-level della board Meshtastic — /api/config/device/<sezione>.
+
+Sezioni: position (GPS, posizione fissa), power, display (l'OLED della
+board, non il display del Pi), network (WiFi/Eth della board), bluetooth,
+security (chiave pubblica in sola lettura). Stesso pattern di
+module_config_router: GET live-o-cache, POST validato → coda comandi,
+503 a board offline.
+"""
 from typing import Optional
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse

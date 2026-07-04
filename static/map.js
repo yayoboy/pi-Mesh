@@ -1,5 +1,10 @@
-// static/map.js — YAY-114 map enhancements
-// Caricato solo da map.html, NON da base.html
+// static/map.js — logica Leaflet della pagina Mappa (solo map.html, non base.html).
+//
+// Possiede: layer tile (OSM/topo/satellite, anche offline da static/tiles/),
+// marker dei nodi con popup e azioni (via nodeActions di app.js), linee di
+// vicinato e traceroute animato, waypoint, POI custom (long-press), scia
+// breadcrumb per nodo (ultimi 20 punti). Si aggiorna con gli eventi WS
+// node/position/waypoint/neighbor_info smistati da app.js.
 'use strict'
 
 // --- Stato globale ---

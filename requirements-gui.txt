@@ -1,4 +1,0 @@
-# GUI dependencies. Installed via pip on x86_64 / Pi 4 with recent glibc;
-# fall back to apt python3-pyside6.* on ARM where wheels are unavailable
-# (see setup.sh `install_gui_deps`).
-PySide6-Essentials>=6.7

@@ -1,4 +1,24 @@
-// static/app.js
+// static/app.js — runtime condiviso da TUTTE le pagine (caricato da base.html).
+//
+// Responsabilità:
+//   1. WebSocket /ws: connessione con retry, dispatch degli eventi push del
+//      backend agli handler per tipo. Contratto eventi (vedi routers/ws_router):
+//        init               {nodes:[...]}            snapshot iniziale
+//        message            {node_id,text,channel,…} nuovo messaggio ricevuto
+//        node / position    stato/posizione nodo     aggiorna cache e liste
+//        telemetry          {node_id,ttype,data}     metriche board
+//        log                {line}                   riga per la pagina Log
+//        ack                {node_id}                conferma consegna DM
+//        traceroute_result  {node_id,route:[...]}    esito traceroute
+//        waypoint / neighbor_info / sensor / paxcounter / rpi_telemetry
+//   2. nodeActions: azioni per-nodo (traceroute, request-position, DM, forget)
+//      riusate da nodes.html e map.js.
+//   3. Status bar: badge batteria/segnale/GPS/board + badge messaggi non letti.
+//   4. Toast di notifica, screenshot via POST /api/screenshot, tema
+//      (CSS variables in localStorage, vedi anche lo script inline in base.html).
+//
+// Ogni pagina ha poi il suo componente Alpine nel proprio template; qui vive
+// solo ciò che deve sopravvivere alla navigazione fra tab.
 
 // ===== STATO GLOBALE =====
 let ws = null
@@ -580,9 +600,6 @@ function applyTheme(theme) {
     localStorage.setItem('piMeshTheme', JSON.stringify(saved))
   } catch(e){}
 }
-
-// ===== GRAFICI (stub, completato in Task telemetry) =====
-function initChartsIfNeeded() { /* implementato in telemetry.html inline */ }
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {

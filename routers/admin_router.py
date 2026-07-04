@@ -1,4 +1,10 @@
-# routers/admin_router.py
+"""Admin remoto via mesh (richiede firmware con PKC o canale admin).
+
+  POST /api/admin/{id}/request-position   — chiede la posizione
+  POST /api/admin/{id}/request-telemetry  — chiede la telemetria
+  POST /api/admin/{id}/reboot             — riavvia il nodo remoto
+  POST /api/admin/{id}/factory-reset      — reset di fabbrica (distruttivo)
+"""
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 import meshtasticd_client

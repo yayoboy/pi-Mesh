@@ -1,3 +1,14 @@
+// static/config.js — logica Alpine della pagina Config (templates/config.html).
+//
+// Espone window.configPage(): stato + metodi per le 28 sezioni della sidebar
+// (gruppi Board / Pi / UI, definiti in `groups`). Pattern per sezione:
+//   selectSection(id)  → lazy-load della sezione al primo click
+//   loadX()            → GET dell'endpoint corrispondente
+//   saveX()/saveModule(endpoint, oggetto) → POST + esito in `moduleStatus`
+// I form delle sezioni module/device sono generati dalle macro Jinja in
+// templates/_forms.html; i nomi dei campi combaciano coi modelli Pydantic
+// dei router (module_config_router, device_config_router).
+//
 function configPage() {
   return {
     section: 'node',

@@ -30,14 +30,10 @@ jobs:
       - name: Lint shell scripts
         run: |
           bash -n setup.sh
-          bash -n scripts/start-gui.sh
+          bash -n scripts/setup-display.sh
+          bash -n scripts/setup-display-hdmi.sh
+          bash -n scripts/start-kiosk.sh
+          bash -n scripts/start-kiosk-hdmi.sh
 
-      - name: Verify Python syntax of GUI sources
-        # The GUI Qt wrapper imports PySide6 lazily; we don't install it in CI
-        # because the Qt-pure tests are what we run here. This ensures every
-        # file at least parses.
-        run: |
-          python -m compileall -q gui/ tests/
-
-      - name: Run pytest (core + GUI-pure)
+      - name: Run pytest
         run: pytest -v

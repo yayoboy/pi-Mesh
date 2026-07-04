@@ -1,4 +1,12 @@
-# routers/commands.py
+"""Azioni verso la mesh: traceroute, richiesta posizione, invio messaggi.
+
+  POST /api/nodes/{id}/traceroute        — avvia un traceroute (async)
+  GET  /api/nodes/{id}/traceroute        — esito dell'ultimo traceroute
+  POST /api/nodes/{id}/request-position  — chiede la posizione al nodo
+  POST /api/messages/send                — invia testo (broadcast o DM)
+  GET  /api/nodes/{id}                   — dettaglio singolo nodo
+  POST /api/screenshot                   — cattura /dev/fb0 con fbgrab
+"""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import meshtasticd_client

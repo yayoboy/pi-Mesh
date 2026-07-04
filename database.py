@@ -1,4 +1,23 @@
-# database.py
+"""database.py — Persistenza SQLite (aiosqlite, WAL) di pi-Mesh.
+
+Connessione singola persistente al file indicato da ``init(db_path)``.
+Tabelle principali:
+
+  nodes            — anagrafica e stato dei nodi mesh (upsert dalla radio)
+  messages         — cronologia messaggi broadcast e DM (ack, unread)
+  telemetry        — serie storiche device/environment per nodo
+  waypoints        — waypoint ricevuti dalla mesh
+  neighbor_info    — archi di vicinato per la topologia sulla mappa
+  packets          — log grezzo dei pacchetti (pagina Log)
+  markers          — POI custom della mappa
+  canned_messages  — testi rapidi per l'invio a un tap
+  gpio_devices     — periferiche GPIO/I2C configurate dalla UI
+  config_cache     — ultima config letta dalla board, per sezione: serve
+                     la UI quando la board è offline
+  settings         — chiave/valore generico (tema, rotazione, bot, ...)
+
+Tutte le funzioni sono coroutine; nessuna apre connessioni proprie.
+"""
 import aiosqlite
 import json
 import logging

@@ -1,4 +1,26 @@
-# meshtasticd_client.py
+"""meshtasticd_client.py — Unico punto di contatto con la radio Meshtastic.
+
+Incapsula la libreria ``meshtastic`` (SerialInterface o TCPInterface, vedi
+``connect()``) e la espone al resto dell'app in forma async-friendly:
+
+  Letture     — cache nodi in memoria (refresh ogni 30s, flush su SQLite),
+                get_*_config() leggono live dalla board e cadono sulla
+                cache DB quando la board è offline.
+  Scritture   — mai dirette: ogni comando passa da ``_command_queue`` ed è
+                eseguito in serie da ``_command_worker`` in un executor,
+                perché la libreria meshtastic è sincrona e non thread-safe.
+  Eventi      — i callback pubsub della libreria (thread separato) vengono
+                riportati sull'event loop con ``call_soon_threadsafe`` e
+                fanno fan-out sulle code registrate con subscribe_events()
+                (WebSocket, bot, bridge MQTT). Tipi evento: message, node,
+                position, telemetry, log, traceroute_result, ack, waypoint,
+                neighbor_info, sensor, paxcounter.
+
+Le scritture config usano ``_write_local_config`` (mutazione in-place +
+``writeConfig``): è l'API reale di meshtastic 2.x e preserva i campi non
+toccati. L'admin remoto passa da ``getNode()`` così ``ensureSessionKey``
+gestisce il PKC richiesto dal firmware 2.5+.
+"""
 import asyncio
 import logging
 import math

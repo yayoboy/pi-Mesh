@@ -12,13 +12,6 @@ apt-get install -y --no-install-recommends \
     python3-venv python3-pip git \
     zram-tools
 
-echo "==> Installing Qt GUI runtime libraries..."
-# Required by PySide6 at import time. Already present on Pi OS desktop, but
-# installing them explicitly so the headless 'lite' image works too.
-apt-get install -y --no-install-recommends \
-    libegl1 libxcb-cursor0 libxkbcommon0 libfontconfig1 \
-    || echo "    (some Qt runtime libs missing — GUI may fail to start)"
-
 echo "==> Configuring zram swap (lz4, 50% RAM)..."
 cat > /etc/default/zramswap <<'EOF'
 ALGO=lz4
@@ -40,44 +33,9 @@ install_core() {
     sudo -u "$USER" "$REPO_DIR/venv/bin/pip" install -q -r "$REPO_DIR/requirements.txt"
 }
 
-install_gui_deps() {
-    # Strategy: try pip first; on ARM where no compatible wheel exists, fall
-    # back to apt-installed python3-pyside6.* and rebuild the venv with
-    # --system-site-packages so it can see them.
-    echo "==> Installing GUI deps (PySide6) via pip..."
-    if sudo -u "$USER" "$REPO_DIR/venv/bin/pip" install -q -r "$REPO_DIR/requirements-gui.txt"; then
-        if sudo -u "$USER" "$REPO_DIR/venv/bin/python" -c \
-            "import PySide6.QtCore" 2>/dev/null; then
-            echo "    PySide6 from pip OK."
-            return 0
-        fi
-        echo "    pip install reported success but import failed; trying apt fallback..."
-    else
-        echo "    pip install failed (likely no compatible wheel for this arch); trying apt fallback..."
-    fi
-
-    echo "==> Installing PySide6 from apt..."
-    apt-get install -y --no-install-recommends \
-        python3-pyside6.qtcore python3-pyside6.qtgui \
-        python3-pyside6.qtwidgets python3-pyside6.qtsvg
-
-    echo "==> Recreating venv with --system-site-packages..."
-    create_venv "--system-site-packages"
-    install_core
-
-    if ! sudo -u "$USER" "$REPO_DIR/venv/bin/python" -c \
-        "import PySide6.QtCore, qasync" 2>/dev/null; then
-        echo "    !! PySide6 still not importable after apt fallback."
-        echo "       The web UI will continue to work; the native Qt GUI will not."
-        return 1
-    fi
-    echo "    PySide6 from apt + qasync from pip OK."
-}
-
 echo "==> Setting up Python venv..."
 create_venv ""
 install_core
-install_gui_deps || true
 
 echo "==> Creating data directory..."
 sudo -u "$USER" mkdir -p "$REPO_DIR/data"
@@ -85,7 +43,6 @@ sudo -u "$USER" mkdir -p "$REPO_DIR/data"
 echo "==> Installing systemd services..."
 cp "$REPO_DIR/systemd/meshtasticd.service" /etc/systemd/system/
 cp "$REPO_DIR/systemd/pimesh.service"      /etc/systemd/system/
-cp "$REPO_DIR/systemd/pimesh-gui.service"  /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable meshtasticd pimesh
 systemctl start  meshtasticd
@@ -97,7 +54,7 @@ echo "==> Done."
 echo
 echo "    Web UI: http://localhost:8080  (also reachable on the LAN)"
 echo
-echo "    Native Qt kiosk (optional, replaces the surf-based kiosk):"
-echo "      sudo systemctl disable --now kiosk.service     # if currently enabled"
-echo "      sudo systemctl enable  --now pimesh-gui.service"
+echo "    Kiosk su display (opzionale):"
+echo "      SPI  3.5\": sudo bash scripts/setup-display.sh"
+echo "      HDMI (GPU): sudo bash scripts/setup-display-hdmi.sh"
 echo

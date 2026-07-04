@@ -1,4 +1,15 @@
-# routers/ws_router.py
+"""WebSocket /ws — canale eventi real-time verso la UI.
+
+All'accept invia ``{type:'init', nodes:[...]}``; da lì in poi il client
+riceve gli eventi che i task di main.py pescano dalle code di
+meshtasticd_client e passano a ``manager.broadcast``. Tipi principali:
+message, node, position, telemetry, log, traceroute_result, ack,
+waypoint, neighbor_info, sensor, paxcounter, rpi_telemetry.
+
+Il ``ConnectionManager`` tiene il set dei client connessi; i socket che
+falliscono in send vengono scartati al volo (kiosk e browser LAN vanno
+e vengono).
+"""
 import asyncio
 import json
 import logging

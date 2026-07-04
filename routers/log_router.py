@@ -1,4 +1,9 @@
-# routers/log.py
+"""Pagina log pacchetti e stream SSE dal buffer della radio.
+
+  GET /log             — pagina HTML
+  GET /api/log/stream  — Server-Sent Events: replay del buffer (deque da
+                         500 righe in meshtasticd_client) e poi push live
+"""
 import asyncio
 import json
 from fastapi import APIRouter, Request
