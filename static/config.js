@@ -456,10 +456,11 @@ function configPage() {
       }
     },
 
-    // Tema
-    currentTheme: localStorage.getItem('pimesh-theme') || 'dark',
-    currentAccent: localStorage.getItem('pimesh-accent') || '#4a9eff',
-    accentSwatches: ['#4a9eff','#4caf50','#ff9800','#e91e63','#9c27b0','#00bcd4','#ff5722'],
+    // Tema — preset b1..b9 definiti in base.html (window.PIMESH_THEMES).
+    currentTheme: (function(t) { var l = { dark:'b1', light:'b3', hc:'b7' }; return l[t] || t })(localStorage.getItem('pimesh-theme') || 'b1'),
+    currentAccent: localStorage.getItem('pimesh-accent') || '#9bc24a',
+    themePresets: window.PIMESH_THEMES || {},
+    accentSwatches: ['#9bc24a','#3ef07a','#f2c14e','#ff7a1a','#e8637a','#4fc3e8','#a78bfa'],
     // Color picker state
     cpOpen: false, cpKey: '', cpLabel: '', cpValue: '',
     cpPalette: [
@@ -472,41 +473,35 @@ function configPage() {
     ],
     cpGrays: ['#000000','#111111','#222222','#333333','#444444','#666666','#888888','#aaaaaa','#cccccc','#ffffff'],
     themeVars: [
-      { key: '--bg',     label: 'Sfondo',     value: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#060810' },
-      { key: '--panel',  label: 'Pannello',    value: getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#0d1017' },
-      { key: '--border', label: 'Bordo',       value: getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#1a2233' },
-      { key: '--text',   label: 'Testo',       value: getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#c9d1e0' },
-      { key: '--muted',  label: 'Secondario',  value: getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#4a5568' },
-      { key: '--accent', label: 'Accento',     value: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#4a9eff' },
+      { key: '--bg',      label: 'Sfondo',      value: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#11150c' },
+      { key: '--panel',   label: 'Pannello',    value: getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#161a10' },
+      { key: '--panel-2', label: 'Pannello 2',  value: getComputedStyle(document.documentElement).getPropertyValue('--panel-2').trim() || '#1f2616' },
+      { key: '--border',  label: 'Bordo',       value: getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#313c1f' },
+      { key: '--text',    label: 'Testo',       value: getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#dde6c9' },
+      { key: '--muted',   label: 'Secondario',  value: getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#7d8a63' },
+      { key: '--accent',  label: 'Accento',     value: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#9bc24a' },
+      { key: '--ok',      label: 'OK',          value: getComputedStyle(document.documentElement).getPropertyValue('--ok').trim() || '#3ef07a' },
+      { key: '--warn',    label: 'Avviso',      value: getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#e5b13d' },
+      { key: '--danger',  label: 'Allarme',     value: getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#c9603f' },
     ],
 
     applyTheme(theme) {
       this.currentTheme = theme
       localStorage.setItem('pimesh-theme', theme)
       const root = document.documentElement
-      if (theme === 'dark') {
-        root.style.setProperty('--bg', '#060810')
-        root.style.setProperty('--panel', '#0d1017')
-        root.style.setProperty('--border', '#1a2233')
-        root.style.setProperty('--text', '#c9d1e0')
-        root.style.setProperty('--muted', '#4a5568')
-      } else if (theme === 'light') {
-        root.style.setProperty('--bg', '#f8fafc')
-        root.style.setProperty('--panel', '#ffffff')
-        root.style.setProperty('--border', '#e2e8f0')
-        root.style.setProperty('--text', '#1a202c')
-        root.style.setProperty('--muted', '#718096')
-      } else if (theme === 'hc') {
-        root.style.setProperty('--bg', '#000000')
-        root.style.setProperty('--panel', '#111111')
-        root.style.setProperty('--border', '#444444')
-        root.style.setProperty('--text', '#ffffff')
-        root.style.setProperty('--muted', '#aaaaaa')
-      } else if (theme === 'custom') {
+      if (theme === 'custom') {
         try {
           var saved = JSON.parse(localStorage.getItem('pimesh-custom-theme') || '{}')
           Object.keys(saved).forEach(function(k) { root.style.setProperty(k, saved[k]) })
         } catch(e) {}
+      } else {
+        var preset = this.themePresets[theme]
+        if (preset) Object.keys(preset).forEach(function(k) { if (k.indexOf('--') === 0) root.style.setProperty(k, preset[k]) })
+        // L'accento del preset sostituisce l'override manuale salvato.
+        if (preset && preset['--accent']) {
+          this.currentAccent = preset['--accent']
+          localStorage.removeItem('pimesh-accent')
+        }
       }
       // Sync themeVars with current computed values
       var cs = getComputedStyle(root)

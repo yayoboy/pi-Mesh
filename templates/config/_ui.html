@@ -3,11 +3,22 @@
     <template x-if="section === 'theme'">
       <div>
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:10px;">Tema UI</div>
-        <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
-          <button @click="applyTheme('dark')"  style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="currentTheme==='dark'?'background:var(--accent);color:#fff;border-color:var(--accent);':'background:var(--panel);color:var(--text);'">Dark</button>
-          <button @click="applyTheme('light')" style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="currentTheme==='light'?'background:var(--accent);color:#fff;border-color:var(--accent);':'background:var(--panel);color:var(--text);'">Light</button>
-          <button @click="applyTheme('hc')"    style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="currentTheme==='hc'?'background:var(--accent);color:#fff;border-color:var(--accent);':'background:var(--panel);color:var(--text);'">HC</button>
-          <button @click="applyTheme('custom')" style="flex:1;min-height:36px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--border);" :style="currentTheme==='custom'?'background:var(--accent);color:#fff;border-color:var(--accent);':'background:var(--panel);color:var(--text);'">Custom</button>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;">
+          <template x-for="key in Object.keys(themePresets)" :key="key">
+            <button @click="applyTheme(key)"
+                    style="min-height:44px;font-size:11px;border-radius:4px;cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:6px 8px;text-align:left;"
+                    :style="'background:' + themePresets[key]['--panel'] + ';color:' + themePresets[key]['--text'] + ';border:1px solid ' + (currentTheme===key ? themePresets[key]['--accent'] : 'var(--border)') + ';'">
+              <span x-text="themePresets[key].label" style="font-weight:600;"></span>
+              <span style="display:flex;gap:3px;">
+                <span :style="'background:' + themePresets[key]['--bg']" style="width:12px;height:12px;border-radius:2px;"></span>
+                <span :style="'background:' + themePresets[key]['--panel-2']" style="width:12px;height:12px;border-radius:2px;"></span>
+                <span :style="'background:' + themePresets[key]['--accent']" style="width:12px;height:12px;border-radius:2px;"></span>
+                <span :style="'background:' + themePresets[key]['--warn']" style="width:12px;height:12px;border-radius:2px;"></span>
+                <span :style="'background:' + themePresets[key]['--text']" style="width:12px;height:12px;border-radius:2px;"></span>
+              </span>
+            </button>
+          </template>
+          <button @click="applyTheme('custom')" style="min-height:44px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;padding:6px 8px;text-align:left;border:1px solid var(--border);" :style="currentTheme==='custom'?'background:var(--accent);color:var(--accent-contrast);border-color:var(--accent);':'background:var(--panel);color:var(--text);'">Custom</button>
         </div>
         <div style="font-size:10px;color:var(--muted);margin-bottom:6px;">Colore accento</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">

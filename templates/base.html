@@ -9,13 +9,29 @@
   <link rel="stylesheet" href="/static/tailwind.css">
   <script defer src="/static/alpine.min.js"></script>
   <style>
+    /* Font locali: il Pi è offline, niente CDN. */
+    @font-face { font-family: 'IBM Plex Sans'; font-weight: 400; font-display: swap; src: url('/static/fonts/IBMPlexSans-Regular.woff2') format('woff2'); }
+    @font-face { font-family: 'IBM Plex Sans'; font-weight: 600; font-display: swap; src: url('/static/fonts/IBMPlexSans-SemiBold.woff2') format('woff2'); }
+    @font-face { font-family: 'IBM Plex Sans'; font-weight: 700; font-display: swap; src: url('/static/fonts/IBMPlexSans-Bold.woff2') format('woff2'); }
+    @font-face { font-family: 'IBM Plex Mono'; font-weight: 400; font-display: swap; src: url('/static/fonts/IBMPlexMono-Regular.woff2') format('woff2'); }
+    @font-face { font-family: 'IBM Plex Mono'; font-weight: 600; font-display: swap; src: url('/static/fonts/IBMPlexMono-SemiBold.woff2') format('woff2'); }
     :root {
-      --accent: #4a9eff;
-      --bg: #060810;
-      --panel: #0d1017;
-      --border: #1a2233;
-      --text: #c9d1e0;
-      --muted: #4a5568;
+      /* Token tema — default B1 "Tattico Verde" (prototipo 7"); i preset
+         completi vivono nello script di restore qui sotto. */
+      --accent: #9bc24a;
+      --accent-bright: #b6e06a;
+      --accent-contrast: #15200a;
+      --bg: #11150c;
+      --panel: #161a10;
+      --panel-2: #1f2616;
+      --border: #313c1f;
+      --text: #dde6c9;
+      --muted: #7d8a63;
+      --ok: #3ef07a;
+      --warn: #e5b13d;
+      --danger: #c9603f;
+      --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+      --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
       /* Altezze barre: crescono sui viewport larghi (display HDMI). */
       --sb-h: 24px;
       --tb-h: 32px;
@@ -29,7 +45,7 @@
       #tabbar .tab { font-size: 11px !important; }
       #tabbar .tab svg { width: 20px; height: 20px; }
     }
-    body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; -webkit-user-select: none; user-select: none; }
+    body { background: var(--bg); color: var(--text); font-family: var(--font-sans); -webkit-user-select: none; user-select: none; }
     select, input[type="text"], input[type="number"], input[type="password"], textarea { color: var(--text) !important; background: var(--panel) !important; -webkit-appearance: none; appearance: none; }
     select option { color: var(--text) !important; background: var(--bg) !important; }
     .tab-active { color: var(--accent); }
@@ -48,22 +64,33 @@
   </style>
   <script>window.MAP_LOCAL_TILES = "{{ map_local_tiles }}";</script>
   <script>
-  // Restore saved theme on load
+  // Restore saved theme on load — preset B1..B9 dal prototipo "Tattico".
+  // Espone window.PIMESH_THEMES per il selettore in config (_ui.html).
   (function() {
     var root = document.documentElement
-    var theme = localStorage.getItem('pimesh-theme') || 'dark'
     var presets = {
-      dark:  { '--bg':'#060810','--panel':'#0d1017','--border':'#1a2233','--text':'#c9d1e0','--muted':'#4a5568' },
-      light: { '--bg':'#f8fafc','--panel':'#ffffff','--border':'#e2e8f0','--text':'#1a202c','--muted':'#718096' },
-      hc:    { '--bg':'#000000','--panel':'#111111','--border':'#444444','--text':'#ffffff','--muted':'#aaaaaa' }
+      b1: { label:'B1 Tattico Verde',        '--bg':'#11150c','--panel':'#161a10','--panel-2':'#1f2616','--border':'#313c1f','--text':'#dde6c9','--muted':'#7d8a63','--accent':'#9bc24a','--accent-bright':'#b6e06a','--accent-contrast':'#15200a','--ok':'#3ef07a','--warn':'#e5b13d','--danger':'#c9603f' },
+      b2: { label:'B2 Notturno Rosso',       '--bg':'#120d10','--panel':'#171114','--panel-2':'#241a1e','--border':'#34262c','--text':'#ecdce0','--muted':'#8a6f76','--accent':'#e8637a','--accent-bright':'#f0a3b2','--accent-contrast':'#2a0d13','--ok':'#e8637a','--warn':'#e5b13d','--danger':'#e8637a' },
+      b3: { label:'B3 Diurno Alto Contrasto','--bg':'#e9e6da','--panel':'#f3f1e8','--panel-2':'#ffffff','--border':'#d8d2c0','--text':'#22211a','--muted':'#77745f','--accent':'#2c4d14','--accent-bright':'#3f6d1f','--accent-contrast':'#f0f5e2','--ok':'#3f6d1f','--warn':'#b3401f','--danger':'#b3401f' },
+      b4: { label:'B4 Terminale Ambra',      '--bg':'#0d0b06','--panel':'#12100a','--panel-2':'#1c180c','--border':'#2e2712','--text':'#f2c14e','--muted':'#8a7a4a','--accent':'#f2c14e','--accent-bright':'#f5d98a','--accent-contrast':'#1c1503','--ok':'#f2c14e','--warn':'#e07840','--danger':'#e07840' },
+      b5: { label:'B5 Artico Ciano',         '--bg':'#0a111a','--panel':'#0e1620','--panel-2':'#152230','--border':'#1e3242','--text':'#d7e6f2','--muted':'#5f7a8f','--accent':'#4fc3e8','--accent-bright':'#8fdcf5','--accent-contrast':'#06222e','--ok':'#4fc3e8','--warn':'#e8a13d','--danger':'#e8a13d' },
+      b6: { label:'B6 Soccorso Arancio',     '--bg':'#131211','--panel':'#1a1917','--panel-2':'#242220','--border':'#34302a','--text':'#f0ede8','--muted':'#8a847a','--accent':'#ff7a1a','--accent-bright':'#ffb15c','--accent-contrast':'#2b1503','--ok':'#3d9970','--warn':'#ffb15c','--danger':'#ff7a1a' },
+      b7: { label:'B7 Fosforo Verde',        '--bg':'#050d08','--panel':'#08120b','--panel-2':'#0c1c11','--border':'#12331e','--text':'#a5f0c0','--muted':'#3a7a52','--accent':'#3ef07a','--accent-bright':'#a5f0c0','--accent-contrast':'#03180b','--ok':'#3ef07a','--warn':'#e5b13d','--danger':'#e5b13d' },
+      b8: { label:'B8 Crepuscolo Viola',     '--bg':'#0f0c17','--panel':'#14111e','--panel-2':'#1e1930','--border':'#2c2547','--text':'#e6e0f2','--muted':'#77708f','--accent':'#a78bfa','--accent-bright':'#c9b8fa','--accent-contrast':'#1a1030','--ok':'#4ade80','--warn':'#e5b13d','--danger':'#e8637a' },
+      b9: { label:'B9 Sabbia Desert',        '--bg':'#ddd2b2','--panel':'#e8dfc8','--panel-2':'#f2ecd9','--border':'#c9bd9c','--text':'#2b2416','--muted':'#8a7c5c','--accent':'#4a3d1c','--accent-bright':'#5c4d22','--accent-contrast':'#f2ecd9','--ok':'#5c4d22','--warn':'#a8451f','--danger':'#a8451f' }
     }
+    // Nomi legacy salvati da versioni precedenti.
+    var legacy = { dark:'b1', light:'b3', hc:'b7' }
+    var theme = localStorage.getItem('pimesh-theme') || 'b1'
+    if (legacy[theme]) theme = legacy[theme]
     var vars = presets[theme]
     if (theme === 'custom') {
-      try { vars = JSON.parse(localStorage.getItem('pimesh-custom-theme') || '{}') } catch(e) { vars = presets.dark }
+      try { vars = JSON.parse(localStorage.getItem('pimesh-custom-theme') || '{}') } catch(e) { vars = presets.b1 }
     }
-    if (vars) Object.keys(vars).forEach(function(k) { root.style.setProperty(k, vars[k]) })
+    if (vars) Object.keys(vars).forEach(function(k) { if (k.indexOf('--') === 0) root.style.setProperty(k, vars[k]) })
     var accent = localStorage.getItem('pimesh-accent')
     if (accent) root.style.setProperty('--accent', accent)
+    window.PIMESH_THEMES = presets
   })()
   </script>
   {% block head %}{% endblock %}
