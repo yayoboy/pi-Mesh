@@ -115,8 +115,16 @@
           </template>
         </select>
       </div>
+      <!-- QR condivisione canali (screen 08) -->
+      <button x-show="conv === 'broadcast'" @click="openQr()" title="Condividi canali (QR)"
+              style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--muted);padding:6px;line-height:0;">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4h5v5H4zM15 4h5v5h-5zM4 15h5v5H4zM15 15h2v2h-2zM19 15h1v1h-1zM15 19h1v1h-1zM19 19h1v1h-1z"/>
+        </svg>
+      </button>
       <!-- Pulisci cronologia -->
       <button @click="showConfirm = true" title="Pulisci cronologia"
+              :style="conv === 'broadcast' ? 'margin-left:0 !important;' : ''"
               style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--muted);padding:6px;line-height:0;">
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -147,8 +155,21 @@
       </template>
     </div>
 
+    <!-- Chip risposta rapida (screen 02) — messaggi predefiniti a un tap -->
+    <div x-show="cannedMessages.length > 0"
+         style="display:flex;align-items:center;gap:6px;padding:7px 10px 0;background:var(--panel);border-top:1px solid var(--border);overflow-x:auto;">
+      <span class="mlabel" style="flex-shrink:0;">rapidi:</span>
+      <template x-for="m in cannedMessages.slice(0, 5)" :key="m.id">
+        <button @click="sendCanned(m.text)"
+                style="flex-shrink:0;font-size:11px;font-weight:600;padding:6px 12px;border-radius:13px;
+                       background:var(--panel-2);border:1px solid var(--border);color:var(--text);cursor:pointer;"
+                x-text="m.text.length > 22 ? m.text.slice(0, 22) + '…' : m.text"></button>
+      </template>
+    </div>
+
     <!-- Input bar -->
-    <div style="padding:8px 10px;border-top:1px solid var(--border);flex-shrink:0;background:var(--panel);">
+    <div style="padding:8px 10px;flex-shrink:0;background:var(--panel);"
+         :style="cannedMessages.length > 0 ? '' : 'border-top:1px solid var(--border);'">
       <form @submit.prevent="send()" style="display:flex;gap:6px;">
         <button type="button" @click="cannedOpen=true"
                 style="width:40px;min-height:40px;padding:0;background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);cursor:pointer;font-size:15px;flex-shrink:0;"
@@ -165,6 +186,27 @@
       </form>
     </div>
   </div>
+
+  <!-- QR CONDIVISIONE CANALI (screen 08) -->
+  <template x-teleport="body">
+    <div x-show="qrOpen" @click.self="qrOpen=false" @keydown.escape.window="qrOpen=false"
+         style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:250;
+                align-items:center;justify-content:center;padding:16px;"
+         :style="qrOpen ? 'display:flex;' : ''">
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px;width:300px;text-align:center;">
+        <div class="mlabel" style="color:var(--accent);margin-bottom:10px;">Condividi canali</div>
+        <div x-show="qrSvg" x-html="qrSvg"
+             style="background:#fff;border-radius:6px;padding:8px;display:inline-block;line-height:0;"></div>
+        <div x-show="!qrSvg" class="mlabel" style="padding:20px 0;">QR non disponibile</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:10px;">
+          Scansiona con l'app Meshtastic per unirti con gli stessi canali e chiavi.
+        </div>
+        <button @click="qrOpen=false"
+                style="margin-top:12px;width:100%;min-height:38px;background:var(--panel-2);border:1px solid var(--border);
+                       border-radius:6px;color:var(--text);font-size:12px;cursor:pointer;">Chiudi</button>
+      </div>
+    </div>
+  </template>
 
   <!-- CANNED MESSAGES MODAL -->
   <div x-show="cannedOpen" @click.self="cannedOpen=false"
@@ -245,6 +287,8 @@ function messagesPage() {
     showConfirm: false,
     cannedOpen: false,
     cannedMessages: [],
+    qrOpen: false,
+    qrSvg: '',
     _onMessage: null,
     _onAck: null,
     _observer: null,
@@ -377,6 +421,17 @@ function messagesPage() {
     async loadDmThreads() {
       const r = await fetch('/api/dm/threads')
       if (r.ok) this.dmThreads = await r.json()
+    },
+
+    // QR di condivisione canali dal backend (SVG inline, generato dalla board)
+    async openQr() {
+      this.qrSvg = ''
+      this.qrOpen = true
+      try {
+        const r = await fetch('/api/config/channels/qr')
+        if (r.ok) this.qrSvg = await r.text()
+        else if (typeof showToast === 'function') showToast('Board non connessa', 'warn')
+      } catch(e) {}
     },
 
     async loadCanned() {
