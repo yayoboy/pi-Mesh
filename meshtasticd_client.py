@@ -1876,6 +1876,10 @@ async def connect() -> None:
             await asyncio.sleep(3)
             _local_id = f'!{_interface.localNode.nodeNum:08x}'
             logger.warning(f'Local node ID: {_local_id}')
+            # La board collegata detta il nodo locale: azzera il flag
+            # is_local persistito da eventuali board precedenti, altrimenti
+            # la UI continuerebbe a mostrare come locale il nodo vecchio.
+            await database.set_local_node(cfg.DB_PATH, _local_id)
             # Keep alive — poll every 30s
             while _connected:
                 _refresh_node_cache()

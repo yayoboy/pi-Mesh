@@ -328,6 +328,19 @@ async def get_all_nodes(db_path: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+async def set_local_node(db_path: str, local_id: str) -> None:
+    """Marca local_id come nodo locale e azzera il flag su tutti gli altri.
+
+    Senza questo, il flag is_local persistito resterebbe sul nodo della
+    board precedente quando si collega una board diversa, e la UI
+    continuerebbe a mostrare quello vecchio come locale.
+    """
+    async with _get_db() as db:
+        await db.execute('UPDATE nodes SET is_local = 0 WHERE id != ?', (local_id,))
+        await db.execute('UPDATE nodes SET is_local = 1 WHERE id = ?', (local_id,))
+        await db.commit()
+
+
 async def delete_node(db_path: str, node_id: str, purge: bool = False) -> None:
     """Delete a node from DB. If purge=True, also remove messages and telemetry."""
     async with _get_db() as db:
