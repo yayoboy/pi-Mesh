@@ -231,6 +231,13 @@ density as the SPI layout, but crisp), a 1080p monitor runs at scale 2 with a
 list, 3-column metrics grid, capped config forms). Override in `config.env`
 with `PIMESH_HDMI_SCALE=1.5`.
 
+**Broken EDIDs.** Some cheap panels advertise an interlaced preferred mode
+(e.g. `1024x600i`) their own electronics can't display — the monitor shows
+"out of range". `start-kiosk-hdmi.sh` detects this and forces the progressive
+twin via `COG_PLATFORM_DRM_VIDEO_MODE` when it exists in the mode list; set
+that variable in `config.env` (DRM mode *name*, e.g. `1024x600` — no `@60`)
+to pick a mode manually.
+
 **RAM notes (512 MB).** KMS reserves a CMA pool for GPU buffers; the setup
 script pins it to 96 MB (`PIMESH_CMA` to change) instead of the default
 256 MB+, and comments out `gpu_mem` (ignored under KMS). Dropping X11 +

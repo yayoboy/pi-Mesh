@@ -31,14 +31,35 @@ for i in $(seq 1 60); do
   sleep 1
 done
 
-# Scala: da PIMESH_HDMI_SCALE, oppure calcolata dal modo preferito del
-# connettore HDMI (prima riga di /sys/class/drm/card*-HDMI-A-*/modes),
+# Modo del display: il preferred del connettore HDMI (prima riga di
+# /sys/class/drm/card*-HDMI-A-*/modes).
+MODE=$(cat /sys/class/drm/card*-HDMI-A-*/modes 2>/dev/null | head -1)
+
+# EDID difettosi (comuni nei pannelli HDMI economici) marcano come preferred
+# un modo interlacciato — es. "1024x600i" — che l'elettronica del pannello
+# stesso non regge: il monitor mostra "out of range". Se in lista esiste il
+# gemello progressivo, forzalo via COG_PLATFORM_DRM_VIDEO_MODE: cog sceglie
+# il modo per confronto esatto col nome DRM, che non include il refresh
+# (es. "1024x600", mentre l'interlacciato si chiama "1024x600i"). Un valore
+# già impostato in config.env ha la precedenza.
+case "$MODE" in
+  *i)
+    PROG="${MODE%i}"
+    if [ -z "${COG_PLATFORM_DRM_VIDEO_MODE:-}" ] && \
+       cat /sys/class/drm/card*-HDMI-A-*/modes 2>/dev/null | grep -qx "$PROG"; then
+      echo "EDID: modo preferito interlacciato ($MODE), forzo il progressivo $PROG" >&2
+      export COG_PLATFORM_DRM_VIDEO_MODE="$PROG"
+      MODE="$PROG"
+    fi
+    ;;
+esac
+
+# Scala: da PIMESH_HDMI_SCALE, oppure calcolata dalla larghezza del modo,
 # arrotondata al quarto e limitata a [1, 2]. Il tetto a 2 fa sì che sopra
 # i 1024 px il viewport CSS superi i 640 px e la UI passi ai layout
 # multi-colonna invece di ingrandire all'infinito.
 SCALE="${PIMESH_HDMI_SCALE:-}"
 if [ -z "$SCALE" ]; then
-  MODE=$(cat /sys/class/drm/card*-HDMI-A-*/modes 2>/dev/null | head -1)
   WIDTH="${MODE%%x*}"
   if [ -n "$WIDTH" ] && [ "$WIDTH" -gt 0 ] 2>/dev/null; then
     SCALE=$(awk -v w="$WIDTH" -v d="$DESIGN_W" 'BEGIN {
