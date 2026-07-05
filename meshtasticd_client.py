@@ -137,6 +137,21 @@ async def send_text(text: str, destination_id: str, channel: int = 0) -> None:
     await _command_queue.put(
         lambda: _interface.sendText(text, destinationId=destination_id, channelIndex=channel)
     )
+    # Il log pacchetti nasce da _on_receive (solo RX): senza questo, i
+    # messaggi trasmessi non comparirebbero mai nella pagina Log.
+    dest = 'broadcast' if destination_id == '^all' else destination_id
+    log_event = {
+        'type':    'log',
+        'ts':      int(time.time()),
+        'from':    'tu',
+        'portnum': 'TEXT_MESSAGE_APP',
+        'snr':     None,
+        'hop_limit': None,
+        'summary': f'→ {dest} (ch {channel}): {text[:60]}',
+    }
+    _log_queue.append(log_event)
+    if _loop is not None:
+        _loop.call_soon_threadsafe(_enqueue_event, log_event)
 
 
 def get_traceroute_result(node_id: str) -> dict | None:
