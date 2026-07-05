@@ -1,130 +1,171 @@
 {% extends "base.html" %}
-{# Pagina Metriche — card sistema Pi (CPU/RAM/disco) e telemetria board
-   per nodo. Griglia multi-colonna sui display larghi. #}
+{# Pagina Telemetria — stile tattico (screen 04 del prototipo): stat-card,
+   grafico utilizzo canale 24h, sezione Raspberry Pi e righe sensori. #}
 {% block content %}
 <style>
-/* Su display larghi (HDMI) le card diventano una griglia multi-colonna. */
-.metrics-cards { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
-@media (min-width: 640px) {
-  .metrics-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .metrics-wrap { max-width: 960px; margin: 0 auto; }
+.mlabel {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
 }
-@media (min-width: 960px) {
-  .metrics-cards { grid-template-columns: repeat(3, 1fr); }
+.tstat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+@media (min-width: 900px) { .tstat-grid { grid-template-columns: repeat(4, 1fr); } }
+.tstat-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 4px;
+  padding: 10px 12px; min-width: 0;
+}
+.tstat-card .val { font-family: var(--font-mono); font-weight: 600; font-size: 24px; color: var(--text); margin-top: 4px; white-space: nowrap; overflow: hidden; }
+.tstat-card .val .unit { font-size: 12px; color: var(--muted); margin-left: 2px; }
+.tstat-card.sm .val { font-size: 14px; }
+.tpanel { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 12px; }
+.tbars { display: flex; align-items: flex-end; gap: 3px; height: 110px; margin-top: 10px; }
+.tbars .bar { flex: 1; min-width: 2px; border-radius: 1px; background: var(--accent); }
+.tbars .bar.empty { background: var(--panel-2); height: 6% !important; }
+.taxis { display: flex; justify-content: space-between; margin-top: 5px; }
+.sensor-row {
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 4px;
+  margin-bottom: 6px; min-height: 52px;
+}
+.sensor-badge {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 6px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  font-family: var(--font-mono); font-weight: 600; font-size: 12px; color: var(--accent);
+}
+.exp-pill {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600; padding: 5px 12px;
+  border-radius: 12px; border: 1px solid var(--border); background: var(--panel-2);
+  color: var(--muted); text-decoration: none; cursor: pointer;
 }
 </style>
-<div x-data="metricsPage()" x-init="init()" style="height:100%;overflow-y:auto;padding:10px 12px;">
-<div class="metrics-wrap">
+<div x-data="metricsPage()" x-init="init()" class="h-full flex flex-col overflow-hidden">
 
-  <!-- RPi Section -->
-  <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Raspberry Pi</div>
-  <div class="metrics-cards">
-
-    <div style="background:var(--panel);border-radius:6px;padding:8px 10px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-size:11px;color:var(--muted);">CPU Temp</span>
-        <span style="font-size:14px;font-weight:700;" x-text="rpi.cpu_temp != null ? rpi.cpu_temp + ' C' : '—'"></span>
-      </div>
-      <canvas x-ref="chartCpuTemp" height="40" style="width:100%;margin-top:4px;"></canvas>
+  <!-- Header pagina -->
+  <div class="flex items-center justify-between gap-3 px-3 shrink-0"
+       style="border-bottom:1px solid var(--border);height:40px;background:var(--panel);">
+    <div class="flex items-center gap-2 min-w-0">
+      <span style="width:7px;height:7px;border-radius:50%;background:var(--ok);flex-shrink:0;"></span>
+      <span style="font-size:13px;font-weight:700;">Telemetria</span>
+      <span class="mlabel" x-text="lastUpdate ? '· aggiornata ' + lastUpdate : ''"></span>
     </div>
-
-    <div style="background:var(--panel);border-radius:6px;padding:8px 10px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-size:11px;color:var(--muted);">CPU</span>
-        <span style="font-size:14px;font-weight:700;" x-text="rpi.cpu_percent != null ? rpi.cpu_percent + '%' : '—'"></span>
-      </div>
-      <canvas x-ref="chartCpuPct" height="40" style="width:100%;margin-top:4px;"></canvas>
-    </div>
-
-    <div style="background:var(--panel);border-radius:6px;padding:8px 10px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-        <span style="font-size:11px;color:var(--muted);">RAM</span>
-        <span style="font-size:11px;" x-text="rpi.ram_used_mb + ' / ' + rpi.ram_total_mb + ' MB'"></span>
-      </div>
-      <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
-        <div style="height:100%;border-radius:3px;transition:width 0.5s;"
-             :style="'width:' + rpi.ram_percent + '%;background:' + (rpi.ram_percent > 85 ? '#ef4444' : 'var(--accent)')"></div>
-      </div>
-    </div>
-
-    <div style="background:var(--panel);border-radius:6px;padding:8px 10px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-        <span style="font-size:11px;color:var(--muted);">Disco</span>
-        <span style="font-size:11px;" x-text="rpi.disk_used_mb + ' / ' + rpi.disk_total_mb + ' MB'"></span>
-      </div>
-      <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
-        <div style="height:100%;border-radius:3px;transition:width 0.5s;"
-             :style="'width:' + rpi.disk_percent + '%;background:' + (rpi.disk_percent > 85 ? '#ef4444' : 'var(--accent)')"></div>
-      </div>
-    </div>
-
-    <div style="background:var(--panel);border-radius:6px;padding:8px 10px;display:flex;justify-content:space-between;">
-      <span style="font-size:11px;color:var(--muted);">Uptime</span>
-      <span style="font-size:11px;" x-text="formatUptime(rpi.uptime_seconds)"></span>
+    <div class="flex gap-2">
+      <a href="/api/export/telemetry?format=csv" download class="exp-pill">CSV</a>
+      <a href="/api/export/telemetry?format=json" download class="exp-pill">JSON</a>
     </div>
   </div>
 
-  <!-- Board Meshtastic Section -->
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent);">Board Meshtastic</div>
-    <div style="display:flex;gap:4px;">
-      <a href="/api/export/telemetry?format=csv" download
-         style="font-size:9px;padding:2px 8px;background:var(--panel);border:1px solid var(--border);
-                border-radius:3px;color:var(--text);text-decoration:none;cursor:pointer;">CSV</a>
-      <a href="/api/export/telemetry?format=json" download
-         style="font-size:9px;padding:2px 8px;background:var(--panel);border:1px solid var(--border);
-                border-radius:3px;color:var(--text);text-decoration:none;cursor:pointer;">JSON</a>
+  <div style="flex:1;overflow-y:auto;padding:12px;">
+
+  <!-- Stat card principali -->
+  <div class="tstat-grid">
+    <div class="tstat-card">
+      <div class="mlabel">Batteria board</div>
+      <div class="val" :style="battLevel != null ? 'color:' + battColor(battLevel) : ''">
+        <span x-text="battLevel != null ? battLevel : '—'"></span><span class="unit" x-show="battLevel != null">%</span>
+      </div>
+    </div>
+    <div class="tstat-card">
+      <div class="mlabel">Temp esterna</div>
+      <div class="val"><span x-text="envTemp != null ? envTemp.toFixed(1) : '—'"></span><span class="unit" x-show="envTemp != null">°C</span></div>
+    </div>
+    <div class="tstat-card">
+      <div class="mlabel">Utilizzo canale</div>
+      <div class="val"><span x-text="chUtil != null ? chUtil.toFixed(0) : '—'"></span><span class="unit" x-show="chUtil != null">%</span></div>
+    </div>
+    <div class="tstat-card">
+      <div class="mlabel">Air TX</div>
+      <div class="val"><span x-text="airTx != null ? airTx.toFixed(1) : '—'"></span><span class="unit" x-show="airTx != null">%</span></div>
     </div>
   </div>
 
-  <div x-show="Object.keys(nodesTelemetry).length === 0" style="font-size:11px;color:var(--muted);padding:10px 0;">
+  <!-- Grafico utilizzo canale 24h -->
+  <div class="tpanel" style="margin-top:10px;">
+    <div class="flex items-center justify-between">
+      <span class="mlabel">Utilizzo canale · ultime 24 h</span>
+      <span style="font-family:var(--font-mono);font-size:10px;font-weight:600;color:var(--accent);"
+            x-text="chPeak"></span>
+    </div>
+    <div class="tbars" x-show="chHist.some(v => v != null)">
+      <template x-for="(v, i) in chHist" :key="i">
+        <div class="bar" :class="{ empty: v == null }"
+             :style="v != null ? 'height:' + Math.max(4, Math.min(100, v * 2)) + '%' : ''"
+             :title="v != null ? v.toFixed(1) + '%' : ''"></div>
+      </template>
+    </div>
+    <div class="taxis" x-show="chHist.some(v => v != null)">
+      <span class="mlabel">-24 h</span><span class="mlabel">-18 h</span>
+      <span class="mlabel">-12 h</span><span class="mlabel">-6 h</span>
+      <span class="mlabel">ora</span>
+    </div>
+    <div x-show="!chHist.some(v => v != null)" class="mlabel" style="margin-top:8px;">nessun dato</div>
+  </div>
+
+  <!-- Raspberry Pi -->
+  <div class="mlabel" style="margin:14px 0 8px;color:var(--accent);">Raspberry Pi</div>
+  <div class="tstat-grid" style="grid-template-columns:repeat(2, 1fr);">
+    <div class="tstat-card sm">
+      <div class="flex items-center justify-between">
+        <span class="mlabel">CPU temp</span>
+        <span class="val" style="margin:0;" x-text="rpi.cpu_temp != null ? rpi.cpu_temp + ' °C' : '—'"></span>
+      </div>
+      <canvas x-ref="chartCpuTemp" height="40" style="width:100%;margin-top:6px;"></canvas>
+    </div>
+    <div class="tstat-card sm">
+      <div class="flex items-center justify-between">
+        <span class="mlabel">CPU</span>
+        <span class="val" style="margin:0;" x-text="rpi.cpu_percent != null ? rpi.cpu_percent + '%' : '—'"></span>
+      </div>
+      <canvas x-ref="chartCpuPct" height="40" style="width:100%;margin-top:6px;"></canvas>
+    </div>
+    <div class="tstat-card sm">
+      <div class="flex items-center justify-between" style="margin-bottom:6px;">
+        <span class="mlabel">RAM</span>
+        <span style="font-family:var(--font-mono);font-size:11px;" x-text="rpi.ram_used_mb + ' / ' + rpi.ram_total_mb + ' MB'"></span>
+      </div>
+      <div style="height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden;">
+        <div style="height:100%;border-radius:3px;transition:width 0.5s;"
+             :style="'width:' + rpi.ram_percent + '%;background:' + (rpi.ram_percent > 85 ? 'var(--danger)' : 'var(--accent)')"></div>
+      </div>
+    </div>
+    <div class="tstat-card sm">
+      <div class="flex items-center justify-between" style="margin-bottom:6px;">
+        <span class="mlabel">Disco</span>
+        <span style="font-family:var(--font-mono);font-size:11px;" x-text="rpi.disk_used_mb + ' / ' + rpi.disk_total_mb + ' MB'"></span>
+      </div>
+      <div style="height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden;">
+        <div style="height:100%;border-radius:3px;transition:width 0.5s;"
+             :style="'width:' + rpi.disk_percent + '%;background:' + (rpi.disk_percent > 85 ? 'var(--danger)' : 'var(--accent)')"></div>
+      </div>
+    </div>
+    <div class="tstat-card sm">
+      <div class="flex items-center justify-between">
+        <span class="mlabel">Uptime</span>
+        <span class="val" style="margin:0;font-size:12px;" x-text="formatUptime(rpi.uptime_seconds)"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sensori / nodi -->
+  <div class="mlabel" style="margin:14px 0 8px;color:var(--accent);">Sensori e nodi</div>
+  <div x-show="Object.keys(nodesTelemetry).length === 0" class="mlabel" style="padding:4px 0;">
     Nessuna telemetria ricevuta
   </div>
-
   <template x-for="(info, nid) in nodesTelemetry" :key="nid">
-    <div style="background:var(--panel);border-radius:6px;padding:10px;margin-bottom:8px;">
-      <div style="font-size:12px;font-weight:600;margin-bottom:6px;" x-text="info.short_name || nid"></div>
-
-      <template x-if="info.device">
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <div style="flex:1;min-width:60px;background:var(--bg);border-radius:4px;padding:6px;text-align:center;">
-            <div style="font-size:12px;font-weight:700;" x-text="info.device.data.battery_level != null ? info.device.data.battery_level + '%' : '—'"></div>
-            <div style="font-size:9px;color:var(--muted);">Batt</div>
-          </div>
-          <div style="flex:1;min-width:60px;background:var(--bg);border-radius:4px;padding:6px;text-align:center;">
-            <div style="font-size:12px;font-weight:700;" x-text="info.device.data.voltage != null ? info.device.data.voltage.toFixed(2) + 'V' : '—'"></div>
-            <div style="font-size:9px;color:var(--muted);">Volt</div>
-          </div>
-          <div style="flex:1;min-width:60px;background:var(--bg);border-radius:4px;padding:6px;text-align:center;">
-            <div style="font-size:12px;font-weight:700;" x-text="info.device.data.channel_utilization != null ? info.device.data.channel_utilization.toFixed(1) + '%' : '—'"></div>
-            <div style="font-size:9px;color:var(--muted);">ChUtil</div>
-          </div>
-          <div style="flex:1;min-width:60px;background:var(--bg);border-radius:4px;padding:6px;text-align:center;">
-            <div style="font-size:12px;font-weight:700;" x-text="info.device.data.air_util_tx != null ? info.device.data.air_util_tx.toFixed(1) + '%' : '—'"></div>
-            <div style="font-size:9px;color:var(--muted);">AirTX</div>
-          </div>
-        </div>
-      </template>
-
-      <template x-if="info.environment">
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
-          <div style="flex:1;min-width:60px;background:var(--bg);border-radius:4px;padding:6px;text-align:center;">
-            <div style="font-size:12px;font-weight:700;" x-text="info.environment.data.temperature != null ? info.environment.data.temperature.toFixed(1) + ' C' : '—'"></div>
-            <div style="font-size:9px;color:var(--muted);">Temp</div>
-          </div>
-          <div style="flex:1;min-width:60px;background:var(--bg);border-radius:4px;padding:6px;text-align:center;">
-            <div style="font-size:12px;font-weight:700;" x-text="info.environment.data.relative_humidity != null ? info.environment.data.relative_humidity.toFixed(0) + '%' : '—'"></div>
-            <div style="font-size:9px;color:var(--muted);">Umid</div>
-          </div>
-          <div style="flex:1;min-width:60px;background:var(--bg);border-radius:4px;padding:6px;text-align:center;">
-            <div style="font-size:12px;font-weight:700;" x-text="info.environment.data.barometric_pressure != null ? info.environment.data.barometric_pressure.toFixed(0) + ' hPa' : '—'"></div>
-            <div style="font-size:9px;color:var(--muted);">Press</div>
-          </div>
-        </div>
-      </template>
+    <div class="sensor-row">
+      <div class="sensor-badge" x-text="(info.short_name || nid).slice(0, 3).toUpperCase()"></div>
+      <div class="flex-1 min-w-0">
+        <div class="truncate" style="font-size:12px;font-weight:600;" x-text="info.short_name || nid"></div>
+        <div class="truncate" style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-top:2px;"
+             x-text="sensorLine(info)"></div>
+      </div>
+      <span x-show="info.device && info.device.data.battery_level != null"
+            style="font-family:var(--font-mono);font-size:11px;font-weight:600;flex-shrink:0;"
+            :style="info.device ? 'color:' + battColor(info.device.data.battery_level) : ''"
+            x-text="info.device ? 'batt ' + info.device.data.battery_level + '%' : ''"></span>
     </div>
   </template>
-</div>
+
+  </div>
 </div>
 
 <script>
@@ -133,13 +174,47 @@ function metricsPage() {
     rpi: { cpu_temp: null, cpu_percent: null, ram_total_mb: 0, ram_used_mb: 0, ram_percent: 0,
            disk_total_mb: 0, disk_used_mb: 0, disk_percent: 0, uptime_seconds: 0 },
     nodesTelemetry: {},
+    chHist: [],
+    chPeak: '',
+    lastUpdate: '',
     _rpiHistory: { cpu_temp: [], cpu_pct: [] },
     _interval: null,
     _wsHandler: null,
 
+    // Ultimo valore utile tra i nodi (board locale per device, primo sensore per env)
+    get battLevel() {
+      var v = null
+      Object.values(this.nodesTelemetry).forEach(function(i) {
+        if (v == null && i.device && i.device.data.battery_level != null) v = i.device.data.battery_level
+      })
+      return v
+    },
+    get chUtil() {
+      var v = null
+      Object.values(this.nodesTelemetry).forEach(function(i) {
+        if (v == null && i.device && i.device.data.channel_utilization != null) v = i.device.data.channel_utilization
+      })
+      return v
+    },
+    get airTx() {
+      var v = null
+      Object.values(this.nodesTelemetry).forEach(function(i) {
+        if (v == null && i.device && i.device.data.air_util_tx != null) v = i.device.data.air_util_tx
+      })
+      return v
+    },
+    get envTemp() {
+      var v = null
+      Object.values(this.nodesTelemetry).forEach(function(i) {
+        if (v == null && i.environment && i.environment.data.temperature != null) v = i.environment.data.temperature
+      })
+      return v
+    },
+
     async init() {
       await this.loadRpi()
       await this.loadNodeTelemetry()
+      await this.loadChannelHistory()
       this._interval = setInterval(() => { this.loadRpi(); this.loadNodeTelemetry() }, 30000)
 
       this._wsHandler = (e) => {
@@ -160,12 +235,43 @@ function metricsPage() {
       if (this._wsHandler) window.removeEventListener('ws-message', this._wsHandler)
     },
 
+    battColor(b) {
+      if (b == null) return 'var(--muted)'
+      if (b >= 60) return 'var(--accent)'
+      if (b >= 30) return 'var(--warn)'
+      return 'var(--danger)'
+    },
+
+    // "−2.4 °C · 78% UR · 4.1 V · 1 h fa" — tutti i campi disponibili
+    sensorLine(info) {
+      var parts = []
+      if (info.environment) {
+        var e = info.environment.data
+        if (e.temperature != null) parts.push(e.temperature.toFixed(1) + ' °C')
+        if (e.relative_humidity != null) parts.push(e.relative_humidity.toFixed(0) + '% UR')
+        if (e.barometric_pressure != null) parts.push(e.barometric_pressure.toFixed(0) + ' hPa')
+      }
+      if (info.device) {
+        var d = info.device.data
+        if (d.voltage != null) parts.push(d.voltage.toFixed(2) + ' V')
+        if (d.channel_utilization != null) parts.push('ch ' + d.channel_utilization.toFixed(1) + '%')
+        if (d.air_util_tx != null) parts.push('tx ' + d.air_util_tx.toFixed(1) + '%')
+      }
+      var ts = (info.device && info.device.ts) || (info.environment && info.environment.ts)
+      if (ts) {
+        var s = Math.floor(Date.now() / 1000 - ts)
+        parts.push(s < 60 ? s + ' s fa' : (s < 3600 ? Math.floor(s / 60) + ' min fa' : Math.floor(s / 3600) + ' h fa'))
+      }
+      return parts.join(' · ') || '—'
+    },
+
     async loadRpi() {
       try {
         const r = await fetch('/api/rpi/telemetry')
         if (r.ok) {
           this.rpi = await r.json()
           this._pushRpiHistory(this.rpi)
+          this.lastUpdate = new Date().toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' })
         }
       } catch(e) {}
     },
@@ -177,16 +283,45 @@ function metricsPage() {
       } catch(e) {}
     },
 
+    // Utilizzo canale nelle ultime 24h → 24 bucket orari (media)
+    async loadChannelHistory() {
+      try {
+        const since = Math.floor(Date.now() / 1000) - 86400
+        const r = await fetch('/api/telemetry?ttype=device&since=' + since + '&limit=500')
+        if (!r.ok) return
+        const rows = await r.json()
+        const buckets = Array.from({ length: 24 }, () => [])
+        rows.forEach(row => {
+          const v = row.data && row.data.channel_utilization
+          if (v == null) return
+          const age = Math.floor(Date.now() / 1000) - row.ts
+          const b = 23 - Math.min(23, Math.floor(age / 3600))
+          buckets[b].push(v)
+        })
+        this.chHist = buckets.map(b => b.length ? b.reduce((a, v) => a + v, 0) / b.length : null)
+        let peak = null, peakIdx = -1
+        this.chHist.forEach((v, i) => { if (v != null && (peak == null || v > peak)) { peak = v; peakIdx = i } })
+        if (peak != null) {
+          const hoursAgo = 23 - peakIdx
+          this.chPeak = 'picco ' + peak.toFixed(0) + '% · ' + (hoursAgo === 0 ? 'ora' : '-' + hoursAgo + ' h')
+        }
+      } catch(e) {}
+    },
+
     _updateNodeTelemetry(msg) {
       const nid = msg.id
       if (!this.nodesTelemetry[nid]) {
         this.nodesTelemetry[nid] = { short_name: nid }
       }
       if (msg.ttype === 'device') {
-        this.nodesTelemetry[nid].device = { data: msg.data }
+        this.nodesTelemetry[nid].device = { data: msg.data, ts: Math.floor(Date.now() / 1000) }
       } else if (msg.ttype === 'environment') {
-        this.nodesTelemetry[nid].environment = { data: msg.data }
+        this.nodesTelemetry[nid].environment = { data: msg.data, ts: Math.floor(Date.now() / 1000) }
       }
+    },
+
+    _themeColor(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888'
     },
 
     _pushRpiHistory(data) {
@@ -194,12 +329,12 @@ function metricsPage() {
       if (data.cpu_temp != null) {
         this._rpiHistory.cpu_temp.push(data.cpu_temp)
         if (this._rpiHistory.cpu_temp.length > max) this._rpiHistory.cpu_temp.shift()
-        this.$nextTick(() => this._drawChart(this.$refs.chartCpuTemp, this._rpiHistory.cpu_temp, '#4a9eff'))
+        this.$nextTick(() => this._drawChart(this.$refs.chartCpuTemp, this._rpiHistory.cpu_temp, this._themeColor('--warn')))
       }
       if (data.cpu_percent != null) {
         this._rpiHistory.cpu_pct.push(data.cpu_percent)
         if (this._rpiHistory.cpu_pct.length > max) this._rpiHistory.cpu_pct.shift()
-        this.$nextTick(() => this._drawChart(this.$refs.chartCpuPct, this._rpiHistory.cpu_pct, '#22c55e'))
+        this.$nextTick(() => this._drawChart(this.$refs.chartCpuPct, this._rpiHistory.cpu_pct, this._themeColor('--accent')))
       }
     },
 
