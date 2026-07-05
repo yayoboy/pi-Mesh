@@ -14,15 +14,14 @@ import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
-from fastapi.templating import Jinja2Templates
 
 import config as cfg
 import database
 import rpi_telemetry
 import meshtasticd_client
+from templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory='templates')
 
 
 @router.get('/metrics', response_class=HTMLResponse)

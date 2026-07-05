@@ -10,15 +10,14 @@
 """
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 import config as cfg
 import database
 import meshtasticd_client
+from templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory='templates')
 
 
 @router.get('/messages', response_class=HTMLResponse)

@@ -81,7 +81,7 @@
     .btn-accent { background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: 7px 14px; font-size: 12px; cursor: pointer; align-self: flex-start; }
     .hint { font-size: 10px; color: var(--muted); }
   </style>
-  <script>window.MAP_LOCAL_TILES = "{{ map_local_tiles }}";</script>
+  <script>window.MAP_LOCAL_TILES = "{{ map_local_tiles_fn() }}";</script>
   <script>
   // Restore saved theme on load — preset B1..B9 dal prototipo "Tattico".
   // Espone window.PIMESH_THEMES per il selettore in config (_ui.html).

@@ -7,13 +7,12 @@
 """
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 import meshtasticd_client
 import config as cfg
 import database
+from templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory='templates')
 
 
 @router.get('/nodes', response_class=HTMLResponse)

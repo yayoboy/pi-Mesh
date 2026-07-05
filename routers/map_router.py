@@ -8,14 +8,13 @@
 """
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import meshtasticd_client
 import database
 import config as cfg
+from templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory='templates')
 
 
 class MarkerCreate(BaseModel):

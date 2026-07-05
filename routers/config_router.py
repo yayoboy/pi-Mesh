@@ -13,7 +13,6 @@ import subprocess
 from typing import Optional
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 import config as cfg
@@ -21,9 +20,9 @@ import database
 import meshtasticd_client
 import usb_storage
 import mqtt_bridge
+from templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory='templates')
 
 # Module-level constant for config file path
 CONFIG_ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.env')

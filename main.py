@@ -21,7 +21,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 import config as cfg
 import database
@@ -119,9 +118,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-
-templates = Jinja2Templates(directory='templates')
-templates.env.globals['map_local_tiles'] = '1' if cfg.MAP_LOCAL_TILES else '0'
 
 app.mount('/static', StaticFiles(directory='static'), name='static')
 

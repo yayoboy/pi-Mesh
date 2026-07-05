@@ -8,11 +8,10 @@ import asyncio
 import json
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
-from fastapi.templating import Jinja2Templates
 import meshtasticd_client
+from templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory='templates')
 
 
 @router.get('/log', response_class=HTMLResponse)
