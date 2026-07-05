@@ -89,6 +89,15 @@ async def take_screenshot():
     if _screenshot_lock.locked():
         return {'ok': False, 'error': 'screenshot in corso'}
 
+    # fbgrab legge il framebuffer fbdev: in modalità KMS (kiosk HDMI con
+    # cog DRM master) quel buffer contiene solo la console testuale, non
+    # lo schermo reale — meglio un errore chiaro di un PNG sbagliato.
+    kiosk = await _asyncio.create_subprocess_exec(
+        'systemctl', 'is-active', '--quiet', 'kiosk-hdmi')
+    if await kiosk.wait() == 0:
+        return {'ok': False,
+                'error': 'screenshot non disponibile in modalità HDMI/KMS'}
+
     async with _screenshot_lock:
         # Determine destination directory
         try:

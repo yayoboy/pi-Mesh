@@ -66,6 +66,10 @@ echo "  Regione selezionata: ${REGION_NAMES[$REGION]}"
 echo ""
 
 # ─── Download tiles if missing ───────────────────────────────────────────────
+# NB: il layer satellite (Esri) serve JPEG, ma i file vengono salvati con
+# estensione .png come gli altri layer: i browser decodificano dal contenuto
+# (magic bytes), non dall'estensione, e map.js usa un solo pattern URL
+# {z}/{x}/{y}.png per tutti i layer locali. Non rinominare i file esistenti.
 LAYERS=(osm topo satellite)
 LAYER_URLS=(
   "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
