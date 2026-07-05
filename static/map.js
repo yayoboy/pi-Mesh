@@ -603,6 +603,14 @@ function initMapIfNeeded() {
   // Restore saved view, or center on board node, or fall back to bounds center
   var savedView = null
   try { savedView = JSON.parse(localStorage.getItem('mapView')) } catch(e) {}
+  // Scarta viste salvate corrotte (es. pan impazzito del vecchio workaround
+  // wheel: coordinate fuori range o zoom fuori dai limiti del layer).
+  if (savedView && !(isFinite(savedView.lat) && Math.abs(savedView.lat) <= 85 &&
+                     isFinite(savedView.lng) && Math.abs(savedView.lng) <= 180 &&
+                     savedView.zoom >= 3 && savedView.zoom <= zoomMax)) {
+    savedView = null
+    localStorage.removeItem('mapView')
+  }
   var center, zoom
   if (savedView) {
     center = [savedView.lat, savedView.lng]
@@ -639,14 +647,16 @@ function initMapIfNeeded() {
 
   var tileOpts       = { maxZoom: zoomMax }
   var localTiles     = window.MAP_LOCAL_TILES === '1'
+  // I file locali hanno estensione .png (vedi manage-tiles.sh): senza,
+  // StaticFiles risponde 404 e la mappa resta grigia.
   osmLayer       = localTiles
-    ? L.tileLayer('/static/tiles/osm/{z}/{x}/{y}', tileOpts)
+    ? L.tileLayer('/static/tiles/osm/{z}/{x}/{y}.png', tileOpts)
     : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', Object.assign({ attribution: '© OSM' }, tileOpts))
   topoLayer      = localTiles
-    ? L.tileLayer('/static/tiles/topo/{z}/{x}/{y}', tileOpts)
+    ? L.tileLayer('/static/tiles/topo/{z}/{x}/{y}.png', tileOpts)
     : L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', Object.assign({ attribution: '© OpenTopoMap' }, tileOpts))
   satelliteLayer = localTiles
-    ? L.tileLayer('/static/tiles/satellite/{z}/{x}/{y}', tileOpts)
+    ? L.tileLayer('/static/tiles/satellite/{z}/{x}/{y}.png', tileOpts)
     : L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', Object.assign({ attribution: '© Esri' }, tileOpts))
   activeLayer    = osmLayer
   osmLayer.addTo(leafletMap)
@@ -674,13 +684,6 @@ function initMapIfNeeded() {
 
   // Invalidate size after delay to ensure container is visible
   setTimeout(function() { leafletMap.invalidateSize() }, 200)
-
-  // WebKit2GTK converts touch drag to wheel events — intercept and pan instead of zoom
-  leafletMap.getContainer().addEventListener('wheel', function(e) {
-    e.preventDefault()
-    e.stopPropagation()
-    leafletMap.panBy([e.deltaX, e.deltaY], { animate: false })
-  }, { passive: false })
 
   var params = new URLSearchParams(window.location.search)
 

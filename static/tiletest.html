@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<!-- Pagina diagnostica tile (solo deploy manuale): prova in sequenza
+     OSM remota, tile locali con .png e senza, loggando tileload/tileerror
+     al logger locale 127.0.0.1:8099. -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<link rel="stylesheet" href="/static/leaflet/leaflet.css"/>
+<script>
+  if ('ontouchstart' in window && (navigator.maxTouchPoints || 0) === 0) {
+    try { delete window.PointerEvent } catch (e) { window.PointerEvent = undefined }
+  }
+</script>
+<script src="/static/leaflet/leaflet.js"></script>
+<style>
+  body { margin:0; background:#11150c; }
+  #map { position:fixed; inset:0; }
+  #hud { position:fixed; top:8px; left:8px; z-index:10000; color:#9bc24a;
+         font-family:monospace; font-size:20px; font-weight:bold;
+         background:rgba(0,0,0,.65); padding:8px 12px; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="hud">TILE TEST</div>
+<script>
+var log = function(msg) {
+  document.getElementById('hud').textContent = 'TILE TEST — ' + msg
+  fetch('http://127.0.0.1:8099/TT%20' + encodeURIComponent(msg)).catch(function(){})
+}
+var map = L.map('map', { center: [41.9, 12.5], zoom: 7, zoomControl: false })
+var phases = [
+  { name: 'osm-remota',    url: 'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png' },
+  { name: 'locale-png',    url: '/static/tiles/osm/{z}/{x}/{y}.png' },
+  { name: 'locale-no-ext', url: '/static/tiles/osm/{z}/{x}/{y}' },
+]
+var current = null
+function runPhase(i) {
+  if (i >= phases.length) { log('FINE'); return }
+  var p = phases[i]
+  if (current) map.removeLayer(current)
+  var ok = 0, err = 0
+  current = L.tileLayer(p.url, { maxZoom: 12 })
+  current.on('tileload',  function() { ok++ })
+  current.on('tileerror', function() { err++ })
+  current.addTo(map)
+  setTimeout(function() {
+    log(p.name + ' load:' + ok + ' err:' + err)
+    setTimeout(function() { runPhase(i + 1) }, 800)
+  }, 7000)
+}
+log('start')
+runPhase(0)
+</script>
+</body>
+</html>
