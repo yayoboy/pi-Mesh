@@ -78,12 +78,14 @@ class NodeConfigRequest(BaseModel):
     long_name: str
     short_name: str
     role: str
+    is_licensed: bool = False   # modalità radioamatore (nomi in chiaro, no PSK)
 
 
 @router.post('/api/config/node')
 async def post_node_config(body: NodeConfigRequest):
     try:
-        await meshtasticd_client.set_node_config(body.long_name, body.short_name, body.role)
+        await meshtasticd_client.set_node_config(
+            body.long_name, body.short_name, body.role, body.is_licensed)
         return {'ok': True}
     except RuntimeError as e:
         return JSONResponse({'error': str(e)}, status_code=503)
@@ -97,12 +99,21 @@ async def get_lora_config():
 class LoraConfigRequest(BaseModel):
     region: str
     modem_preset: str
+    hop_limit: int = 3
+    tx_enabled: bool = True
+    tx_power: int = 0            # dBm, 0 = massimo consentito dalla regione
+    channel_num: int = 0         # frequency slot, 0 = derivato dal nome canale
+    override_duty_cycle: bool = False
+    sx126x_rx_boosted_gain: bool = False
+    ignore_mqtt: bool = False
 
 
 @router.post('/api/config/lora')
 async def post_lora_config(body: LoraConfigRequest):
+    if not (0 <= body.hop_limit <= 7):
+        return JSONResponse({'error': 'hop_limit deve essere 0-7'}, status_code=400)
     try:
-        await meshtasticd_client.set_lora_config(body.region, body.modem_preset)
+        await meshtasticd_client.set_lora_config(body.model_dump())
         return {'ok': True}
     except RuntimeError as e:
         return JSONResponse({'error': str(e)}, status_code=503)
@@ -116,15 +127,68 @@ async def get_channels():
 class ChannelRequest(BaseModel):
     name: str
     psk_b64: str = ''
+    role: str = 'SECONDARY'          # PRIMARY / SECONDARY / DISABLED
+    uplink_enabled: bool = False     # canale → MQTT
+    downlink_enabled: bool = False   # MQTT → canale
+    position_precision: int = 0      # 0 = piena, 1-32 bit di precisione
+
+
+class ChannelUrlRequest(BaseModel):
+    url: str
+    add_only: bool = False           # True: aggiungi ai canali esistenti
+
+
+@router.get('/api/config/channels/url')
+async def get_channels_url():
+    """URL condivisibile meshtastic.org/e/# con canali attivi + config LoRa."""
+    try:
+        return {'url': await meshtasticd_client.get_channel_url()}
+    except RuntimeError as e:
+        return JSONResponse({'error': str(e)}, status_code=503)
+
+
+@router.post('/api/config/channels/url')
+async def post_channels_url(body: ChannelUrlRequest):
+    """Importa canali da un URL condiviso (sostituisce o aggiunge)."""
+    if '#' not in body.url or 'meshtastic' not in body.url.lower():
+        return JSONResponse({'error': 'URL non valido: atteso meshtastic.org/e/#...'},
+                            status_code=400)
+    try:
+        await meshtasticd_client.set_channel_url(body.url, body.add_only)
+        return {'ok': True, 'reboot_required': True}
+    except RuntimeError as e:
+        return JSONResponse({'error': str(e)}, status_code=503)
+
+
+@router.get('/api/config/channels/qr')
+async def get_channels_qr():
+    """QR code SVG dell'URL di condivisione canali."""
+    from fastapi.responses import Response
+    import io
+    import qrcode
+    import qrcode.image.svg
+    try:
+        url = await meshtasticd_client.get_channel_url()
+    except RuntimeError as e:
+        return JSONResponse({'error': str(e)}, status_code=503)
+    img = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage, box_size=12)
+    buf = io.BytesIO()
+    img.save(buf)
+    return Response(content=buf.getvalue(), media_type='image/svg+xml')
 
 
 @router.post('/api/config/channels/{idx}')
 async def post_channel(idx: int, body: ChannelRequest):
+    if body.role not in ('PRIMARY', 'SECONDARY', 'DISABLED'):
+        return JSONResponse({'error': 'role non valido'}, status_code=400)
+    if not (0 <= body.position_precision <= 32):
+        return JSONResponse({'error': 'position_precision deve essere 0-32'}, status_code=400)
     try:
-        await meshtasticd_client.set_channel(idx, body.name, body.psk_b64)
+        await meshtasticd_client.set_channel(idx, body.model_dump())
         return {'ok': True}
     except RuntimeError as e:
         return JSONResponse({'error': str(e)}, status_code=503)
+
 
 
 @router.get('/api/config/gpio')
@@ -576,6 +640,26 @@ async def set_serial_port(body: SerialPortRequest):
     _write_env('SERIAL_PATH', body.port)
     cfg.SERIAL_PATH = body.port
     return {'ok': True, 'port': body.port, 'restart_required': True}
+
+
+@router.post('/api/system/sync-time')
+async def system_sync_time():
+    """Sincronizza l'orologio della board dall'orario del Pi."""
+    try:
+        await meshtasticd_client.sync_time()
+        return {'ok': True}
+    except RuntimeError as e:
+        return JSONResponse({'error': str(e)}, status_code=503)
+
+
+@router.post('/api/system/reset-nodedb')
+async def system_reset_nodedb():
+    """Svuota il NodeDB della board (irreversibile ma non distruttivo)."""
+    try:
+        await meshtasticd_client.reset_nodedb()
+        return {'ok': True}
+    except RuntimeError as e:
+        return JSONResponse({'error': str(e)}, status_code=503)
 
 
 @router.post('/api/system/reboot')

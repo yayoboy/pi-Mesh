@@ -151,10 +151,12 @@ async def get_node_config(db_path: str) -> dict:
             loop = asyncio.get_event_loop()
             def _read():
                 dc = _interface.localNode.localConfig.device
+                user = _interface.getMyUser() or {}
                 return {
                     'long_name': _interface.getLongName(),
                     'short_name': _interface.getShortName(),
                     'role': dc.Role.Name(dc.role),
+                    'is_licensed': bool(user.get('isLicensed', False)),
                 }
             data = await loop.run_in_executor(None, _read)
             data['cached'] = False
@@ -179,6 +181,13 @@ async def get_lora_config(db_path: str) -> dict:
                 return {
                     'region': lc.RegionCode.Name(lc.region),
                     'modem_preset': lc.ModemPreset.Name(lc.modem_preset),
+                    'hop_limit': lc.hop_limit,
+                    'tx_enabled': lc.tx_enabled,
+                    'tx_power': lc.tx_power,
+                    'channel_num': lc.channel_num,
+                    'override_duty_cycle': lc.override_duty_cycle,
+                    'sx126x_rx_boosted_gain': lc.sx126x_rx_boosted_gain,
+                    'ignore_mqtt': lc.ignore_mqtt,
                 }
             data = await loop.run_in_executor(None, _read)
             data['cached'] = False
@@ -208,6 +217,11 @@ async def get_channels(db_path: str) -> list[dict]:
                         'name': ch.settings.name,
                         'psk_b64': psk_b64,
                         'role': ch.Role.Name(ch.role),
+                        'uplink_enabled': ch.settings.uplink_enabled,
+                        'downlink_enabled': ch.settings.downlink_enabled,
+                        # 0 = precisione piena; 1-32 = bit di precisione della
+                        # posizione condivisa su questo canale
+                        'position_precision': ch.settings.module_settings.position_precision,
                     })
                 return result
             data = await loop.run_in_executor(None, _read)
@@ -278,36 +292,48 @@ def _write_local_config(section: str, updates: dict) -> None:
     node.writeConfig(section)
 
 
-def _do_set_node_config(long_name: str, short_name: str, role: str) -> None:
+def _do_set_node_config(long_name: str, short_name: str, role: str,
+                        is_licensed: bool = False) -> None:
     """Sync helper — runs in command queue thread."""
-    _interface.localNode.setOwner(long_name, short_name)
+    _interface.localNode.setOwner(long_name, short_name, is_licensed=is_licensed)
     from meshtastic.protobuf import config_pb2
     role_val = config_pb2.Config.DeviceConfig.Role.Value(role)
     _write_local_config('device', {'role': role_val})
 
 
-async def set_node_config(long_name: str, short_name: str, role: str) -> None:
+async def set_node_config(long_name: str, short_name: str, role: str,
+                          is_licensed: bool = False) -> None:
     """Queue node config write. Raises if board not connected."""
     if not _connected or not _interface:
         raise RuntimeError('Board not connected')
-    _ln, _sn, _r = long_name, short_name, role
-    await _command_queue.put(lambda: _do_set_node_config(_ln, _sn, _r))
+    _ln, _sn, _r, _lic = long_name, short_name, role, is_licensed
+    await _command_queue.put(lambda: _do_set_node_config(_ln, _sn, _r, _lic))
 
 
-def _do_set_lora_config(region: str, preset: str) -> None:
+def _do_set_lora_config(params: dict) -> None:
     """Sync helper — runs in command queue thread."""
     from meshtastic.protobuf import config_pb2
-    region_val = config_pb2.Config.LoRaConfig.RegionCode.Value(region)
-    preset_val = config_pb2.Config.LoRaConfig.ModemPreset.Value(preset)
-    _write_local_config('lora', {'region': region_val, 'modem_preset': preset_val})
+    _write_local_config('lora', {
+        'region': config_pb2.Config.LoRaConfig.RegionCode.Value(
+            params.get('region', 'UNSET')),
+        'modem_preset': config_pb2.Config.LoRaConfig.ModemPreset.Value(
+            params.get('modem_preset', 'LONG_FAST')),
+        'hop_limit': params.get('hop_limit', 3),
+        'tx_enabled': params.get('tx_enabled', True),
+        'tx_power': params.get('tx_power', 0),        # 0 = massimo consentito
+        'channel_num': params.get('channel_num', 0),  # 0 = slot dal nome canale
+        'override_duty_cycle': params.get('override_duty_cycle', False),
+        'sx126x_rx_boosted_gain': params.get('sx126x_rx_boosted_gain', False),
+        'ignore_mqtt': params.get('ignore_mqtt', False),
+    })
 
 
-async def set_lora_config(region: str, preset: str) -> None:
+async def set_lora_config(params: dict) -> None:
     """Queue LoRa config write. Raises if board not connected."""
     if not _connected or not _interface:
         raise RuntimeError('Board not connected')
-    _r, _p = region, preset
-    await _command_queue.put(lambda: _do_set_lora_config(_r, _p))
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_lora_config(_p))
 
 
 async def send_waypoint(name: str, lat: float, lon: float,
@@ -802,22 +828,48 @@ async def set_serial_module_config(params: dict) -> None:
     await _command_queue.put(lambda: _do_set_serial_module_config(_p))
 
 
-def _do_set_channel(idx: int, name: str, psk_b64: str) -> None:
+def _do_set_channel(idx: int, params: dict) -> None:
     """Sync helper — runs in command queue thread."""
     import base64
+    from meshtastic.protobuf import channel_pb2
     ch = _interface.localNode.channels[idx]
-    ch.settings.name = name
-    if psk_b64:
-        ch.settings.psk = base64.b64decode(psk_b64)
+    ch.settings.name = params.get('name', '')
+    if params.get('psk_b64'):
+        ch.settings.psk = base64.b64decode(params['psk_b64'])
+    if params.get('role') is not None:
+        ch.role = channel_pb2.Channel.Role.Value(params['role'])
+    ch.settings.uplink_enabled = params.get('uplink_enabled', False)
+    ch.settings.downlink_enabled = params.get('downlink_enabled', False)
+    ch.settings.module_settings.position_precision = params.get('position_precision', 0)
     _interface.localNode.writeChannel(idx)
 
 
-async def set_channel(idx: int, name: str, psk_b64: str) -> None:
+async def set_channel(idx: int, params: dict) -> None:
     """Queue channel write. Raises if board not connected."""
     if not _connected or not _interface:
         raise RuntimeError('Board not connected')
-    _i, _n, _p = idx, name, psk_b64
-    await _command_queue.put(lambda: _do_set_channel(_i, _n, _p))
+    _i, _p = idx, dict(params)
+    await _command_queue.put(lambda: _do_set_channel(_i, _p))
+
+
+async def get_channel_url() -> str:
+    """URL condivisibile (https://meshtastic.org/e/#...) di canali+LoRa."""
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: _interface.localNode.getURL())
+
+
+async def set_channel_url(url: str, add_only: bool = False) -> None:
+    """Importa canali (e config LoRa) da un URL meshtastic.org/e/#.
+
+    Con add_only=True i canali dell'URL vengono aggiunti a quelli esistenti
+    invece di sostituirli.
+    """
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _u, _a = url, add_only
+    await _command_queue.put(lambda: _interface.localNode.setURL(_u, addOnly=_a))
 
 
 # --- Device-level config sections (position, power, display, network, bluetooth, security) ---
@@ -1083,6 +1135,210 @@ async def set_security_config(params: dict) -> None:
         raise RuntimeError('Board not connected')
     _p = dict(params)
     await _command_queue.put(lambda: _do_set_security_config(_p))
+
+
+# --- Moduli restanti: audio, paxcounter, remote hardware ---
+
+AUDIO_DEFAULTS = {'codec2_enabled': False, 'ptt_pin': 0, 'bitrate': 'CODEC2_DEFAULT',
+                  'i2s_ws': 0, 'i2s_sd': 0, 'i2s_din': 0, 'i2s_sck': 0}
+
+
+async def get_audio_config(db_path: str) -> dict:
+    def _read():
+        mc = _interface.localNode.moduleConfig.audio
+        return {
+            'codec2_enabled': mc.codec2_enabled,
+            'ptt_pin': mc.ptt_pin,
+            'bitrate': mc.Audio_Baud.Name(mc.bitrate),
+            'i2s_ws': mc.i2s_ws, 'i2s_sd': mc.i2s_sd,
+            'i2s_din': mc.i2s_din, 'i2s_sck': mc.i2s_sck,
+        }
+    return await _get_cached_section(db_path, 'audio', _read, AUDIO_DEFAULTS)
+
+
+def _do_set_audio_config(params: dict) -> None:
+    from meshtastic.protobuf import module_config_pb2
+    _write_local_config('audio', {
+        'codec2_enabled': params.get('codec2_enabled', False),
+        'ptt_pin': params.get('ptt_pin', 0),
+        'bitrate': module_config_pb2.ModuleConfig.AudioConfig.Audio_Baud.Value(
+            params.get('bitrate', 'CODEC2_DEFAULT')),
+        'i2s_ws': params.get('i2s_ws', 0), 'i2s_sd': params.get('i2s_sd', 0),
+        'i2s_din': params.get('i2s_din', 0), 'i2s_sck': params.get('i2s_sck', 0),
+    })
+
+
+async def set_audio_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_audio_config(_p))
+
+
+PAXCOUNTER_DEFAULTS = {'enabled': False, 'paxcounter_update_interval': 0,
+                       'wifi_threshold': 0, 'ble_threshold': 0}
+
+
+async def get_paxcounter_config(db_path: str) -> dict:
+    def _read():
+        mc = _interface.localNode.moduleConfig.paxcounter
+        return {
+            'enabled': mc.enabled,
+            'paxcounter_update_interval': mc.paxcounter_update_interval,
+            'wifi_threshold': mc.wifi_threshold,
+            'ble_threshold': mc.ble_threshold,
+        }
+    return await _get_cached_section(db_path, 'paxcounter', _read, PAXCOUNTER_DEFAULTS)
+
+
+def _do_set_paxcounter_config(params: dict) -> None:
+    _write_local_config('paxcounter', {
+        'enabled': params.get('enabled', False),
+        'paxcounter_update_interval': params.get('paxcounter_update_interval', 0),
+        'wifi_threshold': params.get('wifi_threshold', 0),
+        'ble_threshold': params.get('ble_threshold', 0),
+    })
+
+
+async def set_paxcounter_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_paxcounter_config(_p))
+
+
+REMOTE_HARDWARE_DEFAULTS = {'enabled': False, 'allow_undefined_pin_access': False}
+
+
+async def get_remote_hardware_config(db_path: str) -> dict:
+    def _read():
+        mc = _interface.localNode.moduleConfig.remote_hardware
+        return {
+            'enabled': mc.enabled,
+            'allow_undefined_pin_access': mc.allow_undefined_pin_access,
+        }
+    return await _get_cached_section(db_path, 'remote_hardware', _read,
+                                     REMOTE_HARDWARE_DEFAULTS)
+
+
+def _do_set_remote_hardware_config(params: dict) -> None:
+    _write_local_config('remote_hardware', {
+        'enabled': params.get('enabled', False),
+        'allow_undefined_pin_access': params.get('allow_undefined_pin_access', False),
+    })
+
+
+async def set_remote_hardware_config(params: dict) -> None:
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _p = dict(params)
+    await _command_queue.put(lambda: _do_set_remote_hardware_config(_p))
+
+
+# --- Utilità nodo: preferiti/ignorati, orario, reset NodeDB ---
+
+async def set_node_favorite(node_id: str, favorite: bool) -> None:
+    """Marca/smarca un nodo come preferito sulla board locale."""
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _id, _fav = node_id, favorite
+
+    def _do():
+        if _fav:
+            _interface.localNode.setFavorite(_id)
+        else:
+            _interface.localNode.removeFavorite(_id)
+    await _command_queue.put(_do)
+
+
+async def set_node_ignored(node_id: str, ignored: bool) -> None:
+    """Ignora/de-ignora un nodo sulla board locale."""
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _id, _ign = node_id, ignored
+
+    def _do():
+        if _ign:
+            _interface.localNode.setIgnored(_id)
+        else:
+            _interface.localNode.removeIgnored(_id)
+    await _command_queue.put(_do)
+
+
+async def sync_time() -> None:
+    """Imposta l'orologio della board dall'orario del Pi (RTC/NTP)."""
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    await _command_queue.put(lambda: _interface.localNode.setTime(int(time.time())))
+
+
+async def reset_nodedb() -> None:
+    """Svuota il NodeDB della board (l'anagrafica nodi ricomincia da zero)."""
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    await _command_queue.put(lambda: _interface.localNode.resetNodeDb())
+
+
+# --- Config remota: leggi/scrivi le sezioni di un nodo via mesh ---
+
+def _apply_updates(msg, updates: dict) -> None:
+    """Applica un dict a un messaggio protobuf, convertendo i nomi enum.
+
+    Ignora le chiavi sconosciute e i campi non scalari (bytes/sub-messaggi):
+    la UI remota lavora sugli stessi nomi campo dei form locali.
+    """
+    from google.protobuf.descriptor import FieldDescriptor
+    fields = {f.name: f for f in msg.DESCRIPTOR.fields}
+    for key, value in updates.items():
+        f = fields.get(key)
+        if f is None or f.type == FieldDescriptor.TYPE_BYTES \
+                or f.type == FieldDescriptor.TYPE_MESSAGE:
+            continue
+        if f.type == FieldDescriptor.TYPE_ENUM and isinstance(value, str):
+            value = f.enum_type.values_by_name[value].number
+        setattr(msg, key, value)
+
+
+REMOTE_CONFIG_TIMEOUT = 120  # s: un roundtrip admin sulla mesh può essere lento
+
+
+async def get_remote_config(node_id: str, section: str) -> dict:
+    """Legge una sezione config da un nodo remoto via admin mesh (lento)."""
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+
+    def _read():
+        from google.protobuf.json_format import MessageToDict
+        node = _interface.getNode(node_id, requestChannels=False)
+        root = node.localConfig if section in _LOCAL_CONFIG_SECTIONS else node.moduleConfig
+        node.requestConfig(root.DESCRIPTOR.fields_by_name[section])
+        return MessageToDict(getattr(root, section), preserving_proto_field_name=True,
+                             always_print_fields_with_no_presence=True)
+
+    loop = asyncio.get_event_loop()
+    return await asyncio.wait_for(loop.run_in_executor(None, _read),
+                                  timeout=REMOTE_CONFIG_TIMEOUT)
+
+
+async def set_remote_config(node_id: str, section: str, updates: dict) -> None:
+    """Scrive una sezione config su un nodo remoto via admin mesh.
+
+    Prima rilegge la sezione dal nodo per non azzerare i campi non toccati,
+    poi applica gli update e la riscrive con writeConfig (session key PKC
+    gestita da getNode/_sendAdmin).
+    """
+    if not _connected or not _interface:
+        raise RuntimeError('Board not connected')
+    _id, _sec, _upd = node_id, section, dict(updates)
+
+    def _do():
+        node = _interface.getNode(_id, requestChannels=False)
+        root = node.localConfig if _sec in _LOCAL_CONFIG_SECTIONS else node.moduleConfig
+        node.requestConfig(root.DESCRIPTOR.fields_by_name[_sec])
+        _apply_updates(getattr(root, _sec), _upd)
+        node.writeConfig(_sec)
+
+    await _command_queue.put(_do)
 
 
 # --- Internal ---

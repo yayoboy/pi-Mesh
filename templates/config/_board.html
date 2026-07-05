@@ -42,18 +42,33 @@
                     style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
               <option value="CLIENT">Client</option>
               <option value="CLIENT_MUTE">Client (muto)</option>
+              <option value="CLIENT_HIDDEN">Client (nascosto)</option>
               <option value="ROUTER">Router</option>
-              <option value="ROUTER_CLIENT">Router+Client</option>
+              <option value="ROUTER_LATE">Router (late)</option>
               <option value="REPEATER">Repeater</option>
               <option value="TRACKER">Tracker</option>
+              <option value="SENSOR">Sensor</option>
+              <option value="TAK">TAK</option>
+              <option value="TAK_TRACKER">TAK Tracker</option>
+              <option value="LOST_AND_FOUND">Lost &amp; Found</option>
             </select>
           </div>
+          <label class="cfg-check"><input type="checkbox" x-model="node.is_licensed">
+            Modalità radioamatore (is_licensed) — nomi in chiaro, niente crittografia</label>
           <button @click="saveNode()"
                   :disabled="node.cached || saving.node"
                   style="padding:10px;font-size:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;"
                   :style="node.cached ? 'background:var(--border);color:var(--muted);cursor:not-allowed;' : 'background:var(--accent);color:#fff;'"
                   x-text="saving.node ? 'Salvataggio...' : (node.cached ? 'Board non connessa' : 'Salva nodo')">
           </button>
+          <div class="cfg-row">
+            <button @click="syncTime()" class="btn-accent" style="background:var(--panel);color:var(--text);border:1px solid var(--border);">
+              Sincronizza orario dal Pi
+            </button>
+            <button @click="resetNodeDb()" class="btn-accent" style="background:var(--panel);color:#ff9800;border:1px solid var(--border);">
+              Azzera NodeDB
+            </button>
+          </div>
           <button @click="factoryModal = true"
                   style="padding:10px;font-size:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#ef4444;color:#fff;margin-top:4px;">
             Factory Reset
@@ -78,9 +93,23 @@
             <select x-model="lora.region"
                     style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
               <option value="EU_868">EU 868MHz</option>
-              <option value="US">US 915MHz</option>
               <option value="EU_433">EU 433MHz</option>
+              <option value="US">US 915MHz</option>
+              <option value="ANZ">ANZ 915MHz</option>
               <option value="CN">CN 470MHz</option>
+              <option value="JP">JP 920MHz</option>
+              <option value="KR">KR 920MHz</option>
+              <option value="TW">TW 923MHz</option>
+              <option value="RU">RU 868MHz</option>
+              <option value="IN">IN 865MHz</option>
+              <option value="NZ_865">NZ 865MHz</option>
+              <option value="TH">TH 920MHz</option>
+              <option value="UA_433">UA 433MHz</option>
+              <option value="UA_868">UA 868MHz</option>
+              <option value="MY_433">MY 433MHz</option>
+              <option value="MY_919">MY 919MHz</option>
+              <option value="SG_923">SG 923MHz</option>
+              <option value="LORA_24">LoRa 2.4GHz</option>
             </select>
           </div>
           <div style="display:flex;flex-direction:column;gap:3px;">
@@ -89,10 +118,23 @@
                     style="background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:7px 8px;font-size:12px;">
               <option value="LONG_FAST">Long Fast</option>
               <option value="LONG_SLOW">Long Slow</option>
+              <option value="VERY_LONG_SLOW">Very Long Slow</option>
+              <option value="MEDIUM_SLOW">Medium Slow</option>
               <option value="MEDIUM_FAST">Medium Fast</option>
+              <option value="SHORT_SLOW">Short Slow</option>
               <option value="SHORT_FAST">Short Fast</option>
+              <option value="SHORT_TURBO">Short Turbo</option>
             </select>
           </div>
+          <div class="cfg-row">
+            {{ f.number('lora.hop_limit', 'Hop limit (0-7)', width='70px', min=0, max=7) }}
+            {{ f.number('lora.tx_power', 'TX power (dBm, 0=max)', width='90px') }}
+            {{ f.number('lora.channel_num', 'Frequency slot (0=auto)', width='90px') }}
+          </div>
+          {{ f.toggle('lora.tx_enabled', 'Trasmissione abilitata') }}
+          {{ f.toggle('lora.override_duty_cycle', 'Ignora duty cycle (occhio alle norme regionali!)') }}
+          {{ f.toggle('lora.sx126x_rx_boosted_gain', 'RX boosted gain (SX126x)') }}
+          {{ f.toggle('lora.ignore_mqtt', 'Ignora messaggi provenienti da MQTT') }}
           <button @click="saveLora()"
                   :disabled="lora.cached || saving.lora"
                   style="padding:10px;font-size:12px;border:none;border-radius:6px;cursor:pointer;font-weight:600;"
@@ -116,6 +158,28 @@
         <template x-if="channels.length === 0">
           <p style="font-size:11px;color:var(--muted);">Nessun canale — board offline o non configurata.</p>
         </template>
+
+        <!-- Condivisione canali: URL + QR + import -->
+        <div x-show="!channelsCached" style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:10px;">
+          <div style="font-size:10px;font-weight:700;color:var(--accent);margin-bottom:6px;">CONDIVIDI CANALI</div>
+          <div class="cfg-row" style="align-items:center;">
+            <input :value="chUrl" readonly class="cfg-input" style="flex:1;font-size:10px;font-family:monospace;min-width:180px;">
+            <button @click="copyChannelUrl()" class="btn-accent" style="padding:6px 10px;">Copia</button>
+            <button @click="chQrVisible = !chQrVisible" class="btn-accent"
+                    style="padding:6px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);"
+                    x-text="chQrVisible ? 'Nascondi QR' : 'Mostra QR'"></button>
+          </div>
+          <div x-show="chQrVisible" style="margin-top:8px;text-align:center;background:#fff;border-radius:6px;padding:8px;">
+            <img src="/api/config/channels/qr" alt="QR canali" style="max-width:220px;width:100%;">
+          </div>
+          <div style="height:1px;background:var(--border);margin:10px 0;"></div>
+          <div style="font-size:10px;font-weight:700;color:var(--accent);margin-bottom:6px;">IMPORTA DA URL</div>
+          <div class="cfg-col">
+            <input x-model="chImportUrl" placeholder="https://meshtastic.org/e/#..." class="cfg-input" style="font-size:10px;font-family:monospace;">
+            <label class="cfg-check"><input type="checkbox" x-model="chAddOnly"> Aggiungi ai canali esistenti (invece di sostituirli)</label>
+            <button @click="importChannelUrl()" class="btn-accent">Importa canali</button>
+          </div>
+        </div>
         <template x-for="ch in channels" :key="ch.index">
           <div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;">
             <div style="font-size:10px;color:var(--muted);margin-bottom:6px;" x-text="'CH ' + ch.index + ' — ' + ch.role"></div>
@@ -129,6 +193,21 @@
                 <input x-model="ch.psk_b64" placeholder="lascia vuoto = non cambiare"
                        style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:11px;">
               </div>
+              <div class="cfg-row">
+                <div style="display:flex;flex-direction:column;gap:2px;">
+                  <label style="font-size:10px;color:var(--muted);">Ruolo</label>
+                  <select x-model="ch.role" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:11px;">
+                    <option>PRIMARY</option><option>SECONDARY</option><option>DISABLED</option>
+                  </select>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:2px;">
+                  <label style="font-size:10px;color:var(--muted);">Precisione pos. (0=piena)</label>
+                  <input type="number" min="0" max="32" x-model.number="ch.position_precision"
+                         style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:11px;width:70px;">
+                </div>
+              </div>
+              <label class="cfg-check" style="font-size:11px;"><input type="checkbox" x-model="ch.uplink_enabled"> Uplink → MQTT</label>
+              <label class="cfg-check" style="font-size:11px;"><input type="checkbox" x-model="ch.downlink_enabled"> Downlink ← MQTT</label>
               <button @click="saveChannel(ch.index)"
                       :disabled="channelsCached"
                       style="padding:8px;font-size:11px;border:none;border-radius:4px;cursor:pointer;"
@@ -521,6 +600,56 @@
           {{ f.toggle('devSecurity.debug_log_api_enabled', 'Debug log API') }}
           <label class="cfg-check" style="color:#ff9800;"><input type="checkbox" x-model="devSecurity.is_managed"> Nodo gestito (is_managed) — blocca le modifiche locali!</label>
           {{ f.save('/api/config/device/security', 'devSecurity') }}
+        </div>
+      </div>
+    </template>
+
+    <!-- AUDIO (codec2 voice) -->
+    <template x-if="section === 'audio'">
+      <div>
+        {{ f.section_title('Audio (voce codec2)') }}
+        <div class="hint" style="margin-bottom:8px;">Richiede hardware I2S dedicato sulla board.</div>
+        <div class="cfg-col">
+          {{ f.toggle('audioMod.codec2_enabled', 'Abilitato') }}
+          {{ f.number('audioMod.ptt_pin', 'PTT pin GPIO', width='80px') }}
+          {{ f.select('audioMod.bitrate', 'Bitrate', ['CODEC2_DEFAULT', 'CODEC2_3200', 'CODEC2_2400', 'CODEC2_1600', 'CODEC2_1400', 'CODEC2_1300', 'CODEC2_1200', 'CODEC2_700', 'CODEC2_700B']) }}
+          <div class="cfg-row">
+            {{ f.number('audioMod.i2s_ws', 'I2S WS', width='70px') }}
+            {{ f.number('audioMod.i2s_sd', 'I2S SD', width='70px') }}
+            {{ f.number('audioMod.i2s_din', 'I2S DIN', width='70px') }}
+            {{ f.number('audioMod.i2s_sck', 'I2S SCK', width='70px') }}
+          </div>
+          {{ f.save('/api/config/module/audio', 'audioMod') }}
+        </div>
+      </div>
+    </template>
+
+    <!-- PAXCOUNTER -->
+    <template x-if="section === 'paxcounter'">
+      <div>
+        {{ f.section_title('Paxcounter') }}
+        <div class="hint" style="margin-bottom:8px;">Conta i dispositivi WiFi/BLE nelle vicinanze e li trasmette come telemetria.</div>
+        <div class="cfg-col">
+          {{ f.toggle('paxMod.enabled', 'Abilitato') }}
+          {{ f.number('paxMod.paxcounter_update_interval', 'Intervallo report (s, 0=default)') }}
+          <div class="cfg-row">
+            {{ f.number('paxMod.wifi_threshold', 'Soglia RSSI WiFi', width='90px') }}
+            {{ f.number('paxMod.ble_threshold', 'Soglia RSSI BLE', width='90px') }}
+          </div>
+          {{ f.save('/api/config/module/paxcounter', 'paxMod') }}
+        </div>
+      </div>
+    </template>
+
+    <!-- REMOTE HARDWARE (GPIO via mesh) -->
+    <template x-if="section === 'remotehw'">
+      <div>
+        {{ f.section_title('Remote Hardware (GPIO via mesh)') }}
+        <div class="hint" style="margin-bottom:8px;">Permette ad altri nodi di leggere/scrivere i GPIO di questa board. Abilitare con cautela.</div>
+        <div class="cfg-col">
+          {{ f.toggle('remoteHw.enabled', 'Abilitato') }}
+          {{ f.toggle('remoteHw.allow_undefined_pin_access', 'Consenti accesso a pin non dichiarati (rischioso)') }}
+          {{ f.save('/api/config/module/remote-hardware', 'remoteHw') }}
         </div>
       </div>
     </template>

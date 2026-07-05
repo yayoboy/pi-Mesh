@@ -219,3 +219,77 @@ async def set_serial_module(body: SerialModuleConfig):
         return {'ok': True}
     except RuntimeError as e:
         return JSONResponse({'error': str(e)}, status_code=503)
+
+
+# ─── Audio (codec2 voice) ──────────────────────────────────────────────
+@router.get('/api/config/module/audio')
+async def get_audio():
+    return await meshtasticd_client.get_audio_config(cfg.DB_PATH)
+
+
+class AudioConfig(BaseModel):
+    codec2_enabled: bool = False
+    ptt_pin: int = 0
+    bitrate: str = 'CODEC2_DEFAULT'
+    i2s_ws: int = 0
+    i2s_sd: int = 0
+    i2s_din: int = 0
+    i2s_sck: int = 0
+
+
+_AUDIO_BITRATES = ('CODEC2_DEFAULT', 'CODEC2_3200', 'CODEC2_2400', 'CODEC2_1600',
+                   'CODEC2_1400', 'CODEC2_1300', 'CODEC2_1200', 'CODEC2_700',
+                   'CODEC2_700B')
+
+
+@router.post('/api/config/module/audio')
+async def set_audio(body: AudioConfig):
+    if body.bitrate not in _AUDIO_BITRATES:
+        return JSONResponse({'error': 'bitrate non valido'}, status_code=400)
+    try:
+        await meshtasticd_client.set_audio_config(body.model_dump())
+        return {'ok': True}
+    except RuntimeError as e:
+        return JSONResponse({'error': str(e)}, status_code=503)
+
+
+# ─── Paxcounter (conteggio dispositivi WiFi/BLE) ───────────────────────
+@router.get('/api/config/module/paxcounter')
+async def get_paxcounter():
+    return await meshtasticd_client.get_paxcounter_config(cfg.DB_PATH)
+
+
+class PaxcounterConfig(BaseModel):
+    enabled: bool = False
+    paxcounter_update_interval: int = 0
+    wifi_threshold: int = 0
+    ble_threshold: int = 0
+
+
+@router.post('/api/config/module/paxcounter')
+async def set_paxcounter(body: PaxcounterConfig):
+    try:
+        await meshtasticd_client.set_paxcounter_config(body.model_dump())
+        return {'ok': True}
+    except RuntimeError as e:
+        return JSONResponse({'error': str(e)}, status_code=503)
+
+
+# ─── Remote Hardware (GPIO via mesh) ───────────────────────────────────
+@router.get('/api/config/module/remote-hardware')
+async def get_remote_hardware():
+    return await meshtasticd_client.get_remote_hardware_config(cfg.DB_PATH)
+
+
+class RemoteHardwareConfig(BaseModel):
+    enabled: bool = False
+    allow_undefined_pin_access: bool = False
+
+
+@router.post('/api/config/module/remote-hardware')
+async def set_remote_hardware(body: RemoteHardwareConfig):
+    try:
+        await meshtasticd_client.set_remote_hardware_config(body.model_dump())
+        return {'ok': True}
+    except RuntimeError as e:
+        return JSONResponse({'error': str(e)}, status_code=503)
