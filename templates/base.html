@@ -72,16 +72,20 @@
     #sidebar .brand { display: flex; align-items: center; justify-content: center; height: var(--sb-h); border-bottom: 1px solid var(--border); color: var(--accent); flex-shrink: 0; }
     .tab-active { color: var(--accent); }
     .tab-active svg { stroke: var(--accent); }
-    /* Controlli form condivisi — usati dalle macro in templates/_forms.html */
-    .section-head { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
-    .cfg-col   { display: flex; flex-direction: column; gap: 8px; }
-    .cfg-row   { display: flex; gap: 8px; flex-wrap: wrap; }
-    .cfg-field { display: flex; flex-direction: column; gap: 3px; }
-    .cfg-label { font-size: 10px; color: var(--muted); }
-    .cfg-input { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 7px 8px; font-size: 12px; }
-    .cfg-check { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-    .cfg-status { font-size: 10px; color: #4caf50; }
-    .btn-accent { background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: 7px 14px; font-size: 12px; cursor: pointer; align-self: flex-start; }
+    /* Controlli form condivisi — usati dalle macro in templates/_forms.html.
+       Stile tattico (screen 05): label micro mono, campi mono, toggle lime. */
+    .section-head { font-family: var(--font-mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin-bottom: 10px; }
+    .cfg-col   { display: flex; flex-direction: column; gap: 10px; }
+    .cfg-row   { display: flex; gap: 10px; flex-wrap: wrap; }
+    .cfg-field { display: flex; flex-direction: column; gap: 4px; }
+    .cfg-label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+    .cfg-input { background: var(--bg) !important; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 9px 10px; font-size: 13px; font-family: var(--font-mono); min-height: 40px; box-sizing: border-box; }
+    .cfg-input:focus { outline: none; border-color: var(--accent); }
+    .cfg-check { display: flex; align-items: center; gap: 8px; font-size: 13px; min-height: 40px; cursor: pointer; }
+    .cfg-check input { accent-color: var(--accent); width: 17px; height: 17px; }
+    .cfg-status { font-family: var(--font-mono); font-size: 10px; color: var(--ok); }
+    .btn-accent { background: var(--accent); color: var(--accent-contrast); border: none; border-radius: 6px; padding: 10px 18px; font-size: 13px; font-weight: 600; cursor: pointer; align-self: flex-start; min-height: 40px; }
+    .btn-accent:active { opacity: 0.75; }
     .hint { font-size: 10px; color: var(--muted); }
   </style>
   <script>window.MAP_LOCAL_TILES = "{{ map_local_tiles_fn() }}";</script>
