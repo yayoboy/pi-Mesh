@@ -61,7 +61,7 @@
             </div>
             <button @click="mappa.local_tiles = !mappa.local_tiles; saveMappa()"
                     :disabled="!mappa.tiles_present || mappa.saving"
-                    :style="!mappa.tiles_present ? 'background:var(--panel);border-color:var(--border);color:var(--muted);opacity:0.5;cursor:not-allowed' : mappa.local_tiles ? 'background:#1a3a2a;border-color:#22c55e;color:#22c55e;cursor:pointer' : 'background:var(--panel);border-color:var(--border);color:var(--muted);cursor:pointer'"
+                    :style="!mappa.tiles_present ? 'background:var(--panel);border-color:var(--border);color:var(--muted);opacity:0.5;cursor:not-allowed' : mappa.local_tiles ? 'background:var(--panel-2);border-color:var(--ok);color:var(--ok);cursor:pointer' : 'background:var(--panel);border-color:var(--border);color:var(--muted);cursor:pointer'"
                     style="border:1px solid;border-radius:12px;padding:3px 10px;font-size:10px;"
                     x-text="mappa.local_tiles ? 'ON' : 'OFF'"></button>
           </div>
@@ -76,7 +76,7 @@
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <span style="font-size:11px;color:var(--muted);">Tile locali</span>
             <span style="font-size:10px;padding:2px 8px;border-radius:4px;"
-                  :style="mappa.tiles_present ? 'background:#1a3a2a;color:#22c55e' : 'background:var(--panel);color:var(--muted)'"
+                  :style="mappa.tiles_present ? 'background:var(--panel-2);color:var(--ok)' : 'background:var(--panel);color:var(--muted)'"
                   x-text="mappa.tiles_present ? '✓ presenti' : '✗ assenti'"></span>
           </div>
 
@@ -103,7 +103,7 @@
           </button>
         </div>
         <div x-show="cannedStatus" x-text="cannedStatus"
-             style="font-size:10px;color:#4caf50;margin-bottom:8px;"></div>
+             style="font-size:10px;color:var(--ok);margin-bottom:8px;"></div>
         <template x-if="cannedMessages.length === 0">
           <div style="color:var(--muted);font-size:11px;">Nessun messaggio predefinito.</div>
         </template>
