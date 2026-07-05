@@ -32,22 +32,30 @@
       --danger: #c9603f;
       --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
       --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
-      /* Altezze barre: crescono sui viewport larghi (display HDMI). */
-      --sb-h: 24px;
-      --tb-h: 32px;
+      /* Barre: status bar in alto, sidebar di navigazione a sinistra (A1). */
+      --sb-h: 26px;
+      --nav-w: 56px;
     }
-    /* Display larghi (HDMI 800×480+ o 1080p con cog --scale): barre più
+    /* Display larghi (HDMI 1024×600 o 1080p con cog --scale): barre più
        generose e testo leggibile. Il breakpoint è in CSS px, quindi vale
        dopo lo scaling del browser. */
     @media (min-width: 640px) {
-      :root { --sb-h: 30px; --tb-h: 44px; }
+      :root { --sb-h: 32px; --nav-w: 72px; }
       #statusbar #node-name { font-size: 11px !important; }
-      #tabbar .tab { font-size: 11px !important; }
-      #tabbar .tab svg { width: 20px; height: 20px; }
+      #sidebar .tab { padding: 12px 0 10px; }
+      #sidebar .tab svg { width: 22px; height: 22px; }
+      #sidebar .tab-label { font-size: 9px; }
     }
     body { background: var(--bg); color: var(--text); font-family: var(--font-sans); -webkit-user-select: none; user-select: none; }
     select, input[type="text"], input[type="number"], input[type="password"], textarea { color: var(--text) !important; background: var(--panel) !important; -webkit-appearance: none; appearance: none; }
     select option { color: var(--text) !important; background: var(--bg) !important; }
+    /* Sidebar di navigazione (prototipo A1) */
+    #sidebar { width: var(--nav-w); background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+    #sidebar .tab { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0 8px; color: var(--muted); text-decoration: none; touch-action: manipulation; min-height: 44px; justify-content: center; }
+    #sidebar .tab svg { width: 20px; height: 20px; stroke: currentColor; }
+    #sidebar .tab-label { font-family: var(--font-mono); font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+    #sidebar .tab-active, #sidebar .tab:active { color: var(--accent); background: var(--panel-2); box-shadow: inset 3px 0 0 0 var(--accent); }
+    #sidebar .brand { display: flex; align-items: center; justify-content: center; height: var(--sb-h); border-bottom: 1px solid var(--border); color: var(--accent); flex-shrink: 0; }
     .tab-active { color: var(--accent); }
     .tab-active svg { stroke: var(--accent); }
     /* Controlli form condivisi — usati dalle macro in templates/_forms.html */
@@ -95,13 +103,49 @@
   </script>
   {% block head %}{% endblock %}
 </head>
-<body class="h-full flex flex-col">
+<body class="h-full flex">
+
+  <!-- Sidebar navigazione (prototipo A1: nav fissa a sinistra) -->
+  <nav id="sidebar">
+    <div class="brand" title="pi-Mesh">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="2.5"/>
+        <path stroke-linecap="round" d="M12 4a8 8 0 018 8M12 4a8 8 0 00-8 8m8-4.5a4.5 4.5 0 014.5 4.5M12 7.5A4.5 4.5 0 007.5 12M12 14.5V20m-3 0h6"/>
+      </svg>
+    </div>
+
+    {% set tabs = [
+      ('messages', '/messages', 'Chat',  'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z'),
+      ('nodes',    '/nodes',    'Nodi',  'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z'),
+      ('map',      '/map',      'Mappa', 'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7'),
+      ('metrics',  '/metrics',  'Telem', 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'),
+      ('config',   '/config',   'Radio', 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z'),
+      ('log',      '/log',      'Log',   'M4 6h16M4 10h16M4 14h16M4 18h7'),
+    ] %}
+
+    {% for key, href, label, icon_path in tabs %}
+    <a href="{{ href }}"
+       class="tab {% if active_tab == key %}tab-active active{% endif %}"
+       data-tab="{{ key }}"
+       style="color:{% if active_tab == key %}var(--accent){% else %}var(--muted){% endif %};">
+      <svg fill="none" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="{{ icon_path }}"/>
+      </svg>
+      <span class="tab-label" style="position:relative;">{{ label }}{% if key == 'messages' %}<span id="msg-badge" style="display:none;position:absolute;top:-7px;right:-12px;min-width:14px;height:14px;border-radius:7px;background:var(--danger);color:var(--accent-contrast);font-size:8px;font-weight:700;line-height:14px;text-align:center;padding:0 3px;"></span>{% endif %}</span>
+    </a>
+    {% endfor %}
+  </nav>
+
+  <!-- Colonna destra: status bar + contenuto -->
+  <div class="flex-1 flex flex-col min-w-0 h-full">
 
   <!-- Status bar -->
   <div id="statusbar" x-data="{ sysModal: '', rotateOpen: false, currentRotation: 0 }" x-init="fetch('/api/config/display').then(r=>r.json()).then(d=>{ currentRotation = d.rotation || 0 }).catch(()=>{})" class="flex items-center justify-between px-3 py-1 text-xs"
        style="background:var(--panel);border-bottom:1px solid var(--border);height:var(--sb-h);">
-    <span id="node-name" style="color:var(--muted);font-size:10px;">pi-Mesh</span>
+    <span id="node-name" style="color:var(--muted);font-size:10px;font-family:var(--font-mono);letter-spacing:0.05em;">pi-Mesh</span>
     <div class="flex gap-3 items-center">
+      <!-- Orologio -->
+      <span id="clock" style="font-family:var(--font-mono);font-size:10px;color:var(--muted);"></span>
       <!-- Battery -->
       <span id="battery-badge" title="Batteria" style="color:var(--muted);line-height:0;">
         <svg width="14" height="12" viewBox="0 0 24 14" fill="none">
@@ -202,39 +246,21 @@
   </div>
 
   <!-- Content area -->
-  <main id="content" class="flex-1 overflow-hidden" style="height:calc(100vh - var(--sb-h) - var(--tb-h));">
+  <main id="content" class="flex-1 overflow-hidden" style="height:calc(100vh - var(--sb-h));">
     {% block content %}{% endblock %}
   </main>
 
-  <!-- Tabbar fissa in basso -->
-  <nav id="tabbar" class="flex items-stretch shrink-0" style="height:var(--tb-h);background:var(--panel);border-top:1px solid var(--border);">
+  </div><!-- /colonna destra -->
 
-    {% set tabs = [
-      ('nodes',    '/nodes',    'Nodi',    'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z'),
-      ('map',      '/map',      'Mappa',   'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7'),
-      ('messages', '/messages', 'Msg',     'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z'),
-      ('config',   '/config',   'Config',  'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z'),
-      ('metrics',  '/metrics',  'Metriche','M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'),
-      ('log',      '/log',      'Log',     'M4 6h16M4 10h16M4 14h16M4 18h7'),
-    ] %}
-
-    {% for key, href, label, icon_path in tabs %}
-    <a href="{{ href }}"
-       class="tab flex-1 flex flex-col items-center justify-center gap-0.5 text-center no-underline
-              {% if active_tab == key %}tab-active active{% endif %}"
-       data-tab="{{ key }}"
-       style="color:{% if active_tab == key %}var(--accent){% else %}var(--muted){% endif %};
-              font-size:9px;font-weight:500;text-decoration:none;touch-action:manipulation;">
-      <svg width="16" height="16" fill="none"
-           stroke="{% if active_tab == key %}var(--accent){% else %}var(--muted){% endif %}"
-           stroke-width="1.8" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="{{ icon_path }}"/>
-      </svg>
-      <span style="position:relative;">{{ label }}{% if key == 'messages' %}<span id="msg-badge" style="display:none;position:absolute;top:-6px;right:-10px;min-width:14px;height:14px;border-radius:7px;background:#ef4444;color:#fff;font-size:8px;font-weight:700;line-height:14px;text-align:center;padding:0 3px;"></span>{% endif %}</span>
-    </a>
-    {% endfor %}
-
-  </nav>
+  <script>
+  // Orologio status bar (stile prototipo: HH:MM mono)
+  (function() {
+    var el = document.getElementById('clock')
+    if (!el) return
+    function tick() { var d = new Date(); el.textContent = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') }
+    tick(); setInterval(tick, 15000)
+  })()
+  </script>
   <script src="/static/app.js?v=5"></script>
   <script src="/static/vkbd.js?v=1"></script>
 </body>

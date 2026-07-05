@@ -614,8 +614,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(checkNodesOffline, 60000)
   setInterval(() => { if (wsReady && ws.readyState === WebSocket.OPEN) ws.send('ping') }, 20000)
   attachKeyboardListeners()
-  // link tab bar a navigateTo
-  document.getElementById('tabbar')?.addEventListener('click', e => {
+  // link sidebar di navigazione a navigateTo
+  document.getElementById('sidebar')?.addEventListener('click', e => {
     const tab = e.target.closest('.tab[data-tab]')
     if (!tab) return
     e.preventDefault()
