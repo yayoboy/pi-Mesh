@@ -1,20 +1,74 @@
 {% extends "base.html" %}
-{# Pagina Mappa — contenitore Leaflet + pannello filtri; la logica è in
-   static/map.js. #}
+{# Pagina Mappa — stile radar tattico (screen 03 del prototipo): header con
+   conteggio nodi, tile virate col tema in modalità radar, anelli di distanza,
+   pannello nodi con bearing e footer posizione. Logica in static/map.js. #}
 {% block head %}
 <link rel="stylesheet" href="/static/leaflet/leaflet.css"/>
 <script src="/static/leaflet/leaflet.js"></script>
+{% endblock %}
+{% block content %}
+{# Gli stili stanno nel content (non nel head): la navigazione SPA innesta
+   solo il contenuto, gli <style> del head delle pagine non verrebbero mai
+   applicati. #}
 <style>
   main { overflow: hidden !important; }
   .leaflet-control-zoom a {
-    background: rgba(6,8,16,0.55) !important;
-    border-color: rgba(26,34,51,0.5) !important;
-    color: var(--text,#c9d1e0) !important;
+    background: var(--panel) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+  }
+  /* Modalità radar: tile virate al tono del tema */
+  #map-container.radar-style .leaflet-tile { filter: var(--map-filter, none); }
+  .map-mlabel {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+  }
+  .map-pill {
+    padding: 6px 14px; border-radius: 14px; font-family: var(--font-mono);
+    font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid var(--border);
+    background: var(--panel); color: var(--muted); -webkit-tap-highlight-color: transparent;
+  }
+  .map-pill.on { background: var(--panel-2); color: var(--accent); border-color: var(--accent); }
+  .map-node-row {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    border-bottom: 1px solid var(--border); cursor: pointer; min-height: 44px;
+  }
+  .map-node-row .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  /* Marker radar (divIcon): punto + etichetta mono */
+  .radar-marker { pointer-events: auto; }
+  .radar-marker .dot {
+    width: 12px; height: 12px; border-radius: 50%; margin: 0 auto;
+    box-shadow: 0 0 6px rgba(0,0,0,0.7);
+  }
+  .radar-marker.local .dot {
+    width: 14px; height: 14px; background: var(--accent);
+    outline: 3px solid var(--border); outline-offset: 2px;
+  }
+  .radar-marker .lbl {
+    font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+    letter-spacing: 0.04em; color: var(--text); white-space: nowrap;
+    text-align: center; margin-top: 3px;
+    text-shadow: 0 0 4px var(--bg), 0 0 4px var(--bg), 0 0 4px var(--bg);
+  }
+  .radar-ring-label {
+    font-family: var(--font-mono); font-size: 9px; color: var(--muted);
+    white-space: nowrap; text-shadow: 0 0 4px var(--bg), 0 0 4px var(--bg);
   }
 </style>
-{% endblock %}
-{% block content %}
-<div style="position:relative;width:100%;height:100%;">
+<div style="display:flex;flex-direction:column;width:100%;height:100%;">
+
+  <!-- Header pagina -->
+  <div class="flex items-center justify-between gap-3 px-3 shrink-0"
+       style="border-bottom:1px solid var(--border);height:40px;background:var(--panel);">
+    <div class="flex items-center gap-2 min-w-0">
+      <span style="width:7px;height:7px;border-radius:50%;background:var(--ok);flex-shrink:0;"></span>
+      <span style="font-size:13px;font-weight:700;">Mappa mesh</span>
+      <span class="map-mlabel" id="map-node-count">· 0 nodi posizionati</span>
+    </div>
+    <button onclick="centerOnBoard()" class="map-pill" style="min-height:28px;">± centra su di me</button>
+  </div>
+
+  <div style="position:relative;flex:1;min-height:0;">
 
   <div id="map-container"
        data-bounds='{{ bounds | tojson }}'
@@ -22,12 +76,18 @@
        data-zoom-max="{{ zoom_max }}"
        style="position:absolute;inset:0;touch-action:none;"></div>
 
+  <!-- Stile mappa: radar (tile virate) / satellite -->
+  <div style="position:absolute;bottom:10px;left:56px;z-index:1000;display:flex;gap:6px;">
+    <button id="style-satellite" class="map-pill" onclick="setMapStyle('satellite')">satellite</button>
+    <button id="style-radar" class="map-pill on" onclick="setMapStyle('radar')">radar</button>
+  </div>
+
   <!-- Panel toggle top-right -->
   <button id="panel-toggle"
           style="position:absolute;top:6px;right:6px;z-index:1000;
-                 width:32px;height:32px;padding:0;
+                 width:36px;height:36px;padding:0;
                  display:flex;align-items:center;justify-content:center;
-                 background:rgba(6,8,16,0.55);border:1px solid rgba(26,34,51,0.5);
+                 background:var(--panel);border:1px solid var(--border);
                  border-radius:4px;color:var(--text);
                  -webkit-tap-highlight-color:transparent;">
     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -36,11 +96,11 @@
   </button>
 
   <!-- Layer switcher compatto -->
-  <div style="position:absolute;top:46px;right:6px;z-index:1000;
-              background:rgba(6,8,16,0.55);border:1px solid rgba(26,34,51,0.5);
-              border-radius:4px;overflow:hidden;width:32px;">
+  <div style="position:absolute;top:6px;left:6px;z-index:1000;
+              background:var(--panel);border:1px solid var(--border);
+              border-radius:4px;overflow:hidden;width:36px;">
     <button class="layer-btn" data-layer="osm" onclick="switchLayer('osm')" title="Stradale"
-            style="width:100%;height:28px;padding:0;border:none;border-bottom:1px solid rgba(26,34,51,0.4);
+            style="width:100%;height:30px;padding:0;border:none;border-bottom:1px solid var(--border);
                    background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
                    color:var(--accent);-webkit-tap-highlight-color:transparent;">
       <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -48,17 +108,17 @@
       </svg>
     </button>
     <button class="layer-btn" data-layer="topo" onclick="switchLayer('topo')" title="Topo"
-            style="width:100%;height:28px;padding:0;border:none;border-bottom:1px solid rgba(26,34,51,0.4);
+            style="width:100%;height:30px;padding:0;border:none;border-bottom:1px solid var(--border);
                    background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
-                   color:var(--text);-webkit-tap-highlight-color:transparent;">
+                   color:var(--muted);-webkit-tap-highlight-color:transparent;">
       <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M3 21l5-10 5 5 4-7 4 12"/>
       </svg>
     </button>
     <button class="layer-btn" data-layer="satellite" onclick="switchLayer('satellite')" title="Satellite"
-            style="width:100%;height:28px;padding:0;border:none;
+            style="width:100%;height:30px;padding:0;border:none;
                    background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
-                   color:var(--text);-webkit-tap-highlight-color:transparent;">
+                   color:var(--muted);-webkit-tap-highlight-color:transparent;">
       <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="3"/>
         <path stroke-linecap="round" stroke-linejoin="round" d="M6.3 6.3l11.4 11.4M17.7 6.3L6.3 17.7"/>
@@ -68,10 +128,10 @@
 
   <!-- Toggle legenda -->
   <button id="btn-legend" title="Legenda"
-          style="position:absolute;bottom:110px;right:6px;z-index:1000;
-                 width:32px;height:32px;padding:0;
+          style="position:absolute;top:104px;left:6px;z-index:1000;
+                 width:36px;height:36px;padding:0;
                  display:flex;align-items:center;justify-content:center;
-                 background:rgba(6,8,16,0.55);border:1px solid rgba(26,34,51,0.5);
+                 background:var(--panel);border:1px solid var(--border);
                  border-radius:4px;cursor:pointer;color:var(--text);
                  -webkit-tap-highlight-color:transparent;"
           onclick="var l=document.getElementById('map-legend');l.style.display=l.style.display==='block'?'none':'block'">
@@ -82,10 +142,10 @@
 
   <!-- Centra sulla board -->
   <button id="btn-center-board" onclick="centerOnBoard()" title="Centra sulla board"
-          style="position:absolute;bottom:70px;right:6px;z-index:1000;
-                 width:32px;height:32px;padding:0;
+          style="position:absolute;top:144px;left:6px;z-index:1000;
+                 width:36px;height:36px;padding:0;
                  display:flex;align-items:center;justify-content:center;
-                 background:rgba(6,8,16,0.55);border:1px solid rgba(26,34,51,0.5);
+                 background:var(--panel);border:1px solid var(--border);
                  border-radius:4px;cursor:pointer;color:var(--text);
                  -webkit-tap-highlight-color:transparent;">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -96,9 +156,9 @@
 
   <!-- Traceroute badge -->
   <div id="traceroute-badge"
-       style="display:none;position:absolute;bottom:70px;left:6px;z-index:1000;
+       style="display:none;position:absolute;bottom:72px;left:6px;z-index:1000;
               align-items:center;gap:6px;padding:5px 10px;
-              background:rgba(6,8,16,0.85);border:1px solid rgba(26,34,51,0.5);
+              background:var(--panel);border:1px solid var(--border);
               border-radius:4px;font-size:10px;color:var(--text);">
     <span id="traceroute-badge-text"></span>
     <button onclick="tracerouteLayer.clearLayers();this.parentElement.style.display='none'"
@@ -108,113 +168,127 @@
 
   <!-- Legenda -->
   <div id="map-legend"
-       style="display:none;position:absolute;bottom:70px;left:6px;z-index:900;
-              background:rgba(6,8,16,0.85);border:1px solid rgba(26,34,51,0.5);
-              border-radius:4px;padding:8px 10px;font-size:9px;color:var(--text);min-width:120px;">
-    <div style="font-weight:700;margin-bottom:5px;color:var(--accent);text-transform:uppercase;">Legenda</div>
+       style="display:none;position:absolute;bottom:72px;left:6px;z-index:900;
+              background:var(--panel);border:1px solid var(--border);
+              border-radius:4px;padding:8px 10px;font-size:9px;color:var(--text);min-width:130px;">
+    <div class="map-mlabel" style="margin-bottom:5px;color:var(--accent);">Legenda</div>
     <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
-      <span style="width:10px;height:10px;border-radius:50%;background:#4a9eff;display:inline-block;"></span> Nodo locale
+      <span style="width:10px;height:10px;border-radius:50%;background:var(--accent);display:inline-block;"></span> Tu (nodo locale)
     </div>
     <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
-      <span style="width:10px;height:10px;border-radius:50%;background:#4caf50;display:inline-block;"></span> Online (&lt;30m)
+      <span style="width:10px;height:10px;border-radius:50%;background:var(--ok);display:inline-block;"></span> Attivo (&lt;5m)
     </div>
     <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
-      <span style="width:10px;height:10px;border-radius:50%;background:#374151;display:inline-block;"></span> Offline
+      <span style="width:10px;height:10px;border-radius:50%;background:var(--warn);display:inline-block;"></span> Recente (&lt;30m)
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
+      <span style="width:10px;height:10px;border-radius:50%;background:var(--muted);display:inline-block;"></span> Offline
     </div>
     <div style="border-top:1px solid var(--border);margin:4px 0;"></div>
     <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
-      <span style="width:14px;height:3px;background:#4caf50;display:inline-block;border-radius:1px;"></span> SNR buono
+      <span style="width:14px;height:2px;background:var(--accent);display:inline-block;"></span> Link diretto
     </div>
     <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
-      <span style="width:14px;height:3px;background:#fb8c00;display:inline-block;border-radius:1px;"></span> SNR medio
-    </div>
-    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
-      <span style="width:14px;height:3px;background:#e53935;display:inline-block;border-radius:1px;"></span> SNR scarso
-    </div>
-    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
-      <span style="width:14px;height:0;border-top:2px dashed #4a9eff;display:inline-block;"></span> Traccia GPS
+      <span style="width:14px;height:0;border-top:2px dashed var(--warn);display:inline-block;"></span> Link debole
     </div>
     <div style="display:flex;align-items:center;gap:5px;">
-      <span style="width:14px;height:0;border-top:3px dashed #fb8c00;display:inline-block;"></span> Traceroute
+      <span style="width:14px;height:0;border-top:2px dashed var(--muted);display:inline-block;"></span> Traccia GPS
     </div>
   </div>
 
   <!-- Popup nodo -->
   <div id="node-popup"
        style="display:none;position:absolute;z-index:900;
-              background:rgba(6,8,16,0.96);border:1px solid var(--border);
+              background:var(--panel);border:1px solid var(--border);
               border-radius:6px;padding:10px;width:190px;
               box-shadow:0 4px 16px rgba(0,0,0,0.6);font-size:10px;pointer-events:auto;">
   </div>
 
   <!-- Pannello laterale -->
   <div id="right-panel"
-       style="display:none;position:absolute;top:0;right:0;bottom:0;width:160px;z-index:700;
+       style="display:none;position:absolute;top:0;right:0;bottom:0;width:230px;z-index:700;
               flex-direction:column;overflow:hidden;
               background:var(--bg);border-left:1px solid var(--border);">
     <div style="display:flex;border-bottom:1px solid var(--border);">
+      <button id="panel-tab-nodes"
+              onclick="setPanelTab('nodes')"
+              style="flex:1;padding:7px 0;font-size:9px;border:none;cursor:pointer;
+                     color:var(--accent);background:var(--panel);border-bottom:2px solid var(--accent);">
+        Nodi
+      </button>
       <button id="panel-tab-filters"
               onclick="setPanelTab('filters')"
-              style="flex:1;padding:5px 0;font-size:9px;border:none;cursor:pointer;
-                     color:var(--accent);background:var(--panel);border-bottom:2px solid var(--accent);">
+              style="flex:1;padding:7px 0;font-size:9px;border:none;cursor:pointer;
+                     color:var(--muted);background:transparent;border-bottom:2px solid transparent;">
         Filtri
       </button>
       <button id="panel-tab-topology"
               onclick="setPanelTab('topology')"
-              style="flex:1;padding:5px 0;font-size:9px;border:none;cursor:pointer;
+              style="flex:1;padding:7px 0;font-size:9px;border:none;cursor:pointer;
                      color:var(--muted);background:transparent;border-bottom:2px solid transparent;">
         Topo
       </button>
       <button id="panel-tab-waypoints"
               onclick="setPanelTab('waypoints')"
-              style="flex:1;padding:5px 0;font-size:9px;border:none;cursor:pointer;
+              style="flex:1;padding:7px 0;font-size:9px;border:none;cursor:pointer;
                      color:var(--muted);background:transparent;border-bottom:2px solid transparent;">
         WP
       </button>
     </div>
+
+    <!-- Lista nodi posizionati -->
+    <div id="panel-nodes" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+      <div id="map-node-list" style="flex:1;overflow-y:auto;"></div>
+      <div style="border-top:1px solid var(--border);padding:8px 10px;background:var(--panel);">
+        <div class="map-mlabel">La tua posizione</div>
+        <div id="map-mypos" style="font-family:var(--font-mono);font-size:11px;font-weight:600;margin-top:3px;">—</div>
+        <div id="map-mypos-meta" style="font-family:var(--font-mono);font-size:9px;color:var(--muted);margin-top:2px;"></div>
+      </div>
+    </div>
+
         <!-- Filtri mappa -->
-        <div id="filter-panel" style="padding:8px;border-bottom:1px solid var(--border,#2a3a4a);">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--accent,#4a9eff);margin-bottom:6px;">Filtri</div>
-          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
-            <input type="checkbox" id="filter-online" style="accent-color:var(--accent,#4a9eff);"> Online
+        <div id="filter-panel" style="display:none;padding:8px;border-bottom:1px solid var(--border);">
+          <div class="map-mlabel" style="color:var(--accent);margin-bottom:6px;">Filtri</div>
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-online" style="accent-color:var(--accent);"> Online
           </label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
-            <input type="checkbox" id="filter-offline" style="accent-color:var(--accent,#4a9eff);"> Offline
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-offline" style="accent-color:var(--accent);"> Offline
           </label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
-            <input type="checkbox" id="filter-hoplines" style="accent-color:var(--accent,#4a9eff);"> Linee hop
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-hoplines" style="accent-color:var(--accent);"> Linee hop
           </label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
-            <input type="checkbox" id="filter-breadcrumbs" style="accent-color:var(--accent,#4a9eff);"> Tracce GPS
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-breadcrumbs" style="accent-color:var(--accent);"> Tracce GPS
           </label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
-            <input type="checkbox" id="filter-waypoints" style="accent-color:var(--accent,#4a9eff);"> Waypoints
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-waypoints" style="accent-color:var(--accent);"> Waypoints
           </label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
-            <input type="checkbox" id="filter-neighbor" style="accent-color:var(--accent,#4a9eff);"> Neighbor links
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-neighbor" style="accent-color:var(--accent);"> Neighbor links
           </label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
-            <input type="checkbox" id="filter-markers" style="accent-color:var(--accent,#4a9eff);"> Marker
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-markers" style="accent-color:var(--accent);"> Marker
           </label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-bottom:4px;cursor:pointer;">
-            <input type="checkbox" id="filter-local" style="accent-color:var(--accent,#4a9eff);"> Nodo locale
+          <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text);margin-bottom:4px;cursor:pointer;">
+            <input type="checkbox" id="filter-local" style="accent-color:var(--accent);"> Nodo locale
           </label>
-          <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text,#ccc);margin-top:4px;">
+          <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text);margin-top:4px;">
             <span>Max hops:</span>
-            <input type="range" id="filter-maxhops" min="1" max="10" style="flex:1;accent-color:var(--accent,#4a9eff);">
+            <input type="range" id="filter-maxhops" min="1" max="10" style="flex:1;accent-color:var(--accent);">
             <span id="filter-maxhops-val" style="min-width:14px;text-align:right;">7</span>
           </div>
         </div>
 
     <div id="panel-topology"
          style="display:none;padding:8px;overflow-y:auto;flex:1;flex-direction:column;">
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:6px;">
+      <div class="map-mlabel" style="color:var(--accent);margin-bottom:6px;">
         Grafo mesh
       </div>
-      <svg id="topology-svg" width="144" height="200"
-           style="background:rgba(0,0,0,.2);border-radius:4px;display:block;"></svg>
+      <svg id="topology-svg" width="214" height="230"
+           style="background:var(--panel);border-radius:4px;display:block;"></svg>
       <button onclick="renderTopologyGraph()"
-              style="margin-top:6px;width:100%;padding:4px 0;font-size:9px;
+              style="margin-top:6px;width:100%;padding:5px 0;font-size:9px;
                      background:none;border:1px solid var(--border);border-radius:3px;
                      color:var(--muted);cursor:pointer;">
         Aggiorna
@@ -223,22 +297,24 @@
 
     <div id="panel-waypoints"
          style="display:none;padding:8px;overflow-y:auto;flex:1;flex-direction:column;">
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--accent);margin-bottom:6px;">
+      <div class="map-mlabel" style="color:var(--accent);margin-bottom:6px;">
         Waypoints attivi
       </div>
       <div id="waypoints-list" style="font-size:10px;color:var(--text);"></div>
     </div>
   </div>
+
+  </div><!-- /area mappa -->
 </div>
 
 <script>
 // Pre-populate nodeCache from server-rendered JSON (no initial HTTP request)
 var _serverNodes = {{ nodes_data | tojson }};
 </script>
-<script src="/static/map.js?v=14"></script>
+<script src="/static/map.js?v=15"></script>
 <script>
 function setPanelTab(tab) {
-  var tabs = ['filters', 'topology', 'waypoints']
+  var tabs = ['nodes', 'filters', 'topology', 'waypoints']
   tabs.forEach(function(t) {
     var btn = document.getElementById('panel-tab-' + t)
     var panel = t === 'filters'
@@ -250,8 +326,9 @@ function setPanelTab(tab) {
       btn.style.background = active ? 'var(--panel)'  : 'transparent'
       btn.style.borderBottom = active ? '2px solid var(--accent)' : '2px solid transparent'
     }
-    if (panel) panel.style.display = (t === tab) ? 'block' : 'none'
+    if (panel) panel.style.display = (t === tab) ? ((t === 'nodes' || t === 'topology' || t === 'waypoints') ? 'flex' : 'block') : 'none'
   })
+  if (tab === 'nodes')     typeof renderMapNodeList === 'function' && renderMapNodeList()
   if (tab === 'topology')  renderTopologyGraph()
   if (tab === 'waypoints') refreshWaypointsList()
 }
@@ -266,14 +343,14 @@ function renderTopologyGraph() {
     var ids = Object.keys(nodeIds)
     if (ids.length === 0) {
       var t = document.createElementNS('http://www.w3.org/2000/svg', 'text')
-      t.setAttribute('x', '72'); t.setAttribute('y', '100')
+      t.setAttribute('x', '107'); t.setAttribute('y', '115')
       t.setAttribute('text-anchor', 'middle')
-      t.setAttribute('fill', '#666'); t.setAttribute('font-size', '10')
+      t.setAttribute('fill', 'var(--muted)'); t.setAttribute('font-size', '10')
       t.textContent = 'Nessun dato'
       svg.appendChild(t)
       return
     }
-    var W = 144, H = 200, cx = W / 2, cy = H / 2, r = Math.min(cx, cy) - 20
+    var W = 214, H = 230, cx = W / 2, cy = H / 2, r = Math.min(cx, cy) - 20
     var pos = {}
     ids.forEach(function(id, i) {
       var angle = (2 * Math.PI * i / ids.length) - Math.PI / 2
@@ -297,14 +374,14 @@ function renderTopologyGraph() {
       var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
       circle.setAttribute('cx', p.x); circle.setAttribute('cy', p.y)
       circle.setAttribute('r', isLocal ? 8 : 6)
-      circle.setAttribute('fill', isLocal ? '#2196f3' : '#333')
-      circle.setAttribute('stroke', '#fff'); circle.setAttribute('stroke-width', '1')
+      circle.setAttribute('fill', isLocal ? 'var(--accent)' : 'var(--panel-2)')
+      circle.setAttribute('stroke', 'var(--muted)'); circle.setAttribute('stroke-width', '1')
       svg.appendChild(circle)
       var label = document.createElementNS('http://www.w3.org/2000/svg', 'text')
       label.setAttribute('x', p.x); label.setAttribute('y', p.y + 3)
       label.setAttribute('text-anchor', 'middle')
-      label.setAttribute('fill', '#ccc'); label.setAttribute('font-size', '7')
-      label.textContent = isLocal ? 'ME' : id.slice(-4)
+      label.setAttribute('fill', 'var(--text)'); label.setAttribute('font-size', '7')
+      label.textContent = isLocal ? 'TU' : id.slice(-4)
       svg.appendChild(label)
     })
   })
@@ -337,9 +414,17 @@ function refreshWaypointsList() {
   })
 }
 
-document.getElementById('panel-toggle').onclick = function() {
-  var p = document.getElementById('right-panel')
-  p.style.display = p.style.display === 'flex' ? 'none' : 'flex'
+// Wiring SPA-safe: la navigazione SPA esegue gli script PRIMA di innestare il
+// DOM, quindi niente riferimenti diretti agli elementi a livello di script.
+// Delego sul document, con guardia contro doppia registrazione.
+if (!window._mapPanelWired) {
+  window._mapPanelWired = true
+  document.addEventListener('click', function(e) {
+    var t = e.target.closest && e.target.closest('#panel-toggle')
+    if (!t) return
+    var p = document.getElementById('right-panel')
+    if (p) p.style.display = p.style.display === 'flex' ? 'none' : 'flex'
+  })
 }
 
 // Feed server nodes into nodeCache on load

@@ -462,6 +462,17 @@ async function navigateTo(tabName) {
       }
     })
 
+    // Inject missing <link rel=stylesheet> from fetched page's <head>
+    // (e.g. leaflet.css): il contenuto viene innestato, il head no.
+    Array.from(doc.querySelectorAll('head link[rel="stylesheet"]'))
+      .filter(l => !document.querySelector(`link[href="${l.getAttribute('href')}"]`))
+      .forEach(l => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = l.getAttribute('href')
+        document.head.appendChild(link)
+      })
+
     // Inject missing <script src> from fetched page's <head> (e.g. Leaflet)
     await new Promise(resolve => {
       const headScripts = Array.from(doc.querySelectorAll('head script[src]'))

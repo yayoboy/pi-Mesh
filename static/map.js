@@ -143,11 +143,17 @@ function initFilters() {
 
 // --- Hop Lines ---
 
+// Colori dal tema attivo: Leaflet scrive attributi SVG, dove var() non
+// viene risolta — vanno letti computati dal root.
+function themeColor(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888'
+}
+
 function snrColor(snr) {
-  if (snr == null) return '#555'
-  if (snr > 5)     return '#4caf50'
-  if (snr >= 0)    return '#fb8c00'
-  return '#e53935'
+  if (snr == null) return themeColor('--muted')
+  if (snr > 5)     return themeColor('--ok')
+  if (snr >= 0)    return themeColor('--warn')
+  return themeColor('--danger')
 }
 
 function renderHopLines() {
@@ -163,9 +169,11 @@ function renderHopLines() {
     nodes.forEach(function(b) {
       if (a.id >= b.id) return
       if (now - (b.last_heard || 0) > 1800) return
+      var snr = a.snr != null ? a.snr : b.snr
       var line = L.polyline(
         [[a.latitude, a.longitude], [b.latitude, b.longitude]],
-        { color: snrColor(a.snr != null ? a.snr : b.snr), weight: 2.5, opacity: 0.75 }
+        { color: snrColor(snr), weight: 2, opacity: 0.8,
+          dashArray: (snr != null && snr > 5) ? null : '5 7' }
       )
       hopLinesLayer.addLayer(line)
     })
@@ -682,6 +690,14 @@ function initMapIfNeeded() {
   loadWaypoints()
   loadNeighborLinks()
 
+  // Stile radar + pannello nodi (screen 03)
+  setMapStyle(mapStyle)
+  drawRadarRings()
+  renderMapNodeList()
+  updateMyPos()
+  var rp = document.getElementById('right-panel')
+  if (rp && window.innerWidth >= 900) rp.style.display = 'flex'
+
   // Invalidate size after delay to ensure container is visible
   setTimeout(function() { leafletMap.invalidateSize() }, 200)
 
@@ -711,12 +727,17 @@ function initMapIfNeeded() {
 
 function centerOnBoard() {
   if (!mapReady || !leafletMap) return
-  var local = null
-  nodeCache.forEach(function(node) {
-    if (node.is_local && node.latitude && node.longitude) local = node
-  })
+  var local = localNodePos()
   if (local) {
     leafletMap.setView([local.latitude, local.longitude], leafletMap.getZoom())
+    return
+  }
+  // Senza GPS: torna al centro della regione configurata.
+  var el = document.getElementById('map-container')
+  var bounds = el ? JSON.parse(el.dataset.bounds || 'null') : null
+  if (bounds) {
+    leafletMap.setView([(bounds.lat_min + bounds.lat_max) / 2,
+                        (bounds.lon_min + bounds.lon_max) / 2], 9)
   }
 }
 
@@ -737,19 +758,19 @@ function switchLayer(name) {
 
 function updateMapMarker(node) {
   if (!node.latitude || !node.longitude || !mapReady) return
-  var online  = (Date.now() / 1000 - (node.last_heard || 0)) < 1800
-  var bgColor = node.is_local ? '#4a9eff' : (online ? '#4caf50' : '#555')
-  var glow    = node.is_local ? 'box-shadow:0 0 8px #4a9eff;' : ''
-  var label   = escHtml(String(node.short_name || node.id).slice(0, 6))
+  // Marker radar (screen 03): punto colorato per freschezza + label mono.
+  var age = Date.now() / 1000 - (node.last_heard || 0)
+  var dotColor = node.is_local ? 'var(--accent)'
+    : (age < 300 ? 'var(--ok)' : (age < 1800 ? 'var(--warn)' : 'var(--muted)'))
+  var name  = escHtml(String(node.short_name || node.id).slice(0, 10))
+  var label = node.is_local ? 'TU · ' + name : name
   var icon = L.divIcon({
-    html: '<div style="width:34px;height:34px;background:' + bgColor +
-          ';border-radius:50%;border:2px solid #fff;' + glow +
-          'display:flex;align-items:center;justify-content:center;' +
-          'font-size:9px;font-weight:700;color:#fff;font-family:monospace;' +
-          'box-sizing:border-box;">' + label + '</div>',
+    html: '<div class="radar-marker' + (node.is_local ? ' local' : '') + '">' +
+          '<div class="dot" style="background:' + dotColor + ';"></div>' +
+          '<div class="lbl">' + label + '</div></div>',
     className: '',
-    iconSize:   [34, 34],
-    iconAnchor: [17, 17],
+    iconSize:   [96, 32],
+    iconAnchor: [48, 7],
   })
   var existing = markerCache.get(node.id)
   if (existing) {
@@ -764,6 +785,8 @@ function updateMapMarker(node) {
   }
   renderHopLines()
   applyFilters()
+  renderMapNodeList()
+  if (node.is_local) { drawRadarRings(); updateMyPos() }
 }
 
 // --- Waypoints ---
@@ -806,6 +829,162 @@ function renderWaypoints(waypoints) {
 
 function deleteWaypoint(id) {
   fetch('/api/waypoints/' + id, {method: 'DELETE'}).then(function() { loadWaypoints() })
+}
+
+// --- Stile radar (screen 03 del prototipo) ---
+
+var radarLayer = null
+var mapStyle = localStorage.getItem('mapStyle') || 'radar'
+
+function localNodePos() {
+  var local = null
+  nodeCache.forEach(function(n) { if (n.is_local && n.latitude && n.longitude) local = n })
+  return local
+}
+
+// Anelli di distanza concentrici sulla propria posizione, con etichetta km.
+function drawRadarRings() {
+  if (!mapReady) return
+  if (!radarLayer) radarLayer = L.layerGroup()
+  radarLayer.clearLayers()
+  var local = localNodePos()
+  if (!local) return
+  var ringColor = themeColor('--border')
+  ;[1, 2, 5, 10, 20].forEach(function(km) {
+    radarLayer.addLayer(L.circle([local.latitude, local.longitude], {
+      radius: km * 1000, fill: false, color: ringColor,
+      weight: 1, opacity: 0.9, dashArray: '4 7', interactive: false,
+    }))
+    radarLayer.addLayer(L.marker([local.latitude + km / 111.32, local.longitude], {
+      icon: L.divIcon({ html: '<div class="radar-ring-label">' + km + ' km</div>',
+                        className: '', iconSize: [50, 12], iconAnchor: [25, 6] }),
+      interactive: false,
+    }))
+  })
+  if (mapStyle === 'radar') radarLayer.addTo(leafletMap)
+}
+
+function setMapStyle(style) {
+  mapStyle = style
+  localStorage.setItem('mapStyle', style)
+  var mc = document.getElementById('map-container')
+  if (mc) mc.classList.toggle('radar-style', style === 'radar')
+  document.querySelectorAll('[id^="style-"].map-pill').forEach(function(b) {
+    b.classList.toggle('on', b.id === 'style-' + style)
+  })
+  if (!mapReady) return
+  if (style === 'satellite') {
+    switchLayer('satellite')
+    if (radarLayer) leafletMap.removeLayer(radarLayer)
+  } else {
+    if (activeLayer === satelliteLayer) switchLayer('osm')
+    drawRadarRings()
+  }
+}
+
+// --- Pannello nodi + posizione (colonna destra) ---
+
+function bearingLabel(lat1, lon1, lat2, lon2) {
+  var dLon = (lon2 - lon1) * Math.PI / 180
+  var la1 = lat1 * Math.PI / 180, la2 = lat2 * Math.PI / 180
+  var y = Math.sin(dLon) * Math.cos(la2)
+  var x = Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dLon)
+  var deg = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360
+  return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8]
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  var R = 6371, dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180
+  var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function fmtAgoShort(ts) {
+  if (!ts) return 'mai'
+  var s = Math.floor(Date.now() / 1000 - ts)
+  if (s < 60)   return s + ' s fa'
+  if (s < 3600) return Math.floor(s / 60) + ' min fa'
+  return Math.floor(s / 3600) + ' h fa'
+}
+
+function renderMapNodeList() {
+  var listEl  = document.getElementById('map-node-list')
+  var countEl = document.getElementById('map-node-count')
+  var local = localNodePos()
+  var rows = []
+  nodeCache.forEach(function(n) {
+    if (!n.latitude || !n.longitude || n.is_local) return
+    var dist = n.distance_km != null ? n.distance_km
+      : (local ? haversineKm(local.latitude, local.longitude, n.latitude, n.longitude) : null)
+    rows.push({ n: n, dist: dist })
+  })
+  rows.sort(function(a, b) {
+    if (a.dist == null) return 1
+    if (b.dist == null) return -1
+    return a.dist - b.dist
+  })
+  if (countEl) countEl.textContent = '· ' + rows.length + ' nodi posizionati'
+  if (!listEl) return
+  while (listEl.firstChild) listEl.removeChild(listEl.firstChild)
+  if (rows.length === 0) {
+    var empty = document.createElement('div')
+    empty.className = 'map-mlabel'
+    empty.style.padding = '10px'
+    empty.textContent = 'Nessun nodo con posizione'
+    listEl.appendChild(empty)
+    return
+  }
+  var now = Date.now() / 1000
+  rows.forEach(function(r) {
+    var n = r.n, age = now - (n.last_heard || 0)
+    var row = document.createElement('div')
+    row.className = 'map-node-row'
+    var dot = document.createElement('span')
+    dot.className = 'dot'
+    dot.style.background = age < 300 ? 'var(--ok)' : (age < 1800 ? 'var(--warn)' : 'var(--muted)')
+    row.appendChild(dot)
+    var body = document.createElement('div')
+    body.style.cssText = 'flex:1;min-width:0;'
+    var name = document.createElement('div')
+    name.style.cssText = 'font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+    name.textContent = n.long_name || n.short_name || n.id
+    body.appendChild(name)
+    var meta = document.createElement('div')
+    meta.style.cssText = 'font-family:var(--font-mono);font-size:9px;color:var(--muted);margin-top:2px;'
+    var parts = []
+    if (r.dist != null) parts.push(r.dist < 10 ? r.dist.toFixed(1) + ' km' : Math.round(r.dist) + ' km')
+    if (local) parts.push(bearingLabel(local.latitude, local.longitude, n.latitude, n.longitude))
+    parts.push(fmtAgoShort(n.last_heard))
+    meta.textContent = parts.join(' · ')
+    body.appendChild(meta)
+    row.appendChild(body)
+    row.addEventListener('click', function() {
+      leafletMap.setView([n.latitude, n.longitude], Math.max(leafletMap.getZoom(), 11))
+      var m = markerCache.get(n.id)
+      if (m) showNodePopup(m, n)
+    })
+    listEl.appendChild(row)
+  })
+}
+
+function updateMyPos() {
+  var el = document.getElementById('map-mypos')
+  var meta = document.getElementById('map-mypos-meta')
+  if (!el) return
+  var local = localNodePos()
+  if (!local) {
+    el.textContent = '—'
+    if (meta) meta.textContent = 'GPS non disponibile'
+    return
+  }
+  var lat = Math.abs(local.latitude).toFixed(4) + ' ' + (local.latitude >= 0 ? 'N' : 'S')
+  var lon = Math.abs(local.longitude).toFixed(4) + ' ' + (local.longitude >= 0 ? 'E' : 'W')
+  el.textContent = lat + ' · ' + lon
+  if (meta) meta.textContent =
+    (local.altitude != null ? Math.round(local.altitude) + ' m · ' : '') +
+    'agg. ' + fmtAgoShort(local.last_heard)
 }
 
 function loadWaypoints() {
