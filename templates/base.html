@@ -4,6 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>pi-Mesh</title>
+  <script>
+  // WPE/cog consegna TouchEvent reali ma non sintetizza mai Pointer Events,
+  // pur esponendo window.PointerEvent. Leaflet (1.9) preferisce i pointer
+  // quando il costruttore esiste, quindi la mappa resterebbe sorda al touch.
+  // Firma del caso: touch nativo presente ma navigator.maxTouchPoints === 0.
+  // Va eseguito qui in base.html: con la navigazione SPA gli script inline
+  // delle singole pagine non vengono rieseguiti prima del load di leaflet.js.
+  if ('ontouchstart' in window && (navigator.maxTouchPoints || 0) === 0) {
+    try { delete window.PointerEvent } catch (e) { window.PointerEvent = undefined }
+  }
+  </script>
   <!-- Tailwind precompilato (build one-off: vedi docs/DEVELOPMENT nel README).
        Sostituisce il runtime Play CDN da 407KB che compilava a ogni load. -->
   <link rel="stylesheet" href="/static/tailwind.css">

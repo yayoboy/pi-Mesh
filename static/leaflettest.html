@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<!-- Pagina diagnostica Leaflet (solo deploy manuale): stessa pipeline della
+     mappa reale (shim PointerEvent + leaflet.js 1.9.4) e log degli eventi
+     mappa al logger locale 127.0.0.1:8099. -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<link rel="stylesheet" href="/static/leaflet/leaflet.css"/>
+<script>
+  if ('ontouchstart' in window && (navigator.maxTouchPoints || 0) === 0) {
+    try { delete window.PointerEvent } catch (e) { window.PointerEvent = undefined }
+  }
+</script>
+<script src="/static/leaflet/leaflet.js"></script>
+<style>
+  body { margin:0; background:#11150c; }
+  #map { position:fixed; inset:0; touch-action:none; }
+  #hud { position:fixed; top:8px; left:8px; z-index:10000; color:#9bc24a;
+         font-family:monospace; font-size:22px; font-weight:bold;
+         background:rgba(0,0,0,.6); padding:8px 12px; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="hud">LEAFLET TEST</div>
+<script>
+var log = function(msg) {
+  document.getElementById('hud').textContent = 'LEAFLET TEST — ' + msg
+  fetch('http://127.0.0.1:8099/LF%20' + encodeURIComponent(msg)).catch(function(){})
+}
+log('touch:' + L.Browser.touch + ' pointer:' + L.Browser.pointer +
+    ' touchNative:' + (L.Browser.touchNative !== undefined ? L.Browser.touchNative : 'n/a'))
+
+var map = L.map('map', {
+  center: [41.9, 12.5], zoom: 10, zoomControl: false,
+  tap: false, touchZoom: true, scrollWheelZoom: true, boxZoom: false,
+})
+// Griglia finta come "tile layer" (offline, nessuna rete)
+L.gridLayer && map.addLayer(new (L.GridLayer.extend({
+  createTile: function(coords) {
+    var el = document.createElement('div')
+    el.style.cssText = 'border:1px solid #313c1f;background:#1c2412;color:#7d8a63;font:10px monospace;'
+    el.textContent = coords.z + '/' + coords.x + '/' + coords.y
+    return el
+  }
+}))())
+
+map.on('movestart', function() { log('movestart zoom=' + map.getZoom()) })
+map.on('zoomstart', function() { log('zoomstart') })
+map.on('zoomend',  function() { log('zoomend zoom=' + map.getZoom()) })
+map.on('moveend',  function() { log('moveend') })
+</script>
+</body>
+</html>

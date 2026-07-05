@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<!-- Pagina diagnostica touch (solo deploy manuale, non linkata dall'app):
+     mostra a schermo gli eventi touch/pointer/mouse e li logga via fetch
+     a un logger locale su 127.0.0.1:8099 (vedi /tmp/touchlog.txt sul Pi). -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<style>
+  body { margin:0; background:#11150c; color:#dde6c9; font-family:monospace; overflow:hidden;
+         -webkit-user-select:none; user-select:none; touch-action:none; }
+  #info { padding:16px; font-size:15px; line-height:1.7; pointer-events:none; }
+  #big  { font-size:34px; font-weight:bold; color:#9bc24a; }
+  .dot  { position:fixed; width:60px; height:60px; border-radius:50%;
+          background:#9bc24a; opacity:.7; transform:translate(-50%,-50%);
+          pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="info">
+  <div id="big">TOUCH TEST — tocca lo schermo</div>
+  <div id="env"></div>
+  <div id="counts"></div>
+  <div id="last"></div>
+</div>
+<script>
+var counts = {}
+var log = function(msg) {
+  fetch('http://127.0.0.1:8099/' + encodeURIComponent(msg)).catch(function(){})
+}
+var env = 'ontouchstart:' + ('ontouchstart' in window) +
+          ' maxTouchPoints:' + (navigator.maxTouchPoints || 0) +
+          ' PointerEvent:' + !!window.PointerEvent
+document.getElementById('env').textContent = env
+log('ENV ' + env)
+
+function bump(name, detail) {
+  counts[name] = (counts[name] || 0) + 1
+  document.getElementById('counts').textContent =
+    Object.keys(counts).map(function(k){ return k + ':' + counts[k] }).join('  ')
+  document.getElementById('last').textContent = name + ' ' + (detail || '')
+  log(name + (detail ? ' ' + detail : ''))
+}
+
+function showDots(touches) {
+  document.querySelectorAll('.dot').forEach(function(d){ d.remove() })
+  for (var i = 0; i < touches.length; i++) {
+    var d = document.createElement('div')
+    d.className = 'dot'
+    d.style.left = touches[i].clientX + 'px'
+    d.style.top = touches[i].clientY + 'px'
+    document.body.appendChild(d)
+  }
+}
+
+;['touchstart','touchmove','touchend','touchcancel'].forEach(function(ev) {
+  document.addEventListener(ev, function(e) {
+    bump(ev, 'dita:' + e.touches.length)
+    showDots(e.touches)
+    e.preventDefault()
+  }, { passive: false })
+})
+;['pointerdown','pointerup'].forEach(function(ev) {
+  document.addEventListener(ev, function(e) { bump(ev, e.pointerType) })
+})
+;['mousedown','mouseup','click'].forEach(function(ev) {
+  document.addEventListener(ev, function(e) { bump(ev) })
+})
+</script>
+</body>
+</html>
