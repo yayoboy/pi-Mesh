@@ -624,8 +624,10 @@ function initMapIfNeeded() {
     center: center, zoom: zoom, zoomControl: false,
     maxZoom: zoomMax,
     tap: false,
-    touchZoom: false,
-    scrollWheelZoom: false,
+    // Pinch-zoom: il pannello HDMI capacitivo è multitouch (protocollo MT
+    // tipo B via hid-multitouch); era spento ai tempi del touch resistivo SPI.
+    touchZoom: true,
+    scrollWheelZoom: true,
     boxZoom: false,
   })
 
