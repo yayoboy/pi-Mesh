@@ -210,7 +210,12 @@ and the Leaflet map on the GPU. No X server involved: cog talks directly to
 KMS/DRM, which keeps the RAM budget close to the surf+X11 kiosk even on a
 512 MB Pi 3 A+.
 
-| 1024×600 (7" touch, scale 2) | 1920×1080 (scale 2, multi-column) |
+The UI uses the "tactical" design (IBM Plex fonts served locally, left
+sidebar navigation, master-detail pages, radar-styled map) with 9 selectable
+theme presets (Config → UI → Tema); B1 "Tattico Verde" is the default.
+Designed 1:1 for 1024×600 (`PIMESH_HDMI_SCALE=1`).
+
+| 1024×600 (7" touch, scale 1) | 1920×1080 (scale 2, multi-column) |
 |---|---|
 | ![Nodes HDMI 1024×600](docs/screenshots/hdmi-1024x600-nodes.png) | ![Nodes HDMI 1080p](docs/screenshots/hdmi-1080p-nodes.png) |
 | ![Messages HDMI 1024×600](docs/screenshots/hdmi-1024x600-messages.png) | ![Metrics HDMI 1080p](docs/screenshots/hdmi-1080p-metrics.png) |
