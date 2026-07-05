@@ -152,7 +152,34 @@
       <span class="tab-label" style="position:relative;">{{ label }}{% if key == 'messages' %}<span id="msg-badge" style="display:none;position:absolute;top:-7px;right:-12px;min-width:14px;height:14px;border-radius:7px;background:var(--danger);color:var(--accent-contrast);font-size:8px;font-weight:700;line-height:14px;text-align:center;padding:0 3px;"></span>{% endif %}</span>
     </a>
     {% endfor %}
+
+    <!-- SOS in fondo alla sidebar (screen 06): tenere premuto per attivare -->
+    <div style="flex:1;"></div>
+    <button id="sos-btn" class="tab" title="SOS — tieni premuto nell'overlay per attivare"
+            style="color:var(--danger);background:none;border:none;border-top:1px solid var(--border);cursor:pointer;width:100%;">
+      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+      </svg>
+      <span class="tab-label">SOS</span>
+    </button>
   </nav>
+
+  <!-- Overlay SOS -->
+  <div id="sos-overlay" style="display:none;position:fixed;inset:0;z-index:400;background:rgba(18,8,8,0.96);
+       flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;">
+    <div id="sos-title" style="font-family:var(--font-mono);font-size:13px;font-weight:600;letter-spacing:0.1em;
+         text-transform:uppercase;color:var(--danger);">Tieni premuto 3 secondi per attivare</div>
+    <button id="sos-hold"
+            style="width:170px;height:170px;border-radius:50%;border:5px solid var(--danger);cursor:pointer;
+                   background:var(--danger);color:#fff;font-size:34px;font-weight:800;font-family:var(--font-mono);
+                   letter-spacing:0.08em;-webkit-tap-highlight-color:transparent;transition:transform 0.15s;">SOS</button>
+    <div id="sos-info" style="font-size:11px;color:var(--text);max-width:340px;line-height:1.6;">
+      Invia in broadcast la tua posizione e una richiesta di aiuto,<br>ripetuta ogni 10 secondi finché non annulli.
+    </div>
+    <button id="sos-close"
+            style="min-height:42px;padding:0 26px;border-radius:8px;background:none;border:1px solid var(--border);
+                   color:var(--text);font-size:13px;cursor:pointer;">Chiudi</button>
+  </div>
 
   <!-- Colonna destra: status bar + contenuto -->
   <div class="flex-1 flex flex-col min-w-0 h-full">
@@ -277,6 +304,66 @@
     if (!el) return
     function tick() { var d = new Date(); el.textContent = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') }
     tick(); setInterval(tick, 15000)
+  })()
+
+  // SOS (screen 06): pressione prolungata 3s per attivare, poi invio
+  // broadcast della posizione ogni 10s finché non si annulla.
+  ;(function() {
+    var overlay = document.getElementById('sos-overlay')
+    var btnOpen = document.getElementById('sos-btn')
+    var btnHold = document.getElementById('sos-hold')
+    var btnClose = document.getElementById('sos-close')
+    var title = document.getElementById('sos-title')
+    if (!overlay || !btnOpen) return
+    var holdTimer = null, sendTimer = null, active = false
+
+    function stop() {
+      active = false
+      clearInterval(sendTimer); sendTimer = null
+      btnHold.textContent = 'SOS'
+      btnHold.style.transform = ''
+      title.textContent = 'Tieni premuto 3 secondi per attivare'
+    }
+    function hide() { overlay.style.display = 'none'; stop() }
+
+    async function sendSos() {
+      var text = 'SOS — richiesta di aiuto'
+      try {
+        var nodes = await (await fetch('/api/nodes')).json()
+        var me = nodes.find(function(n) { return n.is_local })
+        if (me && me.latitude != null && me.longitude != null)
+          text += ' — pos ' + me.latitude.toFixed(5) + ', ' + me.longitude.toFixed(5)
+      } catch(e) {}
+      fetch('/api/messages/send', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ text: text, to: '^all', channel: 0 }),
+      }).catch(function(){})
+    }
+    function activate() {
+      active = true
+      title.textContent = 'SOS attivo — invio ogni 10 s'
+      btnHold.textContent = 'ANNULLA'
+      btnHold.style.transform = ''
+      sendSos()
+      sendTimer = setInterval(sendSos, 10000)
+    }
+    function startHold(e) {
+      e.preventDefault()
+      if (active) { stop(); return }
+      btnHold.style.transform = 'scale(0.9)'
+      holdTimer = setTimeout(function() { holdTimer = null; activate() }, 3000)
+    }
+    function endHold() {
+      if (!active) btnHold.style.transform = ''
+      if (holdTimer) { clearTimeout(holdTimer); holdTimer = null }
+    }
+    btnOpen.addEventListener('click', function() { overlay.style.display = 'flex' })
+    btnClose.addEventListener('click', hide)
+    btnHold.addEventListener('touchstart', startHold, { passive: false })
+    btnHold.addEventListener('mousedown', startHold)
+    btnHold.addEventListener('touchend', endHold)
+    btnHold.addEventListener('mouseup', endHold)
+    btnHold.addEventListener('mouseleave', endHold)
   })()
   </script>
   <script src="/static/app.js?v=5"></script>
