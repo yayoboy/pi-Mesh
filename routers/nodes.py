@@ -32,3 +32,23 @@ async def api_nodes():
 async def delete_node(node_id: str, purge: bool = False):
     await database.delete_node(cfg.DB_PATH, node_id, purge=purge)
     return {'ok': True}
+
+
+@router.post('/api/nodes/{node_id}/favorite')
+async def set_favorite(node_id: str, on: bool = True):
+    """Marca (?on=true, default) o smarca (?on=false) un nodo come preferito."""
+    try:
+        await meshtasticd_client.set_node_favorite(node_id, on)
+        return {'ok': True}
+    except RuntimeError as e:
+        return JSONResponse({'error': str(e)}, status_code=503)
+
+
+@router.post('/api/nodes/{node_id}/ignore')
+async def set_ignored(node_id: str, on: bool = True):
+    """Ignora (?on=true, default) o de-ignora (?on=false) un nodo."""
+    try:
+        await meshtasticd_client.set_node_ignored(node_id, on)
+        return {'ok': True}
+    except RuntimeError as e:
+        return JSONResponse({'error': str(e)}, status_code=503)

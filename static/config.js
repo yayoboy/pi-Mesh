@@ -24,6 +24,8 @@ function configPage() {
         { id: 'cannedmod', label: 'CannedMod' }, { id: 'rangetest', label: 'RangeTest' },
         { id: 'detsensor', label: 'DetSensor' }, { id: 'ambilight', label: 'AmbLight' },
         { id: 'neighinfo', label: 'Neighbor' }, { id: 'serial', label: 'Serial' },
+        { id: 'audio', label: 'Audio' }, { id: 'paxcounter', label: 'Paxcounter' },
+        { id: 'remotehw', label: 'RemoteHW' },
       ]},
       { id: 'pi', label: 'Pi', sections: [
         { id: 'gpio', label: 'GPIO' }, { id: 'rtc', label: 'RTC' }, { id: 'usb', label: 'USB' },
@@ -57,7 +59,13 @@ function configPage() {
     rangeTest: {}, detSensor: {}, ambLight: {}, neighInfo: {}, serialMod: {},
     devPosition: {}, devPower: {}, devDisplay: {}, devNetwork: {},
     devBluetooth: {}, devSecurity: {},
+    audioMod: {}, paxMod: {}, remoteHw: {},
     moduleStatus: '',
+    // Condivisione canali (URL/QR meshtastic.org/e/#)
+    chUrl: '', chImportUrl: '', chAddOnly: false, chQrVisible: false,
+    // Config remota: 'local' oppure id nodo (!aabbccdd). Le sezioni board
+    // remote-capable vengono lette/scritte via /api/admin/{id}/config/{sez}.
+    target: 'local', targetNodes: [],
 
     loaded: { node: false, lora: false, channels: false },
     saving: { node: false, lora: false, channels: false },
@@ -66,6 +74,7 @@ function configPage() {
     async init() {
       await this.loadNode()
       await this.scanSerialPorts()
+      await this.loadTargets()
     },
 
     async selectSection(s, groupId) {
@@ -97,11 +106,121 @@ function configPage() {
       if (s === 'network')   await this.loadDevSection('network', 'devNetwork')
       if (s === 'bluetooth') await this.loadDevSection('bluetooth', 'devBluetooth')
       if (s === 'security')  await this.loadDevSection('security', 'devSecurity')
+      if (s === 'audio')     await this.loadModSection('/api/config/module/audio', 'audioMod')
+      if (s === 'paxcounter') await this.loadModSection('/api/config/module/paxcounter', 'paxMod')
+      if (s === 'remotehw')  await this.loadModSection('/api/config/module/remote-hardware', 'remoteHw')
+      if (s === 'channels' && !this.channelsCached) await this.loadChannelUrl()
+    },
+
+    async loadModSection(endpoint, prop) {
+      if (this.target !== 'local') this.moduleStatus = '⏳ lettura dal nodo remoto…'
+      const r = await fetch(this.cfgEndpoint(endpoint))
+      if (r.ok) this[prop] = await r.json()
+      if (this.target !== 'local') this.moduleStatus = r.ok ? '' : '✗ nodo non raggiungibile'
+    },
+
+    // endpoint locale → nome sezione protobuf per la config remota
+    _remoteSections: {
+      '/api/config/lora': 'lora',
+      '/api/config/mqtt': 'mqtt',
+      '/api/config/device/position': 'position',
+      '/api/config/device/power': 'power',
+      '/api/config/device/display': 'display',
+      '/api/config/device/network': 'network',
+      '/api/config/device/bluetooth': 'bluetooth',
+      '/api/config/device/security': 'security',
+      '/api/config/module/external-notification': 'external_notification',
+      '/api/config/module/store-forward': 'store_forward',
+      '/api/config/module/telemetry': 'telemetry',
+      '/api/config/module/canned-message': 'canned_message',
+      '/api/config/module/range-test': 'range_test',
+      '/api/config/module/detection-sensor': 'detection_sensor',
+      '/api/config/module/ambient-lighting': 'ambient_lighting',
+      '/api/config/module/neighbor-info': 'neighbor_info',
+      '/api/config/module/serial': 'serial',
+      '/api/config/module/audio': 'audio',
+      '/api/config/module/paxcounter': 'paxcounter',
+      '/api/config/module/remote-hardware': 'remote_hardware',
+    },
+
+    // Se il target è un nodo remoto, ridirige l'endpoint sull'API admin.
+    cfgEndpoint(url) {
+      if (this.target === 'local') return url
+      const sec = this._remoteSections[url]
+      return sec ? `/api/admin/${this.target}/config/${sec}` : url
+    },
+
+    remoteCapable() {
+      // sezioni con almeno un endpoint remotizzabile (tutte le board tranne
+      // node/canali, che restano locali)
+      return ['lora','mqtt','position','power','devdisplay','network','bluetooth',
+              'security','extnotif','sf','telmod','cannedmod','rangetest',
+              'detsensor','ambilight','neighinfo','serial','audio','paxcounter',
+              'remotehw'].includes(this.section)
+    },
+
+    async loadTargets() {
+      const r = await fetch('/api/nodes')
+      if (r.ok) {
+        const nodes = await r.json()
+        this.targetNodes = nodes.filter(n => !n.is_local)
+      }
+    },
+
+    async setTarget(t) {
+      this.target = t
+      // ricarica la sezione corrente dal nuovo target
+      await this.selectSection(this.section)
     },
 
     async loadDevSection(endpoint, prop) {
-      const r = await fetch(`/api/config/device/${endpoint}`)
+      if (this.target !== 'local') this.moduleStatus = '⏳ lettura dal nodo remoto…'
+      const r = await fetch(this.cfgEndpoint(`/api/config/device/${endpoint}`))
       if (r.ok) this[prop] = await r.json()
+      else this[prop] = {}
+      if (this.target !== 'local') this.moduleStatus = r.ok ? '' : '✗ nodo non raggiungibile'
+    },
+
+    // --- Condivisione canali (URL / QR) ---
+    async loadChannelUrl() {
+      const r = await fetch('/api/config/channels/url')
+      this.chUrl = r.ok ? (await r.json()).url : ''
+    },
+
+    async copyChannelUrl() {
+      try {
+        await navigator.clipboard.writeText(this.chUrl)
+        this.status.channels = '✓ URL copiato'
+      } catch (e) {
+        this.status.channels = '✗ Copia non disponibile'
+      }
+    },
+
+    async importChannelUrl() {
+      if (!this.chImportUrl.includes('#')) {
+        this.status.channels = '✗ URL non valido'
+        return
+      }
+      const r = await fetch('/api/config/channels/url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: this.chImportUrl, add_only: this.chAddOnly })
+      })
+      const data = await r.json()
+      this.status.channels = r.ok ? '✓ Canali importati — riavvio consigliato' : '✗ ' + (data.error || 'Errore')
+      if (r.ok) { this.chImportUrl = ''; await this.loadChannels(); await this.loadChannelUrl() }
+    },
+
+    // --- Utilità board (sezione Nodo) ---
+    async syncTime() {
+      const r = await fetch('/api/system/sync-time', { method: 'POST' })
+      this.status.node = r.ok ? '✓ Orario sincronizzato' : '✗ Board non connessa'
+    },
+
+    async resetNodeDb() {
+      if (!confirm("Svuotare l'anagrafica nodi della board? I nodi verranno riscoperti dalla mesh.")) return
+      const r = await fetch('/api/system/reset-nodedb', { method: 'POST' })
+      this.status.node = r.ok ? '✓ NodeDB azzerato' : '✗ Board non connessa'
     },
 
     async loadNode() {
@@ -111,7 +230,7 @@ function configPage() {
     },
 
     async loadLora() {
-      const r = await fetch('/api/config/lora')
+      const r = await fetch(this.cfgEndpoint('/api/config/lora'))
       if (r.ok) this.lora = await r.json()
       this.loaded.lora = true
     },
@@ -149,7 +268,7 @@ function configPage() {
         const r = await fetch('/api/config/node', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ long_name: this.node.long_name, short_name: this.node.short_name, role: this.node.role })
+          body: JSON.stringify({ long_name: this.node.long_name, short_name: this.node.short_name, role: this.node.role, is_licensed: !!this.node.is_licensed })
         })
         const data = await r.json()
         this.status.node = r.ok ? '✓ Salvato' : '✗ ' + (data.error || 'Errore')
@@ -196,8 +315,10 @@ function configPage() {
     },
 
     async saveLora() {
-      const validRegions = ['EU_868','US','EU_433','CN']
-      const validPresets = ['LONG_FAST','LONG_SLOW','MEDIUM_FAST','SHORT_FAST']
+      const validRegions = ['UNSET','US','EU_433','EU_868','CN','JP','ANZ','KR','TW','RU',
+                            'IN','NZ_865','TH','LORA_24','UA_433','UA_868','MY_433','MY_919','SG_923']
+      const validPresets = ['LONG_FAST','LONG_SLOW','VERY_LONG_SLOW','MEDIUM_SLOW',
+                            'MEDIUM_FAST','SHORT_SLOW','SHORT_FAST','SHORT_TURBO']
       if (!validRegions.includes(this.lora.region)) {
         this.status.lora = '✗ Regione non valida'
         return
@@ -209,10 +330,17 @@ function configPage() {
       this.saving.lora = true
       this.status.lora = ''
       try {
-        const r = await fetch('/api/config/lora', {
+        const r = await fetch(this.cfgEndpoint('/api/config/lora'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ region: this.lora.region, modem_preset: this.lora.modem_preset })
+          body: JSON.stringify({
+            region: this.lora.region, modem_preset: this.lora.modem_preset,
+            hop_limit: this.lora.hop_limit ?? 3, tx_enabled: this.lora.tx_enabled ?? true,
+            tx_power: this.lora.tx_power ?? 0, channel_num: this.lora.channel_num ?? 0,
+            override_duty_cycle: !!this.lora.override_duty_cycle,
+            sx126x_rx_boosted_gain: !!this.lora.sx126x_rx_boosted_gain,
+            ignore_mqtt: !!this.lora.ignore_mqtt,
+          })
         })
         const data = await r.json()
         this.status.lora = r.ok ? '✓ Salvato' : '✗ ' + (data.error || 'Errore')
@@ -235,7 +363,11 @@ function configPage() {
       const r = await fetch(`/api/config/channels/${idx}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: ch.name, psk_b64: ch.psk_b64 || '' })
+        body: JSON.stringify({
+          name: ch.name, psk_b64: ch.psk_b64 || '', role: ch.role || 'SECONDARY',
+          uplink_enabled: !!ch.uplink_enabled, downlink_enabled: !!ch.downlink_enabled,
+          position_precision: ch.position_precision ?? 0,
+        })
       })
       const data = await r.json()
       this.status.channels = r.ok ? `✓ CH${idx} salvato` : '✗ ' + (data.error || 'Errore')
@@ -711,7 +843,7 @@ function configPage() {
     },
 
     async loadMqtt() {
-      const r = await fetch('/api/config/mqtt')
+      const r = await fetch(this.cfgEndpoint('/api/config/mqtt'))
       if (r.ok) this.mqtt = await r.json()
     },
 
@@ -724,7 +856,7 @@ function configPage() {
       this.mqttSaving = true
       this.status.mqtt = ''
       try {
-        const r = await fetch('/api/config/mqtt', {
+        const r = await fetch(this.cfgEndpoint('/api/config/mqtt'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -775,7 +907,8 @@ function configPage() {
     },
 
     async saveModule(endpoint, data) {
-      const r = await fetch(endpoint, {
+      if (this.target !== 'local') this.moduleStatus = '⏳ scrittura sul nodo remoto…'
+      const r = await fetch(this.cfgEndpoint(endpoint), {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(data)
@@ -785,39 +918,39 @@ function configPage() {
     },
 
     async loadExtNotif() {
-      const r = await fetch('/api/config/module/external-notification')
+      const r = await fetch(this.cfgEndpoint('/api/config/module/external-notification'))
       if (r.ok) this.extNotif = await r.json()
     },
     async loadStoreForward() {
-      const r = await fetch('/api/config/module/store-forward')
+      const r = await fetch(this.cfgEndpoint('/api/config/module/store-forward'))
       if (r.ok) this.storeForward = await r.json()
     },
     async loadTelMod() {
-      const r = await fetch('/api/config/module/telemetry')
+      const r = await fetch(this.cfgEndpoint('/api/config/module/telemetry'))
       if (r.ok) this.telMod = await r.json()
     },
     async loadCannedMod() {
-      const r = await fetch('/api/config/module/canned-message')
+      const r = await fetch(this.cfgEndpoint('/api/config/module/canned-message'))
       if (r.ok) this.cannedMod = await r.json()
     },
     async loadRangeTest() {
-      const r = await fetch('/api/config/module/range-test')
+      const r = await fetch(this.cfgEndpoint('/api/config/module/range-test'))
       if (r.ok) this.rangeTest = await r.json()
     },
     async loadDetSensor() {
-      const r = await fetch('/api/config/module/detection-sensor')
+      const r = await fetch(this.cfgEndpoint('/api/config/module/detection-sensor'))
       if (r.ok) this.detSensor = await r.json()
     },
     async loadAmbLight() {
-      const r = await fetch('/api/config/module/ambient-lighting')
+      const r = await fetch(this.cfgEndpoint('/api/config/module/ambient-lighting'))
       if (r.ok) this.ambLight = await r.json()
     },
     async loadNeighInfo() {
-      const r = await fetch('/api/config/module/neighbor-info')
+      const r = await fetch(this.cfgEndpoint('/api/config/module/neighbor-info'))
       if (r.ok) this.neighInfo = await r.json()
     },
     async loadSerialMod() {
-      const r = await fetch('/api/config/module/serial')
+      const r = await fetch(this.cfgEndpoint('/api/config/module/serial'))
       if (r.ok) this.serialMod = await r.json()
     },
   }
