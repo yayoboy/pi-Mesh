@@ -273,10 +273,32 @@ function handleNeighborInfo(msg) {
 
 function handleRpiTelemetry(msg) {
   window.dispatchEvent(new CustomEvent('ws-message', { detail: msg }))
+  updatePowerBadge(msg.data)
   if (msg.data && msg.data.ram_percent != null && msg.data.ram_percent > _alertConfig.ram_high) {
     if (shouldAlert('ram-high', 300000)) {
       showToast('RAM: ' + msg.data.ram_percent.toFixed(0) + '%', 'warn', 5000)
     }
+  }
+}
+
+// 3-state power badge: muted = OK, warn = event since boot, danger = active now
+function updatePowerBadge(d) {
+  const el = document.getElementById('power-badge')
+  if (!el) return
+  if (!d || d.throttled == null) { el.style.display = 'none'; return }
+  el.style.display = ''
+  const now = d.undervolt_now || d.throttle_now
+  const boot = d.undervolt_boot || d.throttle_boot
+  el.style.color = now ? 'var(--danger)' : (boot ? 'var(--warn)' : 'var(--muted)')
+  if (now) {
+    el.title = 'Alimentazione: ' + (d.undervolt_now ? 'sottotensione IN CORSO' : 'throttling IN CORSO')
+  } else if (boot) {
+    const ev = []
+    if (d.undervolt_boot) ev.push('sottotensione')
+    if (d.throttle_boot) ev.push('throttling')
+    el.title = 'Alimentazione: eventi da boot (' + ev.join(', ') + ')'
+  } else {
+    el.title = 'Alimentazione OK'
   }
 }
 
