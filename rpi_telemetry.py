@@ -2,11 +2,15 @@
 """Raspberry Pi system telemetry collection."""
 import logging
 import os
+import subprocess
 import time
 
 logger = logging.getLogger(__name__)
 
 _last: dict = {}
+_power_events: int = 0
+_power_last_event_ts: int | None = None
+_power_prev_active: bool = False
 
 
 def collect() -> dict:
@@ -50,6 +54,18 @@ def collect() -> dict:
     except OSError:
         pass
 
+    # Power supply status (undervoltage/throttling)
+    global _power_events, _power_last_event_ts, _power_prev_active
+    power = _parse_throttled(_read_throttled())
+    data.update(power)
+    active = bool(power['undervolt_now'] or power['throttle_now'])
+    if active and not _power_prev_active:
+        _power_events += 1
+        _power_last_event_ts = data['ts']
+    _power_prev_active = active
+    data['power_events'] = _power_events
+    data['power_last_event_ts'] = _power_last_event_ts
+
     _last = data
     return data
 
@@ -92,3 +108,28 @@ def _uptime() -> int:
             return int(float(f.read().split()[0]))
     except (OSError, ValueError):
         return 0
+
+
+def _read_throttled() -> int | None:
+    """Read raw get_throttled bitmask via vcgencmd. None if unavailable."""
+    try:
+        out = subprocess.run(['vcgencmd', 'get_throttled'],
+                             capture_output=True, text=True, timeout=2)
+        # output: "throttled=0x50000"
+        return int(out.stdout.strip().split('=')[1], 16)
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        return None
+
+
+def _parse_throttled(raw: int | None) -> dict:
+    """Derive power flags from the get_throttled bitmask (pure function)."""
+    if raw is None:
+        return {'throttled': None, 'undervolt_now': None, 'throttle_now': None,
+                'undervolt_boot': None, 'throttle_boot': None}
+    return {
+        'throttled': raw,
+        'undervolt_now': bool(raw & 0x1),
+        'throttle_now': bool(raw & 0x4),
+        'undervolt_boot': bool(raw & 0x10000),
+        'throttle_boot': bool(raw & 0x40000),
+    }
