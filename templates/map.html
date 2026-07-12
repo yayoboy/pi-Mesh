@@ -79,9 +79,9 @@
 
   <!-- Stile mappa: mappa (OSM a colori) / satellite / radar (tile virate) -->
   <div style="position:absolute;bottom:10px;left:56px;z-index:1000;display:flex;gap:6px;">
-    <button id="style-osm" class="map-pill" onclick="setMapStyle('osm')">mappa</button>
+    <button id="style-osm" class="map-pill on" onclick="setMapStyle('osm')">mappa</button>
     <button id="style-satellite" class="map-pill" onclick="setMapStyle('satellite')">satellite</button>
-    <button id="style-radar" class="map-pill on" onclick="setMapStyle('radar')">radar</button>
+    <button id="style-radar" class="map-pill" onclick="setMapStyle('radar')">radar</button>
   </div>
 
   <!-- Panel toggle top-right -->
@@ -313,7 +313,7 @@
 // Pre-populate nodeCache from server-rendered JSON (no initial HTTP request)
 var _serverNodes = {{ nodes_data | tojson }};
 </script>
-<script src="/static/map.js?v=16"></script>
+<script src="/static/map.js?v=17"></script>
 <script>
 function setPanelTab(tab) {
   var tabs = ['nodes', 'filters', 'topology', 'waypoints']

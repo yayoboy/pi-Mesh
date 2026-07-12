@@ -838,7 +838,7 @@ function deleteWaypoint(id) {
 // --- Stile radar (screen 03 del prototipo) ---
 
 var radarLayer = null
-var mapStyle = localStorage.getItem('mapStyle') || 'radar'
+var mapStyle = localStorage.getItem('mapStyle') || 'osm'
 
 function localNodePos() {
   var local = null
