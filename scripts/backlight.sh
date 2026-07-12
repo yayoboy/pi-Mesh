@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# backlight.sh — Control MPI3501 display backlight (GPIO 18, ILI9486/tft35a)
+# backlight.sh — Display brightness, auto-detecting the display type:
+#   1. HDMI panel with DDC/CI (ddcutil, VCP 0x10, scale 0-100)
+#   2. SPI display backlight via sysfs (gpio-backlight overlay, GPIO 18)
+#   3. Fallback: raspi-gpio on/off toggle (no PWM)
 #
 # Usage:
 #   backlight.sh <0-255>     Set brightness (0=off, 255=full)
@@ -7,8 +10,7 @@
 #   backlight.sh off         Turn off backlight
 #   backlight.sh get         Read current brightness
 #
-# Requires: dtoverlay=gpio-backlight,gpiopin=18 in /boot/firmware/config.txt
-# Falls back to direct raspi-gpio toggle if sysfs node not present.
+# SPI path requires: dtoverlay=gpio-backlight,gpiopin=18 in /boot/firmware/config.txt
 
 set -euo pipefail
 
@@ -30,6 +32,13 @@ case "$ARG" in
   on)  VALUE=$MAX_BRIGHTNESS ;;
   off) VALUE=0 ;;
   get)
+    if command -v ddcutil &>/dev/null; then
+      PCT=$(ddcutil --brief getvcp 10 2>/dev/null | awk '{print $4}')
+      if [[ "$PCT" =~ ^[0-9]+$ ]]; then
+        echo $(( PCT * MAX_BRIGHTNESS / 100 ))
+        exit 0
+      fi
+    fi
     if [[ -f "$SYSFS_PATH/brightness" ]]; then
       cat "$SYSFS_PATH/brightness"
     else
@@ -48,6 +57,14 @@ esac
 if (( VALUE < 0 || VALUE > 255 )); then
   echo "Error: brightness must be 0-255" >&2
   exit 1
+fi
+
+# --- HDMI panel via DDC/CI (VCP 0x10 wants 0-100) ---
+if command -v ddcutil &>/dev/null; then
+  PCT=$(( VALUE * 100 / MAX_BRIGHTNESS ))
+  if ddcutil --brief setvcp 10 "$PCT" 2>/dev/null; then
+    exit 0
+  fi
 fi
 
 # --- Sysfs path (available after reboot with gpio-backlight overlay) ---
