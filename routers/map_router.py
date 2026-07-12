@@ -41,12 +41,17 @@ class MarkerCreate(BaseModel):
 async def map_page(request: Request):
     nodes = meshtasticd_client.get_nodes()
     bounds = cfg.REGION_BOUNDS.get(cfg.MAP_REGION, cfg.REGION_BOUNDS['italia'])
+    try:
+        map_style = await database.get_setting('ui.map_style', 'osm')
+    except RuntimeError:
+        map_style = 'osm'
     return templates.TemplateResponse(request, 'map.html', {
         'active_tab': 'map',
         'bounds':     bounds,
         'zoom_min':   7,
         'zoom_max':   16,
         'zoom_native_max': _local_tiles_max_zoom() or '',
+        'map_style':  map_style,
         'nodes_data': nodes,
     })
 

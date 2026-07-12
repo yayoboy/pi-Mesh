@@ -608,6 +608,11 @@ function initMapIfNeeded() {
   var zoomMin = parseInt(el.dataset.zoomMin || '7')
   var zoomMax = parseInt(el.dataset.zoomMax || '12')
 
+  // Lo stile mappa persistito lato server vince sul localStorage; la
+  // modalità radar non esiste più: eventuali valori salvati migrano a osm.
+  if (el.dataset.mapStyle) mapStyle = el.dataset.mapStyle
+  if (mapStyle === 'radar') mapStyle = 'osm'
+
   // Restore saved view, or center on board node, or fall back to bounds center
   var savedView = null
   try { savedView = JSON.parse(localStorage.getItem('mapView')) } catch(e) {}
@@ -868,9 +873,15 @@ function drawRadarRings() {
   if (mapStyle === 'radar') radarLayer.addTo(leafletMap)
 }
 
-function setMapStyle(style) {
+function setMapStyle(style, persist) {
   mapStyle = style
   localStorage.setItem('mapStyle', style)
+  if (persist) {
+    fetch('/api/config/ui', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ map_style: style }),
+    }).catch(function() {})
+  }
   var mc = document.getElementById('map-container')
   if (mc) mc.classList.toggle('radar-style', style === 'radar')
   document.querySelectorAll('[id^="style-"].map-pill').forEach(function(b) {

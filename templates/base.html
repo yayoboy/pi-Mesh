@@ -105,18 +105,35 @@
       b8: { label:'B8 Crepuscolo Viola',     '--bg':'#0f0c17','--panel':'#14111e','--panel-2':'#1e1930','--border':'#2c2547','--text':'#e6e0f2','--muted':'#77708f','--accent':'#a78bfa','--accent-bright':'#c9b8fa','--accent-contrast':'#1a1030','--ok':'#4ade80','--warn':'#e5b13d','--danger':'#e8637a','--map-filter':'grayscale(0.85) sepia(1) hue-rotate(205deg) saturate(0.5) brightness(0.48) contrast(1.15)' },
       b9: { label:'B9 Sabbia Desert',        '--bg':'#ddd2b2','--panel':'#e8dfc8','--panel-2':'#f2ecd9','--border':'#c9bd9c','--text':'#2b2416','--muted':'#8a7c5c','--accent':'#4a3d1c','--accent-bright':'#5c4d22','--accent-contrast':'#f2ecd9','--ok':'#5c4d22','--warn':'#8f6a12','--danger':'#a8451f','--map-filter':'sepia(0.45) saturate(0.7) brightness(1.02)' }
     }
+    function applyVars(theme) {
+      var vars = presets[theme]
+      if (theme === 'custom') {
+        try { vars = JSON.parse(localStorage.getItem('pimesh-custom-theme') || '{}') } catch(e) { vars = presets.b1 }
+      }
+      if (vars) Object.keys(vars).forEach(function(k) { if (k.indexOf('--') === 0) root.style.setProperty(k, vars[k]) })
+    }
     // Nomi legacy salvati da versioni precedenti.
     var legacy = { dark:'b1', light:'b3', hc:'b7' }
     var theme = localStorage.getItem('pimesh-theme') || 'b1'
     if (legacy[theme]) theme = legacy[theme]
-    var vars = presets[theme]
-    if (theme === 'custom') {
-      try { vars = JSON.parse(localStorage.getItem('pimesh-custom-theme') || '{}') } catch(e) { vars = presets.b1 }
-    }
-    if (vars) Object.keys(vars).forEach(function(k) { if (k.indexOf('--') === 0) root.style.setProperty(k, vars[k]) })
+    applyVars(theme)
     var accent = localStorage.getItem('pimesh-accent')
     if (accent) root.style.setProperty('--accent', accent)
     window.PIMESH_THEMES = presets
+    // Le impostazioni UI persistite lato server sono la fonte di verità:
+    // il localStorage è solo cache per applicare il tema senza flash.
+    fetch('/api/config/ui').then(function(r) { return r.ok ? r.json() : null }).then(function(cfg) {
+      if (!cfg || !cfg.theme) return
+      if (cfg.custom_theme) localStorage.setItem('pimesh-custom-theme', JSON.stringify(cfg.custom_theme))
+      if (cfg.theme !== theme) localStorage.setItem('pimesh-theme', cfg.theme)
+      applyVars(cfg.theme)
+      if (cfg.accent) {
+        localStorage.setItem('pimesh-accent', cfg.accent)
+        root.style.setProperty('--accent', cfg.accent)
+      } else {
+        localStorage.removeItem('pimesh-accent')
+      }
+    }).catch(function() {})
   })()
   </script>
   {% block head %}{% endblock %}

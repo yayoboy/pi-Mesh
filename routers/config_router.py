@@ -8,6 +8,7 @@ o /boot. I moduli Meshtastic sono in module_config_router, le config
 device-level (position, power, ...) in device_config_router.
 """
 import asyncio
+import json
 import os
 import subprocess
 from typing import Optional
@@ -880,3 +881,50 @@ async def post_display_config(body: DisplayConfigRequest):
             pass
         return {'ok': True, 'brightness': brightness, 'rotation': rotation, 'reboot_required': True}
     return {'ok': True, 'brightness': brightness}
+
+
+# --- Impostazioni UI (tema, accento, stile mappa) persistite lato server ---
+# Il localStorage dei browser resta solo come cache: la verità sta nel DB,
+# così kiosk e browser convergono e i riavvii non perdono le preferenze.
+
+_UI_THEMES = {'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'custom'}
+_MAP_STYLES = {'osm', 'satellite'}
+
+
+class UiConfigRequest(BaseModel):
+    theme: Optional[str] = None
+    accent: Optional[str] = None       # '' per rimuovere l'override
+    custom_theme: Optional[dict] = None
+    map_style: Optional[str] = None
+
+
+@router.get('/api/config/ui')
+async def get_ui_config():
+    custom_raw = await database.get_setting('ui.custom_theme')
+    try:
+        custom = json.loads(custom_raw) if custom_raw else None
+    except ValueError:
+        custom = None
+    return {
+        'theme': await database.get_setting('ui.theme', 'b1'),
+        'accent': await database.get_setting('ui.accent') or None,
+        'custom_theme': custom,
+        'map_style': await database.get_setting('ui.map_style', 'osm'),
+    }
+
+
+@router.post('/api/config/ui')
+async def post_ui_config(body: UiConfigRequest):
+    if body.theme is not None:
+        if body.theme not in _UI_THEMES:
+            return JSONResponse({'error': 'unknown theme'}, status_code=400)
+        await database.set_setting('ui.theme', body.theme)
+    if body.accent is not None:
+        await database.set_setting('ui.accent', body.accent)
+    if body.custom_theme is not None:
+        await database.set_setting('ui.custom_theme', json.dumps(body.custom_theme))
+    if body.map_style is not None:
+        if body.map_style not in _MAP_STYLES:
+            return JSONResponse({'error': 'map_style must be osm or satellite'}, status_code=400)
+        await database.set_setting('ui.map_style', body.map_style)
+    return {'ok': True}

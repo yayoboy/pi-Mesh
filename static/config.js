@@ -485,6 +485,14 @@ function configPage() {
       { key: '--danger',  label: 'Allarme',     value: getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#c9603f' },
     ],
 
+    // Persiste le impostazioni UI lato server (il localStorage è solo cache).
+    persistUi(payload) {
+      fetch('/api/config/ui', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(function() {})
+    },
+
     applyTheme(theme) {
       this.currentTheme = theme
       localStorage.setItem('pimesh-theme', theme)
@@ -494,6 +502,7 @@ function configPage() {
           var saved = JSON.parse(localStorage.getItem('pimesh-custom-theme') || '{}')
           Object.keys(saved).forEach(function(k) { root.style.setProperty(k, saved[k]) })
         } catch(e) {}
+        this.persistUi({ theme: 'custom' })
       } else {
         var preset = this.themePresets[theme]
         if (preset) Object.keys(preset).forEach(function(k) { if (k.indexOf('--') === 0) root.style.setProperty(k, preset[k]) })
@@ -502,6 +511,7 @@ function configPage() {
           this.currentAccent = preset['--accent']
           localStorage.removeItem('pimesh-accent')
         }
+        this.persistUi({ theme: theme, accent: '' })
       }
       // Sync themeVars with current computed values
       var cs = getComputedStyle(root)
@@ -514,6 +524,7 @@ function configPage() {
       document.documentElement.style.setProperty('--accent', color)
       var v = this.themeVars.find(v => v.key === '--accent')
       if (v) v.value = color
+      this.persistUi({ accent: color })
     },
 
     openColorPicker(key, label, value) {
@@ -549,6 +560,7 @@ function configPage() {
       localStorage.setItem('pimesh-custom-theme', JSON.stringify(custom))
       this.currentTheme = 'custom'
       localStorage.setItem('pimesh-theme', 'custom')
+      this.persistUi({ theme: 'custom', custom_theme: custom })
     },
 
     // RTC
