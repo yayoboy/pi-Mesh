@@ -458,9 +458,9 @@ function configPage() {
 
     // Tema — preset b1..b9 definiti in base.html (window.PIMESH_THEMES).
     currentTheme: (function(t) { var l = { dark:'b1', light:'b3', hc:'b7' }; return l[t] || t })(localStorage.getItem('pimesh-theme') || 'b1'),
-    currentAccent: localStorage.getItem('pimesh-accent') || '#9bc24a',
+    currentAccent: localStorage.getItem('pimesh-accent') || '#6fa83c',
     themePresets: window.PIMESH_THEMES || {},
-    accentSwatches: ['#9bc24a','#3ef07a','#f2c14e','#ff7a1a','#e8637a','#4fc3e8','#a78bfa'],
+    accentSwatches: ['#6fa83c','#3ef07a','#f2c14e','#ff7a1a','#d84545','#4fc3e8','#a78bfa'],
     // Color picker state
     cpOpen: false, cpKey: '', cpLabel: '', cpValue: '',
     cpPalette: [
@@ -479,7 +479,7 @@ function configPage() {
       { key: '--border',  label: 'Bordo',       value: getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#313c1f' },
       { key: '--text',    label: 'Testo',       value: getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#dde6c9' },
       { key: '--muted',   label: 'Secondario',  value: getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#7d8a63' },
-      { key: '--accent',  label: 'Accento',     value: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#9bc24a' },
+      { key: '--accent',  label: 'Accento',     value: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#6fa83c' },
       { key: '--ok',      label: 'OK',          value: getComputedStyle(document.documentElement).getPropertyValue('--ok').trim() || '#3ef07a' },
       { key: '--warn',    label: 'Avviso',      value: getComputedStyle(document.documentElement).getPropertyValue('--warn').trim() || '#e5b13d' },
       { key: '--danger',  label: 'Allarme',     value: getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#c9603f' },
