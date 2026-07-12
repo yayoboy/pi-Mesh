@@ -515,9 +515,13 @@
           <div style="background:var(--panel);border-radius:6px;padding:10px;">
             <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:6px;">Luminosità schermo</label>
             <div style="display:flex;align-items:center;gap:10px;">
+              <button @click="display.brightness = Math.max(0, display.brightness - 25); saveDisplay()"
+                      style="min-width:44px;min-height:44px;font-size:18px;font-weight:700;border-radius:6px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);cursor:pointer;flex-shrink:0;">−</button>
               <input type="range" min="0" max="255" step="1" x-model.number="display.brightness"
                      @change="saveDisplay()"
-                     style="flex:1;accent-color:var(--accent);">
+                     style="flex:1;accent-color:var(--accent);touch-action:none;">
+              <button @click="display.brightness = Math.min(255, display.brightness + 25); saveDisplay()"
+                      style="min-width:44px;min-height:44px;font-size:18px;font-weight:700;border-radius:6px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);cursor:pointer;flex-shrink:0;">+</button>
               <span style="font-size:12px;color:var(--text);min-width:28px;text-align:right;" x-text="display.brightness"></span>
             </div>
             <div style="font-size:9px;color:var(--muted);margin-top:4px;">0 = spento, 255 = massima luminosità</div>
