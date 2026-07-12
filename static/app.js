@@ -155,6 +155,7 @@ function initWS() {
 
 // ===== HANDLER MESSAGGI WS =====
 function handleInit(msg) {
+  if (msg.connected !== undefined) updateConnectionStatus(msg.connected)
   const nodes = msg.nodes || []
   nodes.forEach(n => nodeCache.set(n.id, n))
   const local = nodes.find(n => n.is_local)
@@ -358,7 +359,14 @@ function updateLoraBadge(snr) {
 
 function updateConnectionBadge(connected) {
   const el = document.getElementById('connection-badge')
-  if (el) el.style.color = connected ? '#4caf50' : 'var(--muted)'
+  if (el) {
+    el.style.color = connected ? 'var(--ok)' : 'var(--danger)'
+    el.title = connected ? 'Board connessa' : 'Board non connessa'
+  }
+  // Pallini di stato negli header delle pagine
+  document.querySelectorAll('.conn-dot').forEach(function(d) {
+    d.style.background = connected ? 'var(--ok)' : 'var(--danger)'
+  })
 }
 
 // ===== BADGE MESSAGGI NON LETTI =====

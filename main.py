@@ -58,6 +58,20 @@ async def _rpi_telemetry_task() -> None:
         await asyncio.sleep(10)
 
 
+async def _board_status_task() -> None:
+    """Broadcast board connection state to the UI whenever it changes."""
+    last = None
+    while True:
+        try:
+            cur = meshtasticd_client.is_connected()
+            if cur != last:
+                await ws_router.manager.broadcast({'type': 'status', 'connected': cur})
+                last = cur
+        except Exception as e:
+            logging.getLogger(__name__).warning(f'Board status broadcast error: {e}')
+        await asyncio.sleep(5)
+
+
 async def _telemetry_cleanup_task() -> None:
     """Clean up old telemetry data daily (keep 7 days)."""
     while True:
@@ -99,6 +113,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(_broadcast_task()),
         asyncio.create_task(_rpi_telemetry_task()),
         asyncio.create_task(_telemetry_cleanup_task()),
+        asyncio.create_task(_board_status_task()),
     ]
     # Start MQTT bridge if configured
     mqtt_cfg = await meshtasticd_client.get_mqtt_config(cfg.DB_PATH)

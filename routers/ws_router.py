@@ -53,10 +53,11 @@ async def ws_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     logger.info('WebSocket client connected')
     try:
-        # Send init payload with current node list
+        # Send init payload with current node list and board connection state
         await websocket.send_text(json.dumps({
             'type': 'init',
             'nodes': meshtasticd_client.get_nodes(),
+            'connected': meshtasticd_client.is_connected(),
         }))
         # Keep connection alive — read loop discards incoming messages (ping frames)
         while True:
