@@ -311,6 +311,18 @@ function handleStatus(msg) {
   }
 }
 
+// Toggle barra di stato compatta/grande (tap sul logo in alto a sinistra);
+// la preferenza è persistita lato server come le altre impostazioni UI.
+function toggleStatusbar() {
+  const big = !document.documentElement.classList.contains('sb-big')
+  document.documentElement.classList.toggle('sb-big', big)
+  localStorage.setItem('pimesh-sb-big', big ? '1' : '0')
+  fetch('/api/config/ui', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ statusbar_large: big }),
+  }).catch(function() {})
+}
+
 function updateConnectionStatus(connected) {
   window.boardConnected = connected
   updateConnectionBadge(connected)

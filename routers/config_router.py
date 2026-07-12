@@ -896,6 +896,7 @@ class UiConfigRequest(BaseModel):
     accent: Optional[str] = None       # '' per rimuovere l'override
     custom_theme: Optional[dict] = None
     map_style: Optional[str] = None
+    statusbar_large: Optional[bool] = None
 
 
 @router.get('/api/config/ui')
@@ -910,6 +911,7 @@ async def get_ui_config():
         'accent': await database.get_setting('ui.accent') or None,
         'custom_theme': custom,
         'map_style': await database.get_setting('ui.map_style', 'osm'),
+        'statusbar_large': await database.get_setting('ui.statusbar_large', '0') == '1',
     }
 
 
@@ -927,4 +929,6 @@ async def post_ui_config(body: UiConfigRequest):
         if body.map_style not in _MAP_STYLES:
             return JSONResponse({'error': 'map_style must be osm or satellite'}, status_code=400)
         await database.set_setting('ui.map_style', body.map_style)
+    if body.statusbar_large is not None:
+        await database.set_setting('ui.statusbar_large', '1' if body.statusbar_large else '0')
     return {'ok': True}

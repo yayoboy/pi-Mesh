@@ -31,7 +31,7 @@ async def test_ui_config_roundtrip(mock_client, db):
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as ac:
         r = await ac.post('/api/config/ui', json={
             'theme': 'b2', 'map_style': 'satellite', 'accent': '#d84545',
-            'custom_theme': {'--bg': '#000000'},
+            'custom_theme': {'--bg': '#000000'}, 'statusbar_large': True,
         })
         assert r.status_code == 200
         r = await ac.get('/api/config/ui')
@@ -40,6 +40,7 @@ async def test_ui_config_roundtrip(mock_client, db):
     assert data['map_style'] == 'satellite'
     assert data['accent'] == '#d84545'
     assert data['custom_theme'] == {'--bg': '#000000'}
+    assert data['statusbar_large'] is True
 
 
 @pytest.mark.asyncio

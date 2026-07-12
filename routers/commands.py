@@ -84,19 +84,49 @@ SCREENSHOT_SD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'da
 _screenshot_lock = _asyncio.Lock()
 
 
+_DETILER = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                        'scripts', 'vc4_detile.py')
+_KMS_TILED_TMP = '/tmp/pimesh-kms-tiled.png'
+
+
+async def _capture_kms(filepath: str):
+    """Grab the DRM scanout (cog è DRM master) e detila il buffer T-tiled.
+
+    fbgrab non serve in modalità KMS: fbdev mostra solo la console. ffmpeg
+    kmsgrab legge il piano attivo (serve root), poi vc4_detile.py rimette i
+    pixel in ordine raster. Ritorna None se ok, altrimenti il messaggio d'errore.
+    """
+    try:
+        proc = await _asyncio.create_subprocess_exec(
+            'sudo', 'ffmpeg', '-hide_banner', '-loglevel', 'error',
+            '-f', 'kmsgrab', '-device', '/dev/dri/card0', '-i', '-',
+            '-frames:v', '1', '-vf', 'hwdownload,format=bgra',
+            '-pix_fmt', 'rgba', '-y', _KMS_TILED_TMP,
+            stdout=_asyncio.subprocess.PIPE, stderr=_asyncio.subprocess.PIPE)
+        _, stderr = await _asyncio.wait_for(proc.communicate(), timeout=20)
+        if proc.returncode != 0:
+            return 'kmsgrab: ' + ((stderr.decode().strip() or 'errore')[-160:])
+        proc = await _asyncio.create_subprocess_exec(
+            'python3', _DETILER, _KMS_TILED_TMP, filepath,
+            stdout=_asyncio.subprocess.PIPE, stderr=_asyncio.subprocess.PIPE)
+        _, stderr = await _asyncio.wait_for(proc.communicate(), timeout=30)
+        if proc.returncode != 0:
+            return 'detile: ' + ((stderr.decode().strip() or 'errore')[-160:])
+    except FileNotFoundError:
+        return 'ffmpeg non installato (sudo apt install ffmpeg)'
+    except _asyncio.TimeoutError:
+        return 'screenshot timeout'
+    return None
+
+
 @router.post('/api/screenshot')
 async def take_screenshot():
     if _screenshot_lock.locked():
         return {'ok': False, 'error': 'screenshot in corso'}
 
-    # fbgrab legge il framebuffer fbdev: in modalità KMS (kiosk HDMI con
-    # cog DRM master) quel buffer contiene solo la console testuale, non
-    # lo schermo reale — meglio un errore chiaro di un PNG sbagliato.
     kiosk = await _asyncio.create_subprocess_exec(
         'systemctl', 'is-active', '--quiet', 'kiosk-hdmi')
-    if await kiosk.wait() == 0:
-        return {'ok': False,
-                'error': 'screenshot non disponibile in modalità HDMI/KMS'}
+    kms_mode = await kiosk.wait() == 0
 
     async with _screenshot_lock:
         # Determine destination directory
@@ -123,7 +153,13 @@ async def take_screenshot():
         filename = f'screenshot_{next_num:03d}.png'
         filepath = os.path.join(dest_dir, filename)
 
-        # Capture framebuffer (async to avoid blocking event loop)
+        if kms_mode:
+            err = await _capture_kms(filepath)
+            if err:
+                return {'ok': False, 'error': err}
+            return {'ok': True, 'path': filename, 'location': location}
+
+        # Modalità fbdev (display SPI): cattura /dev/fb0 con fbgrab
         try:
             proc = await _asyncio.create_subprocess_exec(
                 'sudo', 'fbgrab', filepath,
