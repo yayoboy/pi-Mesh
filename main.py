@@ -51,7 +51,7 @@ async def _rpi_telemetry_task() -> None:
     """Collect RPi system metrics every 10s and broadcast via WS."""
     while True:
         try:
-            data = rpi_telemetry.collect()
+            data = await asyncio.to_thread(rpi_telemetry.collect)
             await ws_router.manager.broadcast({'type': 'rpi_telemetry', 'data': data})
         except Exception as e:
             logging.getLogger(__name__).warning(f'RPi telemetry error: {e}')
