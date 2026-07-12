@@ -1,0 +1,8 @@
+# Stable serial alias for the Meshtastic board (any USB CDC-ACM adapter):
+# the board keeps the same path even when USB re-enumeration moves it from
+# ttyACM0 to ttyACM1. Pair with SERIAL_PATH=/dev/ttyMESHTASTIC in config.env.
+#
+# Install:
+#   sudo cp scripts/99-meshtastic-serial.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+SUBSYSTEM=="tty", KERNEL=="ttyACM*", SYMLINK+="ttyMESHTASTIC"

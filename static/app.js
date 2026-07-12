@@ -312,6 +312,7 @@ function handleStatus(msg) {
 }
 
 function updateConnectionStatus(connected) {
+  window.boardConnected = connected
   updateConnectionBadge(connected)
   if (_lastConnected !== connected) {
     if (_lastConnected !== null) {

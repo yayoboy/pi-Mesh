@@ -111,7 +111,7 @@
 
       <template x-for="node in filteredNodes" :key="node.id">
         <div class="node-list-item"
-             :class="{ selected: selectedNodeId === node.id, offline: !node.is_local && !isOnline(node) }"
+             :class="{ selected: selectedNodeId === node.id, offline: !isNodeOnline(node) }"
              @click="selectedNodeId = node.id">
 
           <div class="node-badge" x-text="badge(node)"></div>
@@ -160,10 +160,10 @@
             </div>
             <div class="shrink-0 flex items-center gap-1.5">
               <span style="width:7px;height:7px;border-radius:50%;"
-                    :style="'background:' + (selectedNode.is_local || isOnline(selectedNode) ? 'var(--ok)' : 'var(--muted)')"></span>
+                    :style="'background:' + (isNodeOnline(selectedNode) ? 'var(--ok)' : 'var(--muted)')"></span>
               <span style="font-family:var(--font-mono);font-size:11px;"
-                    :style="'color:' + (selectedNode.is_local || isOnline(selectedNode) ? 'var(--accent)' : 'var(--muted)')"
-                    x-text="selectedNode.is_local || isOnline(selectedNode) ? 'online' : formatAgo(selectedNode.last_heard)"></span>
+                    :style="'color:' + (isNodeOnline(selectedNode) ? 'var(--accent)' : 'var(--muted)')"
+                    x-text="isNodeOnline(selectedNode) ? 'online' : formatAgo(selectedNode.last_heard)"></span>
             </div>
           </div>
 
@@ -460,7 +460,7 @@ function nodesPage() {
     },
 
     get onlineCount() {
-      return this.nodes.filter(n => n.is_local || this.isOnline(n)).length
+      return this.nodes.filter(n => this.isNodeOnline(n)).length
     },
 
     get battTrendColor() {
@@ -471,7 +471,7 @@ function nodesPage() {
 
     async init() {
       await this.fetchNodes()
-      this._interval = setInterval(() => this.fetchNodes(), 10000)
+      this._interval = setInterval(() => this.fetchNodes(), 5000)
       this.$watch('selectedNodeId', id => { if (id) this.fetchBattHist(id) })
       this._nodeUpdateHandler = (e) => {
         const updated = e.detail
@@ -544,7 +544,7 @@ function nodesPage() {
 
     // Barre segnale 0-4 dal SNR (LoRa: >7 ottimo, < -15 pessimo)
     sigBars(node) {
-      if (!node.is_local && !this.isOnline(node)) return 0
+      if (!this.isNodeOnline(node)) return 0
       const snr = node.snr
       if (snr == null) return node.is_local ? 4 : 0
       if (snr > 7)   return 4
@@ -596,6 +596,13 @@ function nodesPage() {
     isOnline(node) {
       if (!node.last_heard) return false
       return (Date.now() / 1000 - node.last_heard) < 1800
+    },
+
+    // Il nodo locale è "online" solo se la board è davvero collegata
+    // (window.boardConnected arriva dal messaggio WS 'status' in app.js).
+    isNodeOnline(node) {
+      if (node.is_local) return window.boardConnected === true
+      return this.isOnline(node)
     },
 
     formatAgo(ts) {
