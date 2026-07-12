@@ -143,6 +143,13 @@
         <span class="val" style="margin:0;font-size:12px;" x-text="formatUptime(rpi.uptime_seconds)"></span>
       </div>
     </div>
+    <div class="tstat-card sm">
+      <div class="flex items-center justify-between">
+        <span class="mlabel">Alimentazione</span>
+        <span class="val" style="margin:0;font-size:12px;" :style="'color:' + powerColor()" x-text="powerLabel()"></span>
+      </div>
+      <div class="mlabel" style="margin-top:4px;font-family:var(--font-mono);font-size:10px;" x-text="powerDetail()"></div>
+    </div>
   </div>
 
   <!-- Sensori / nodi -->
@@ -172,7 +179,34 @@
 function metricsPage() {
   return {
     rpi: { cpu_temp: null, cpu_percent: null, ram_total_mb: 0, ram_used_mb: 0, ram_percent: 0,
-           disk_total_mb: 0, disk_used_mb: 0, disk_percent: 0, uptime_seconds: 0 },
+           disk_total_mb: 0, disk_used_mb: 0, disk_percent: 0, uptime_seconds: 0,
+           throttled: null, undervolt_now: null, throttle_now: null,
+           undervolt_boot: null, throttle_boot: null,
+           power_events: 0, power_last_event_ts: null },
+    powerLabel() {
+      if (this.rpi.throttled == null) return '—'
+      if (this.rpi.undervolt_now) return 'Sottotensione'
+      if (this.rpi.throttle_now) return 'Throttling'
+      return 'OK'
+    },
+    powerColor() {
+      if (this.rpi.throttled == null) return 'var(--muted)'
+      if (this.rpi.undervolt_now || this.rpi.throttle_now) return 'var(--danger)'
+      if (this.rpi.undervolt_boot || this.rpi.throttle_boot) return 'var(--warn)'
+      return 'var(--ok)'
+    },
+    powerDetail() {
+      if (this.rpi.throttled == null) return ''
+      const boot = []
+      if (this.rpi.undervolt_boot) boot.push('sottotensione')
+      if (this.rpi.throttle_boot) boot.push('throttling')
+      let s = boot.length ? 'da boot: ' + boot.join(', ') : 'da boot: nessun evento'
+      s += ' · eventi: ' + (this.rpi.power_events || 0)
+      if (this.rpi.power_last_event_ts) {
+        s += ' — ultimo ' + new Date(this.rpi.power_last_event_ts * 1000).toTimeString().slice(0, 5)
+      }
+      return s
+    },
     nodesTelemetry: {},
     chHist: [],
     chPeak: '',
