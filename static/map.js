@@ -655,6 +655,10 @@ function initMapIfNeeded() {
 
   var tileOpts       = { maxZoom: zoomMax }
   var localTiles     = window.MAP_LOCAL_TILES === '1'
+  // Il set locale arriva fino a data-zoom-native-max: oltre, Leaflet riscala
+  // quelle tile invece di chiedere livelli inesistenti (404 → mappa grigia).
+  var zoomNativeMax  = parseInt(el.dataset.zoomNativeMax || '0')
+  if (localTiles && zoomNativeMax) tileOpts.maxNativeZoom = zoomNativeMax
   // I file locali hanno estensione .png (vedi manage-tiles.sh): senza,
   // StaticFiles risponde 404 e la mappa resta grigia.
   osmLayer       = localTiles
@@ -875,6 +879,9 @@ function setMapStyle(style) {
   if (!mapReady) return
   if (style === 'satellite') {
     switchLayer('satellite')
+    if (radarLayer) leafletMap.removeLayer(radarLayer)
+  } else if (style === 'osm') {
+    switchLayer('osm')
     if (radarLayer) leafletMap.removeLayer(radarLayer)
   } else {
     if (activeLayer === satelliteLayer) switchLayer('osm')

@@ -6,6 +6,8 @@
   POST   /api/map/markers       — crea POI
   DELETE /api/map/markers/{id}  — elimina POI
 """
+import os
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -15,6 +17,17 @@ import config as cfg
 from templating import templates
 
 router = APIRouter()
+
+_OSM_TILES_DIR = os.path.join(os.path.dirname(__file__), '..', 'static', 'tiles', 'osm')
+
+
+def _local_tiles_max_zoom(base_dir: str = _OSM_TILES_DIR) -> int | None:
+    """Highest zoom level present in the local tile set, None if absent."""
+    try:
+        zooms = [int(d) for d in os.listdir(base_dir) if d.isdigit()]
+        return max(zooms) if zooms else None
+    except OSError:
+        return None
 
 
 class MarkerCreate(BaseModel):
@@ -33,6 +46,7 @@ async def map_page(request: Request):
         'bounds':     bounds,
         'zoom_min':   7,
         'zoom_max':   16,
+        'zoom_native_max': _local_tiles_max_zoom() or '',
         'nodes_data': nodes,
     })
 
