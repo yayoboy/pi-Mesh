@@ -16,3 +16,10 @@ static/tiles/satellite/
 PROGRESS.md
 docs/superpowers/
 *.DS_Store
+
+# Directory degli strumenti di sviluppo (agent/MCP scratch)
+.omc/
+.playwright-mcp/
+.serena/
+.sisyphus/
+.superpowers/
