@@ -1,22 +1,28 @@
-"""Buzzer e LED locali azionati dagli eventi della mesh.
+"""GPIO locale: buzzer e LED sugli eventi della mesh, più le primitive
+che la pagina Settings usa per il pulsante "test".
 
-La sezione GPIO di Settings salva buzzer e LED in ``gpio_devices``, ma
-finora nessuno li pilotava: l'unico codice che toccava i pin era il
-pulsante "test" di quella stessa pagina. Qui i dispositivi abilitati
-suonano o lampeggiano quando arriva un messaggio dalla mesh — su un
-terminale in tasca è l'unica cosa che avvisa senza guardare lo schermo.
+Qui si parla al GPIO con **lgpio**, non con RPi.GPIO: quest'ultima parla
+solo ai chip Broadcom, quindi non funziona sul Pi 5 (dove il chip è
+diverso) né su una scheda che Raspberry non è — Orange Pi, Allwinner,
+Rockchip. lgpio lavora sul gpiochip del kernel, che c'è su qualunque
+Linux, e ha wheel precompilate per armv7l e aarch64.
 
-Le azioni di encoder e pulsante che la stessa pagina offre (scorri
+Il numero di pin è il numero di LINEA del gpiochip, che su Raspberry
+coincide col numero BCM stampato sull'header. Se il tuo header sta su un
+altro chip (il Pi 5 con certi kernel, o un SoC con più banchi come
+l'Allwinner, dove i pin si chiamano PB0/PH8), cambia ``GPIO_CHIP`` in
+config.env: ``gpiodetect`` elenca i chip disponibili e ``gpioinfo`` le
+loro linee.
+
+Le azioni di encoder e pulsante che la pagina Settings offre (scorri
 pagine, invia posizione, allarme) restano NON implementate: sono
 ingressi, e dovrebbero pilotare la UI dal server via WebSocket.
-
-Su una macchina senza RPi.GPIO — un PC, o il Pi 5, dove quella libreria
-non funziona — ogni chiamata qui è un no-op silenzioso.
 """
 import asyncio
 import logging
 import time
 
+import config as cfg
 import database
 
 logger = logging.getLogger(__name__)
@@ -48,20 +54,33 @@ def devices_for(event_type: str, devices: list[dict]) -> list[dict]:
     return out
 
 
-def _pulse(dev: dict, times: int = 2, on_s: float = 0.08, off_s: float = 0.08) -> None:
-    """Due impulsi brevi sul pin. Bloccante: chiamare in un thread."""
-    import RPi.GPIO as GPIO
-    pin = dev['pin_a']
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(pin, GPIO.OUT)
+def pulse(pin: int, times: int = 2, on_s: float = 0.08, off_s: float = 0.08) -> None:
+    """Impulsi brevi su un pin di uscita. Bloccante: chiamare in un thread."""
+    import lgpio
+    handle = lgpio.gpiochip_open(cfg.GPIO_CHIP)
     try:
+        lgpio.gpio_claim_output(handle, pin, 0)
         for _ in range(times):
-            GPIO.output(pin, GPIO.HIGH)
+            lgpio.gpio_write(handle, pin, 1)
             time.sleep(on_s)
-            GPIO.output(pin, GPIO.LOW)
+            lgpio.gpio_write(handle, pin, 0)
             time.sleep(off_s)
+        lgpio.gpio_free(handle, pin)
     finally:
-        GPIO.cleanup(pin)
+        lgpio.gpiochip_close(handle)
+
+
+def read(pin: int, pull_up: bool = True) -> int:
+    """Livello di un pin di ingresso (1/0). Bloccante: chiamare in un thread."""
+    import lgpio
+    handle = lgpio.gpiochip_open(cfg.GPIO_CHIP)
+    try:
+        lgpio.gpio_claim_input(handle, pin, lgpio.SET_BIAS_PULL_UP if pull_up else 0)
+        value = lgpio.gpio_read(handle, pin)
+        lgpio.gpio_free(handle, pin)
+        return value
+    finally:
+        lgpio.gpiochip_close(handle)
 
 
 async def notify(db_path: str, event_type: str) -> None:
@@ -76,9 +95,9 @@ async def notify(db_path: str, event_type: str) -> None:
             return
         _last_fired = now
         for dev in devices:
-            await asyncio.to_thread(_pulse, dev)
+            await asyncio.to_thread(pulse, dev['pin_a'])
     except Exception as e:
-        # ImportError su macchine senza RPi.GPIO, o pin occupato: mai
+        # ImportError dove lgpio non è installato, o pin già occupato: mai
         # far cadere il task che inoltra gli eventi alla UI.
         logger.warning(f'GPIO output error: {e}')
 

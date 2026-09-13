@@ -72,6 +72,16 @@ echo "==> Setting up Python venv..."
 create_venv ""
 install_core
 
+echo "==> Group membership (gpio, dialout)..."
+# /dev/gpiochip* for the buzzer and LEDs, /dev/tty* for the radio: both
+# without root. The groups do not exist on every distribution.
+for grp in gpio dialout; do
+    if getent group "$grp" >/dev/null; then
+        usermod -aG "$grp" "$USER"
+        echo "    $USER added to $grp"
+    fi
+done
+
 echo "==> Creating data directory..."
 sudo -u "$USER" mkdir -p "$REPO_DIR/data"
 

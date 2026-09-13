@@ -7,6 +7,7 @@ default. SERIAL_PATH accetta un device seriale (/dev/tty...) oppure
 """
 import os
 from functools import lru_cache
+from importlib.util import find_spec
 from pathlib import Path
 from shutil import which
 
@@ -14,6 +15,11 @@ SERIAL_PATH    = os.getenv('SERIAL_PATH', '/dev/ttyACM0')
 DB_PATH        = os.getenv('DB_PATH', 'data/mesh.db')
 LOG_LEVEL      = os.getenv('LOG_LEVEL', 'WARNING')
 NODE_CACHE_TTL = float(os.getenv('NODE_CACHE_TTL', '8.0'))
+
+# gpiochip su cui sta l'header: 0 su Raspberry fino al Pi 4 (dove il numero
+# di linea coincide col BCM). Il Pi 5 e i SoC con più banchi (Allwinner,
+# Rockchip) possono usarne un altro: `gpiodetect` li elenca.
+GPIO_CHIP = int(os.getenv('GPIO_CHIP', '0'))
 
 MAP_LOCAL_TILES = os.getenv('MAP_LOCAL_TILES', '0') == '1'
 MAP_REGION      = os.getenv('MAP_REGION', 'italia')
@@ -40,7 +46,9 @@ def capabilities() -> dict[str, bool]:
     return {
         'vcgencmd':    bool(which('vcgencmd')),                                   # metriche Pi + undervoltage
         'backlight':   bool(which('ddcutil')) or Path('/sys/class/backlight').exists(),
-        'gpio':        Path('/dev/gpiochip0').exists(),
+        # "pilotabile", non "esiste": su una scheda non-Raspberry il gpiochip
+        # c'è comunque, ma senza lgpio ogni comando fallirebbe al click.
+        'gpio':        Path(f'/dev/gpiochip{GPIO_CHIP}').exists() and find_spec('lgpio') is not None,
         'i2c':         any(Path('/dev').glob('i2c-*')),                           # sensori, RTC
         'wifi':        bool(which('nmcli')),                                      # rete Pi + access point
         'usb_storage': bool(which('lsblk')),                                      # tile su chiavetta

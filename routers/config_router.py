@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 import config as cfg
 import database
+import gpio
 import meshtasticd_client
 import usb_storage
 import mqtt_bridge
@@ -251,44 +252,15 @@ def _test_device(dev: dict) -> str:
         bus.close()
         return f'read byte: 0x{val:02x}'
     elif dtype == 'buzzer':
-        import RPi.GPIO as GPIO
-        pin = dev['pin_a']
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(pin, GPIO.OUT)
-        GPIO.output(pin, GPIO.HIGH)
-        import time
-        time.sleep(0.2)
-        GPIO.output(pin, GPIO.LOW)
-        GPIO.cleanup(pin)
+        gpio.pulse(dev['pin_a'], times=1, on_s=0.2, off_s=0.0)
         return 'buzz OK'
     elif dtype == 'led':
-        import RPi.GPIO as GPIO
-        pin = dev['pin_a']
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(pin, GPIO.OUT)
-        for _ in range(3):
-            GPIO.output(pin, GPIO.HIGH)
-            import time; time.sleep(0.1)
-            GPIO.output(pin, GPIO.LOW)
-            time.sleep(0.1)
-        GPIO.cleanup(pin)
+        gpio.pulse(dev['pin_a'], times=3, on_s=0.1, off_s=0.1)
         return 'blink OK'
     elif dtype == 'encoder':
-        import RPi.GPIO as GPIO
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(dev['pin_a'], GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.setup(dev['pin_b'], GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        a = GPIO.input(dev['pin_a'])
-        b = GPIO.input(dev['pin_b'])
-        GPIO.cleanup([dev['pin_a'], dev['pin_b']])
-        return f'pin_a={a} pin_b={b}'
+        return f"pin_a={gpio.read(dev['pin_a'])} pin_b={gpio.read(dev['pin_b'])}"
     elif dtype == 'button':
-        import RPi.GPIO as GPIO
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(dev['pin_a'], GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        val = GPIO.input(dev['pin_a'])
-        GPIO.cleanup(dev['pin_a'])
-        return f'state={val}'
+        return f"state={gpio.read(dev['pin_a'])}"
     return 'unknown type'
 
 
