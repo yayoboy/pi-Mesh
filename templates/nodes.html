@@ -134,7 +134,7 @@
               <rect x="13"   y="0.5" width="3" height="13.5" rx="0.5" :fill="sigBars(node) >= 4 ? 'var(--accent)' : 'var(--panel-2)'"/>
             </svg>
             <span style="font-family:var(--font-mono);font-size:10px;font-weight:600;min-width:28px;text-align:right;"
-                  :style="'color:' + battColor(node)"
+                  :style="'color:' + battColor(node.battery_level)"
                   x-text="node.battery_level != null ? node.battery_level + '%' : '—'"></span>
           </div>
         </div>
@@ -191,7 +191,7 @@
           <div class="stat-grid" style="margin-top:8px;">
             <div class="stat-card sm">
               <div class="mlabel">Batteria</div>
-              <div class="val" :style="'color:' + battColor(selectedNode)"
+              <div class="val" :style="'color:' + battColor(selectedNode.battery_level)"
                    x-text="selectedNode.battery_level != null ? selectedNode.battery_level + '%' : '—'"></div>
             </div>
             <div class="stat-card sm">
@@ -518,15 +518,7 @@ function nodesPage() {
         const r = await window.fetch(`/api/telemetry?node_id=${encodeURIComponent(nodeId)}&ttype=device&since=${since}&limit=300`)
         const rows = await r.json()
         if (this.selectedNodeId !== nodeId) return
-        const buckets = Array.from({length: 24}, () => [])
-        rows.forEach(row => {
-          const lvl = row.data && row.data.battery_level
-          if (lvl == null) return
-          const age = Math.floor(Date.now() / 1000) - row.ts
-          const b = 23 - Math.min(23, Math.floor(age / 3600))
-          buckets[b].push(lvl)
-        })
-        this.battHist = buckets.map(b => b.length ? Math.round(b.reduce((a, v) => a + v, 0) / b.length) : null)
+        this.battHist = hourlyBuckets(rows, 'battery_level').map(v => v == null ? null : Math.round(v))
         const vals = this.battHist.filter(v => v != null)
         if (vals.length >= 2) {
           const delta = vals[vals.length - 1] - vals[0]
@@ -552,14 +544,6 @@ function nodesPage() {
       if (snr > -7)  return 2
       if (snr > -15) return 1
       return 0
-    },
-
-    battColor(node) {
-      const b = node.battery_level
-      if (b == null) return 'var(--muted)'
-      if (b >= 60) return 'var(--accent)'
-      if (b >= 30) return 'var(--warn)'
-      return 'var(--danger)'
     },
 
     hopLabel(node) {
