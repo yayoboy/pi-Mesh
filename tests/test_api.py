@@ -58,6 +58,9 @@ async def test_base_html_injects_map_local_tiles(mock_client):
         resp = await ac.get('/nodes')
     assert resp.status_code == 200
     assert 'window.MAP_LOCAL_TILES' in resp.text
+    # caps() deve esistere nell'istanza Jinja condivisa, non solo in main
+    # (i globals fantasma delle istanze separate sono già costati le tile locali).
+    assert 'window.PIMESH_CAPS' in resp.text
 
 
 @pytest.mark.asyncio

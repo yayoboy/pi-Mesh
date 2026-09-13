@@ -12,3 +12,4 @@ import config as cfg
 
 templates = Jinja2Templates(directory='templates')
 templates.env.globals['map_local_tiles_fn'] = lambda: '1' if cfg.MAP_LOCAL_TILES else '0'
+templates.env.globals['caps'] = cfg.capabilities

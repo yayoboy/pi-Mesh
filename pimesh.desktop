@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=pi-Mesh
+Comment=Terminale Meshtastic
+# App mode: finestra propria senza barra indirizzi, non una scheda del browser.
+# Due nomi perché il binario è chromium-browser su Raspberry Pi OS e chromium
+# su Debian; il servizio pimesh serve la UI, qui si apre soltanto la finestra.
+Exec=sh -c 'chromium-browser --app=http://localhost:8080 --window-size=1024,600 || chromium --app=http://localhost:8080 --window-size=1024,600'
+Icon=network-wireless
+Terminal=false
+Categories=Network;HamRadio;

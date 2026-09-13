@@ -143,7 +143,8 @@
         <span class="val" style="margin:0;font-size:12px;" x-text="formatUptime(rpi.uptime_seconds)"></span>
       </div>
     </div>
-    <div class="tstat-card sm">
+    {# Undervoltage/throttling: solo dove vcgencmd esiste (Raspberry Pi). #}
+    <div class="tstat-card sm"{% if not caps().vcgencmd %} style="display:none"{% endif %}>
       <div class="flex items-center justify-between">
         <span class="mlabel">Alimentazione</span>
         <span class="val" style="margin:0;font-size:12px;" :style="'color:' + powerColor()" x-text="powerLabel()"></span>
@@ -269,13 +270,6 @@ function metricsPage() {
       if (this._wsHandler) window.removeEventListener('ws-message', this._wsHandler)
     },
 
-    battColor(b) {
-      if (b == null) return 'var(--muted)'
-      if (b >= 60) return 'var(--accent)'
-      if (b >= 30) return 'var(--warn)'
-      return 'var(--danger)'
-    },
-
     // "−2.4 °C · 78% UR · 4.1 V · 1 h fa" — tutti i campi disponibili
     sensorLine(info) {
       var parts = []
@@ -324,15 +318,7 @@ function metricsPage() {
         const r = await fetch('/api/telemetry?ttype=device&since=' + since + '&limit=500')
         if (!r.ok) return
         const rows = await r.json()
-        const buckets = Array.from({ length: 24 }, () => [])
-        rows.forEach(row => {
-          const v = row.data && row.data.channel_utilization
-          if (v == null) return
-          const age = Math.floor(Date.now() / 1000) - row.ts
-          const b = 23 - Math.min(23, Math.floor(age / 3600))
-          buckets[b].push(v)
-        })
-        this.chHist = buckets.map(b => b.length ? b.reduce((a, v) => a + v, 0) / b.length : null)
+        this.chHist = hourlyBuckets(rows, 'channel_utilization')
         let peak = null, peakIdx = -1
         this.chHist.forEach((v, i) => { if (v != null && (peak == null || v > peak)) { peak = v; peakIdx = i } })
         if (peak != null) {

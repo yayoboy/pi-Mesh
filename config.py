@@ -6,6 +6,9 @@ default. SERIAL_PATH accetta un device seriale (/dev/tty...) oppure
 ``tcp://host[:porta]`` per meshtasticd o una board remota.
 """
 import os
+from functools import lru_cache
+from pathlib import Path
+from shutil import which
 
 SERIAL_PATH    = os.getenv('SERIAL_PATH', '/dev/ttyACM0')
 DB_PATH        = os.getenv('DB_PATH', 'data/mesh.db')
@@ -22,6 +25,28 @@ ALERT_RAM_HIGH         = int(os.getenv('ALERT_RAM_HIGH', '85'))
 
 # MQTT bridge
 MQTT_ENABLED = os.getenv('MQTT_ENABLED', '0') == '1'
+
+@lru_cache(maxsize=1)
+def capabilities() -> dict[str, bool]:
+    """Hardware davvero presente su questa macchina.
+
+    Le sezioni di Settings che pilotano hardware assente vengono nascoste
+    (window.PIMESH_CAPS in base.html, filtro in static/config.js): la stessa
+    build gira su Pi con display SPI, Pi con HDMI, Pi Zero headless o un PC
+    Linux con la sola radio USB, mostrando solo ciò che quella macchina ha.
+    """
+    # ponytail: rilevato una volta per processo — riavvia il servizio se
+    # aggiungi hardware a caldo (pannello DDC/CI, chiavetta USB, HAT RTC).
+    return {
+        'vcgencmd':    bool(which('vcgencmd')),                                   # metriche Pi + undervoltage
+        'backlight':   bool(which('ddcutil')) or Path('/sys/class/backlight').exists(),
+        'gpio':        Path('/dev/gpiochip0').exists(),
+        'i2c':         any(Path('/dev').glob('i2c-*')),                           # sensori, RTC
+        'wifi':        bool(which('nmcli')),                                      # rete Pi + access point
+        'usb_storage': bool(which('lsblk')),                                      # tile su chiavetta
+        'spi_display': Path('/sys/class/graphics/fb1').exists(),                  # rotazione tft35a
+    }
+
 
 REGION_BOUNDS: dict[str, dict[str, float]] = {
     'italia':   {'lat_min': 35.0,  'lat_max': 47.5, 'lon_min':   6.5, 'lon_max':  18.5},
