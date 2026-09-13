@@ -2,3 +2,9 @@ pytest
 pytest-asyncio
 httpx
 anyio
+# tests/test_vc4_detile.py importa scripts/vc4_detile.py (screenshot KMS).
+# Sul Pi numpy e Pillow arrivano da apt (python3-numpy, python3-pil); qui
+# servono solo per far girare quel test — senza, pytest si ferma in collection
+# e NON esegue nessun test.
+numpy
+pillow
