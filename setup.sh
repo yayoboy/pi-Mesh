@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# setup.sh — One-command pi-Mesh setup on Raspberry Pi OS Bookworm
+# setup.sh — One-command pi-Mesh setup on Raspberry Pi OS, Debian or Ubuntu
+# (Raspberry Pi, Orange Pi 4 Pro, any Linux SBC with a USB radio)
 #
 # Usage: sudo bash setup.sh [headless|kiosk-spi|kiosk-hdmi|desktop] [--with-meshtasticd]
 #
@@ -73,8 +74,18 @@ create_venv ""
 install_core
 
 echo "==> Group membership (gpio, dialout)..."
+# Raspberry Pi OS ships a gpio group and a udev rule that hands /dev/gpiochip*
+# to it. Debian and Ubuntu (Orange Pi images included) ship neither, so lgpio
+# would only work as root there: create both.
+if ! getent group gpio >/dev/null; then
+    groupadd gpio
+    echo 'SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"' \
+        > /etc/udev/rules.d/60-pimesh-gpio.rules
+    udevadm control --reload-rules && udevadm trigger --subsystem-match=gpio
+    echo "    gpio group created, /dev/gpiochip* handed to it"
+fi
 # /dev/gpiochip* for the buzzer and LEDs, /dev/tty* for the radio: both
-# without root. The groups do not exist on every distribution.
+# without root. dialout does not exist on every distribution.
 for grp in gpio dialout; do
     if getent group "$grp" >/dev/null; then
         usermod -aG "$grp" "$USER"
@@ -86,7 +97,10 @@ echo "==> Creating data directory..."
 sudo -u "$USER" mkdir -p "$REPO_DIR/data"
 
 echo "==> Installing systemd services..."
-cp "$REPO_DIR/systemd/pimesh.service" /etc/systemd/system/
+# The unit is written for user pimesh with the repo in /home/pimesh/pi-Mesh;
+# rewrite it for whoever runs this script and wherever the repo actually is.
+sed -e "s|/home/pimesh/pi-Mesh|$REPO_DIR|g" -e "s|^User=pimesh|User=$USER|" \
+    "$REPO_DIR/systemd/pimesh.service" > /etc/systemd/system/pimesh.service
 systemctl daemon-reload
 systemctl enable pimesh
 

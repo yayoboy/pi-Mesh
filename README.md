@@ -111,6 +111,7 @@ A touch-friendly web dashboard for [Meshtastic](https://meshtastic.org/) LoRa me
 | Meshtastic radio | Connected via USB — Heltec V3/V4, T-Beam, RAK, etc. |
 | 3.5" 320×480 touchscreen | SPI (fbtft) — portrait and landscape layouts both supported |
 | **or** HDMI display | GPU-accelerated kiosk via KMS + cog/WPE — see [Display HDMI](#6--hdmi-display-gpu-accelerated-kiosk) |
+| **or** Orange Pi 4 Pro / any Linux SBC | HDMI kiosk, desktop app window or headless, USB radio — see [Other boards](#7--orange-pi-4-pro-and-other-boards) |
 
 > Pi-Mesh talks directly to the radio via `meshtastic.SerialInterface`. The `meshtasticd` daemon is **not required** for ESP32-based boards.
 
@@ -170,6 +171,10 @@ uvicorn main:app --host 0.0.0.0 --port 8080 --env-file config.env.local
 Open `http://<pi-ip>:8080` in a browser or on the touchscreen.
 
 ### 4 — Install as a system service
+
+The unit file assumes user `pimesh` and the repo in `/home/pimesh/pi-Mesh`.
+`sudo bash setup.sh` rewrites both for the user running it and the actual
+repo path (and does everything below); to install by hand:
 
 ```bash
 sudo cp pimesh.service /etc/systemd/system/
@@ -261,6 +266,49 @@ sudo bash scripts/setup-display-hdmi.sh --uninstall
 
 Rotation from the status bar UI only applies to the SPI display (`tft35a`
 overlay); on HDMI, rotate the monitor or set a `video=` kernel parameter.
+
+### 7 — Orange Pi 4 Pro and other boards
+
+pi-Mesh needs Linux, Python (tested on 3.11) and the radio on USB; nothing
+else is Raspberry-specific. Reference target: **Orange Pi 4 Pro** (Allwinner
+A733, Raspberry-compatible 40-pin header, HDMI 2.0) on the official
+Debian/Ubuntu image. Settings hides the sections whose hardware is absent
+(`config.capabilities()`), so the same build runs everywhere.
+
+**Install.** Same command, any user, any clone path:
+
+```bash
+sudo bash setup.sh            # profile auto-detected, or pass one:
+sudo bash setup.sh desktop    # cyberdeck: service in background + app window
+sudo bash setup.sh kiosk-hdmi # dedicated terminal: full-screen cog on KMS
+```
+
+`setup.sh` rewrites `pimesh.service` for the calling user and the repo path,
+and creates the `gpio` group plus a udev rule for `/dev/gpiochip*` (Raspberry
+Pi OS ships them, Debian and Ubuntu do not).
+
+**Desktop / cyberdeck.** On a desktop image the `desktop` profile is
+auto-detected: the backend runs as a service and the "pi-Mesh" launcher opens
+the UI in a Chromium app window (`--app`, no address bar), falling back to
+the default browser via `xdg-open`. The board stays a normal computer; the
+UI is also reachable from the LAN.
+
+**HDMI kiosk.** `scripts/setup-display-hdmi.sh` installs cog and the
+`kiosk-hdmi` service for the calling user; the `config.txt` step is skipped
+where the file does not exist, since the KMS driver is the kernel's own. It
+needs a KMS device — check `ls /dev/dri/card*` on the board first; without
+one, use the desktop profile instead. On Ubuntu `cog` lives in `universe`.
+
+**GPIO.** Pin numbers are gpiochip *line offsets*, not BCM numbers: on a
+Raspberry the two coincide, on Allwinner they do not. `gpioinfo` lists the
+lines of each chip; set `GPIO_CHIP` in `config.env` if the header is not on
+chip 0, then enter the line offsets in Settings → GPIO. The header is
+electrically Raspberry-compatible, so the buzzer/LED wiring carries over.
+
+**Not available off Raspberry:** the undervoltage card (`vcgencmd`),
+`scripts/setup-rtc.sh` and `scripts/optimize-pi.sh` (Pi-only overlays and
+packages), rotation via `config.txt`. Screenshots work: the VC4 detile pass
+only runs where the `vc4` module is loaded.
 
 ---
 

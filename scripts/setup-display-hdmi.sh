@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # setup-display-hdmi.sh — Setup display HDMI + kiosk GPU per pi-Mesh
-# Installa cog (browser WPE WebKit), abilita il driver KMS vc4 con CMA
-# ridotto (adatto ai 512 MB del Pi 3 A+), disattiva il display SPI tft35a
-# e configura il servizio kiosk-hdmi.
+# Installa cog (browser WPE WebKit) e configura il servizio kiosk-hdmi. Su
+# Raspberry abilita anche il driver KMS vc4 con CMA ridotto (adatto ai 512 MB
+# del Pi 3 A+) e disattiva il display SPI tft35a; su altre schede (Orange Pi)
+# il KMS è già quello del kernel e config.txt non esiste: quel passo si salta.
 #
 # Uso: sudo bash scripts/setup-display-hdmi.sh [--uninstall]
-# Variabili: PIMESH_USER (default pimesh), PIMESH_CMA (default 96 [MB])
+# Variabili: PIMESH_USER (default: chi lancia sudo, altrimenti pimesh),
+#            PIMESH_CMA (default 96 [MB], solo Raspberry)
 set -euo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -14,7 +16,7 @@ skip() { echo -e "${YELLOW}  ~ $* (già fatto)${NC}"; }
 err()  { echo -e "${RED}  ✗ $*${NC}"; }
 
 PIMESH_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-PIMESH_USER="${PIMESH_USER:-pimesh}"
+PIMESH_USER="${PIMESH_USER:-${SUDO_USER:-pimesh}}"
 PIMESH_CMA="${PIMESH_CMA:-96}"
 KIOSK_SERVICE="kiosk-hdmi"
 CONFIG_TXT="/boot/firmware/config.txt"
@@ -52,6 +54,7 @@ else
   apt-get update -qq
   apt-get install -y cog >/dev/null 2>&1 && ok "Installato: cog" || {
     err "Installazione cog fallita — verifica che il pacchetto esista nella tua release"
+    err "(su Ubuntu sta in 'universe': sudo add-apt-repository universe)"
     exit 1
   }
 fi
@@ -79,7 +82,10 @@ done
 # --- STEP 3: Script kiosk ---
 echo ""
 echo "▶ [3/6] Installazione script kiosk..."
-cp "$PIMESH_DIR/scripts/start-kiosk-hdmi.sh" "/home/$PIMESH_USER/start-kiosk-hdmi.sh"
+# Script e unit sono scritti per l'utente pimesh con il repo in
+# /home/pimesh/pi-Mesh: riscritti per l'utente e il percorso reali.
+sed -e "s|/home/pimesh/pi-Mesh|$PIMESH_DIR|g" \
+  "$PIMESH_DIR/scripts/start-kiosk-hdmi.sh" > "/home/$PIMESH_USER/start-kiosk-hdmi.sh"
 chmod +x "/home/$PIMESH_USER/start-kiosk-hdmi.sh"
 chown "$PIMESH_USER:$PIMESH_USER" "/home/$PIMESH_USER/start-kiosk-hdmi.sh"
 ok "start-kiosk-hdmi.sh installato in /home/$PIMESH_USER/"
@@ -87,7 +93,8 @@ ok "start-kiosk-hdmi.sh installato in /home/$PIMESH_USER/"
 # --- STEP 4: Servizio systemd ---
 echo ""
 echo "▶ [4/6] Configurazione servizio systemd..."
-cp "$PIMESH_DIR/scripts/kiosk-hdmi.service" "/etc/systemd/system/${KIOSK_SERVICE}.service"
+sed -E -e "s|/home/pimesh|/home/$PIMESH_USER|g" -e "s/^(User|Group)=pimesh/\1=$PIMESH_USER/" \
+  "$PIMESH_DIR/scripts/kiosk-hdmi.service" > "/etc/systemd/system/${KIOSK_SERVICE}.service"
 systemctl daemon-reload
 systemctl enable "$KIOSK_SERVICE"
 ok "Servizio $KIOSK_SERVICE abilitato"
@@ -95,6 +102,12 @@ ok "Servizio $KIOSK_SERVICE abilitato"
 # --- STEP 5: config.txt — KMS on, SPI off ---
 echo ""
 echo "▶ [5/6] Configurazione $CONFIG_TXT..."
+
+# Solo Raspberry: altrove (Orange Pi, ogni altra scheda) non esiste config.txt
+# e il driver KMS è già quello del kernel, non serve alcun overlay.
+if [[ ! -f "$CONFIG_TXT" ]]; then
+  skip "Nessun $CONFIG_TXT: non è un Raspberry, KMS già attivo"
+else
 
 BACKUP="${CONFIG_TXT}.pimesh-bak.$(date +%Y%m%d%H%M%S)"
 cp "$CONFIG_TXT" "$BACKUP"
@@ -129,6 +142,8 @@ if grep -qE '^\s*gpu_mem=' "$CONFIG_TXT"; then
 else
   skip "gpu_mem non presente"
 fi
+
+fi  # config.txt presente
 
 # --- STEP 6: cmdline.txt — niente blanking console ---
 echo ""

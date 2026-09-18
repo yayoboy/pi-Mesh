@@ -89,23 +89,34 @@ _DETILER = os.path.join(os.path.dirname(os.path.dirname(__file__)),
 _KMS_TILED_TMP = '/tmp/pimesh-kms-tiled.png'
 
 
+def _vc4_loaded() -> bool:
+    """True sui Raspberry: solo il driver vc4 di Broadcom scansiona buffer
+    T-tiled. Gli altri KMS (sun4i-drm su Allwinner, rockchip...) mostrano
+    frame lineari, che kmsgrab restituisce già in ordine raster."""
+    return os.path.exists('/sys/module/vc4')
+
+
 async def _capture_kms(filepath: str):
     """Grab the DRM scanout (cog è DRM master) e detila il buffer T-tiled.
 
     fbgrab non serve in modalità KMS: fbdev mostra solo la console. ffmpeg
-    kmsgrab legge il piano attivo (serve root), poi vc4_detile.py rimette i
-    pixel in ordine raster. Ritorna None se ok, altrimenti il messaggio d'errore.
+    kmsgrab legge il piano attivo (serve root), poi su vc4 vc4_detile.py
+    rimette i pixel in ordine raster. Ritorna None se ok, altrimenti il
+    messaggio d'errore.
     """
+    tiled = _vc4_loaded()
     try:
         proc = await _asyncio.create_subprocess_exec(
             'sudo', 'ffmpeg', '-hide_banner', '-loglevel', 'error',
             '-f', 'kmsgrab', '-device', '/dev/dri/card0', '-i', '-',
             '-frames:v', '1', '-vf', 'hwdownload,format=bgra',
-            '-pix_fmt', 'rgba', '-y', _KMS_TILED_TMP,
+            '-pix_fmt', 'rgba', '-y', _KMS_TILED_TMP if tiled else filepath,
             stdout=_asyncio.subprocess.PIPE, stderr=_asyncio.subprocess.PIPE)
         _, stderr = await _asyncio.wait_for(proc.communicate(), timeout=20)
         if proc.returncode != 0:
             return 'kmsgrab: ' + ((stderr.decode().strip() or 'errore')[-160:])
+        if not tiled:
+            return None
         proc = await _asyncio.create_subprocess_exec(
             'python3', _DETILER, _KMS_TILED_TMP, filepath,
             stdout=_asyncio.subprocess.PIPE, stderr=_asyncio.subprocess.PIPE)
