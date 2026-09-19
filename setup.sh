@@ -154,6 +154,20 @@ if [ "$PROFILE" = desktop ]; then
     install -m 644 "$LAUNCHER" /usr/share/applications/pimesh.desktop
     if [ -d "$HOME_DIR/Desktop" ]; then
         install -m 755 -o "$USER" -g "$USER" "$LAUNCHER" "$HOME_DIR/Desktop/pimesh.desktop"
+        # XFCE non avvia un .desktop che sta sulla scrivania finché non è
+        # "marcato sicuro": un doppio click apre soltanto un avviso, e
+        # l'applicazione non parte. Lo marchiamo qui, che è esattamente ciò che
+        # fa il pulsante "Mark As Secure And Launch" di quell'avviso. Il
+        # checksum va scritto come metadato GIO, e per farlo serve il bus di
+        # sessione dell'utente: se non ha ancora fatto login non c'è, e in quel
+        # caso l'avviso comparirà una volta sola.
+        if sudo -u "$USER" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u "$USER")/bus" \
+             gio set -t string "$HOME_DIR/Desktop/pimesh.desktop" metadata::xfce-exe-checksum \
+             "$(sha256sum "$HOME_DIR/Desktop/pimesh.desktop" | cut -d' ' -f1)" 2>/dev/null; then
+            echo "    icona marcata come sicura per XFCE"
+        else
+            echo "    icona non marcata: al primo click XFCE chiederà conferma una volta"
+        fi
     fi
     # Su un terminale la finestra deve esserci già all'accensione: lo stesso
     # file in ~/.config/autostart la apre a ogni login, senza toccare niente.
