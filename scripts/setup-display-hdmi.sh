@@ -36,6 +36,12 @@ if [[ "${1:-}" == "--uninstall" ]]; then
   ok "Kiosk HDMI rimosso"
   echo ""
   echo "  Le modifiche a $CONFIG_TXT NON sono state toccate."
+  DM="$(ls /usr/sbin/lightdm /usr/sbin/gdm3 /usr/bin/sddm 2>/dev/null | head -1 || true)"
+  if [[ -n "$DM" ]] && [[ "$(systemctl get-default)" != graphical.target ]]; then
+    DM="$(basename "$DM")"
+    echo "  Il desktop era stato disabilitato per il kiosk. Per riaverlo:"
+    echo "    sudo systemctl enable --now $DM && sudo systemctl set-default graphical.target"
+  fi
   BACKUP=$(ls -t "${CONFIG_TXT}".pimesh-bak.* 2>/dev/null | head -1 || true)
   [[ -n "$BACKUP" ]] && echo "  Per ripristinare il display SPI: sudo cp $BACKUP $CONFIG_TXT && sudo reboot"
   exit 0
@@ -96,6 +102,22 @@ echo "▶ [4/6] Configurazione servizio systemd..."
 sed -E -e "s|/home/pimesh|/home/$PIMESH_USER|g" -e "s/^(User|Group)=pimesh/\1=$PIMESH_USER/" \
   "$PIMESH_DIR/scripts/kiosk-hdmi.service" > "/etc/systemd/system/${KIOSK_SERVICE}.service"
 systemctl daemon-reload
+
+# cog -P drm disegna direttamente sul DRM e deve esserne il master: se un
+# display manager possiede già lo schermo (LightDM+XFCE sull'immagine Orange
+# Pi, e su ogni Raspberry Pi OS Desktop) cog non parte. Un kiosk è l'unica
+# cosa sullo schermo, quindi il desktop va tolto di mezzo.
+DM="$(systemctl list-units --type=service --state=running --no-legend 2>/dev/null \
+      | grep -oE '^(lightdm|gdm3?|sddm|nodm)\.service' | head -1 || true)"
+if [[ -n "$DM" ]]; then
+  systemctl disable --now "$DM"
+  systemctl set-default multi-user.target
+  ok "$DM disabilitato, boot su multi-user: lo schermo è del kiosk"
+  echo "    (per riavere il desktop: sudo systemctl enable --now $DM && sudo systemctl set-default graphical.target)"
+else
+  skip "Nessun display manager attivo"
+fi
+
 systemctl enable "$KIOSK_SERVICE"
 ok "Servizio $KIOSK_SERVICE abilitato"
 

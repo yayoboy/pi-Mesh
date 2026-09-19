@@ -93,6 +93,18 @@ for grp in gpio dialout; do
     fi
 done
 
+echo "==> Stable serial alias for the radio..."
+# config.env points SERIAL_PATH at /dev/ttyMESHTASTIC. Without this rule that
+# path never appears, and the client retries against it forever: the radio is
+# plugged in and the UI still shows no board.
+if [ ! -f /etc/udev/rules.d/99-meshtastic-serial.rules ]; then
+    install -m 644 "$REPO_DIR/scripts/99-meshtastic-serial.rules" /etc/udev/rules.d/
+    udevadm control --reload-rules && udevadm trigger --subsystem-match=tty
+    echo "    /dev/ttyMESHTASTIC alias installed"
+else
+    echo "    already installed"
+fi
+
 echo "==> Creating data directory..."
 sudo -u "$USER" mkdir -p "$REPO_DIR/data"
 
