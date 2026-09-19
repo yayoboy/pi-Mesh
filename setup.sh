@@ -155,8 +155,14 @@ if [ "$PROFILE" = desktop ]; then
     if [ -d "$HOME_DIR/Desktop" ]; then
         install -m 755 -o "$USER" -g "$USER" "$LAUNCHER" "$HOME_DIR/Desktop/pimesh.desktop"
     fi
+    # Su un terminale la finestra deve esserci già all'accensione: lo stesso
+    # file in ~/.config/autostart la apre a ogni login, senza toccare niente.
+    # È lo standard XDG, quindi vale per XFCE, LXDE, GNOME e compagnia.
+    install -d -m 755 -o "$USER" -g "$USER" "$HOME_DIR/.config/autostart"
+    install -m 644 -o "$USER" -g "$USER" "$LAUNCHER" "$HOME_DIR/.config/autostart/pimesh.desktop"
     rm -f "$LAUNCHER"
     echo "    launcher: $EXEC"
+    echo "    autostart: si apre da sola al login"
 fi
 
 echo
