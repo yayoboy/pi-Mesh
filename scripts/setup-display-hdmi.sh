@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # setup-display-hdmi.sh — Setup display HDMI + kiosk GPU per pi-Mesh
-# Installa cog (browser WPE WebKit), abilita il driver KMS vc4 con CMA
-# ridotto (adatto ai 512 MB del Pi 3 A+), disattiva il display SPI tft35a
-# e configura il servizio kiosk-hdmi.
+# Installa cog (browser WPE WebKit) e configura il servizio kiosk-hdmi. Su
+# Raspberry abilita anche il driver KMS vc4 con CMA ridotto (adatto ai 512 MB
+# del Pi 3 A+) e disattiva il display SPI tft35a; su altre schede (Orange Pi)
+# il KMS è già quello del kernel e config.txt non esiste: quel passo si salta.
 #
 # Uso: sudo bash scripts/setup-display-hdmi.sh [--uninstall]
-# Variabili: PIMESH_USER (default pimesh), PIMESH_CMA (default 96 [MB])
+# Variabili: PIMESH_USER (default: chi lancia sudo, altrimenti pimesh),
+#            PIMESH_CMA (default 96 [MB], solo Raspberry)
 set -euo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -14,7 +16,7 @@ skip() { echo -e "${YELLOW}  ~ $* (già fatto)${NC}"; }
 err()  { echo -e "${RED}  ✗ $*${NC}"; }
 
 PIMESH_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-PIMESH_USER="${PIMESH_USER:-pimesh}"
+PIMESH_USER="${PIMESH_USER:-${SUDO_USER:-pimesh}}"
 PIMESH_CMA="${PIMESH_CMA:-96}"
 KIOSK_SERVICE="kiosk-hdmi"
 CONFIG_TXT="/boot/firmware/config.txt"
@@ -30,10 +32,16 @@ if [[ "${1:-}" == "--uninstall" ]]; then
   echo "▶ Rimozione kiosk HDMI..."
   systemctl disable --now "$KIOSK_SERVICE" 2>/dev/null && ok "Servizio $KIOSK_SERVICE disabilitato" || skip "Servizio non attivo"
   rm -f "/etc/systemd/system/${KIOSK_SERVICE}.service"
+  rm -rf "/etc/systemd/system/${KIOSK_SERVICE}.service.d"
   systemctl daemon-reload
   ok "Kiosk HDMI rimosso"
   echo ""
   echo "  Le modifiche a $CONFIG_TXT NON sono state toccate."
+  if [[ -e /etc/systemd/system/display-manager.service ]] && \
+     [[ "$(systemctl get-default)" != graphical.target ]]; then
+    echo "  Il desktop era stato fermato per il kiosk. Per riaverlo:"
+    echo "    sudo systemctl set-default graphical.target && sudo reboot"
+  fi
   BACKUP=$(ls -t "${CONFIG_TXT}".pimesh-bak.* 2>/dev/null | head -1 || true)
   [[ -n "$BACKUP" ]] && echo "  Per ripristinare il display SPI: sudo cp $BACKUP $CONFIG_TXT && sudo reboot"
   exit 0
@@ -52,6 +60,7 @@ else
   apt-get update -qq
   apt-get install -y cog >/dev/null 2>&1 && ok "Installato: cog" || {
     err "Installazione cog fallita — verifica che il pacchetto esista nella tua release"
+    err "(su Ubuntu sta in 'universe': sudo add-apt-repository universe)"
     exit 1
   }
 fi
@@ -79,7 +88,10 @@ done
 # --- STEP 3: Script kiosk ---
 echo ""
 echo "▶ [3/6] Installazione script kiosk..."
-cp "$PIMESH_DIR/scripts/start-kiosk-hdmi.sh" "/home/$PIMESH_USER/start-kiosk-hdmi.sh"
+# Script e unit sono scritti per l'utente pimesh con il repo in
+# /home/pimesh/pi-Mesh: riscritti per l'utente e il percorso reali.
+sed -e "s|/home/pimesh/pi-Mesh|$PIMESH_DIR|g" \
+  "$PIMESH_DIR/scripts/start-kiosk-hdmi.sh" > "/home/$PIMESH_USER/start-kiosk-hdmi.sh"
 chmod +x "/home/$PIMESH_USER/start-kiosk-hdmi.sh"
 chown "$PIMESH_USER:$PIMESH_USER" "/home/$PIMESH_USER/start-kiosk-hdmi.sh"
 ok "start-kiosk-hdmi.sh installato in /home/$PIMESH_USER/"
@@ -87,14 +99,72 @@ ok "start-kiosk-hdmi.sh installato in /home/$PIMESH_USER/"
 # --- STEP 4: Servizio systemd ---
 echo ""
 echo "▶ [4/6] Configurazione servizio systemd..."
-cp "$PIMESH_DIR/scripts/kiosk-hdmi.service" "/etc/systemd/system/${KIOSK_SERVICE}.service"
+sed -E -e "s|/home/pimesh|/home/$PIMESH_USER|g" -e "s/^(User|Group)=pimesh/\1=$PIMESH_USER/" \
+  "$PIMESH_DIR/scripts/kiosk-hdmi.service" > "/etc/systemd/system/${KIOSK_SERVICE}.service"
+
+# cog 0.18 non sa scegliere il device DRM: prende il primo che drmGetDevices2
+# gli restituisce con un nodo primario. Su un SoC dove display e GPU sono due
+# device separati (Allwinner, Rockchip, i.MX) è spesso la GPU, che non ha
+# connettori, e cog muore con "0 connectors available". Finché non esiste un
+# selettore, si nasconde al servizio ogni card che non ha un connettore
+# acceso: cog trova solo quella giusta. I nodi render restano accessibili,
+# servono a GBM.
+DROPIN="/etc/systemd/system/${KIOSK_SERVICE}.service.d"
+DISPLAY_CARD=""
+for st in /sys/class/drm/card*-*/status; do
+  [[ -e "$st" && "$(cat "$st")" == connected ]] || continue
+  DISPLAY_CARD="/dev/dri/$(basename "$(dirname "$st")" | cut -d- -f1)"
+  break
+done
+if [[ -n "$DISPLAY_CARD" ]]; then
+  mkdir -p "$DROPIN"
+  {
+    echo "# Generato da setup-display-hdmi.sh: lo schermo è su $DISPLAY_CARD."
+    echo "# Elencare un device accende la allowlist, quindi le altre card"
+    echo "# spariscono per questo servizio e cog non può sbagliare scheda."
+    echo "[Service]"
+    echo "DeviceAllow=$DISPLAY_CARD rw"
+    for rn in /dev/dri/renderD*; do
+      [[ -e "$rn" ]] && echo "DeviceAllow=$rn rw"
+    done
+  } > "$DROPIN/10-drm-device.conf"
+  ok "cog agganciato a $DISPLAY_CARD (le altre card gli sono nascoste)"
+else
+  err "Nessun connettore DRM acceso: collega lo schermo HDMI e rilancia"
+  exit 1
+fi
+
 systemctl daemon-reload
+
+# cog -P drm disegna direttamente sul DRM e deve esserne il master: se un
+# display manager possiede già lo schermo (LightDM+XFCE sull'immagine Orange
+# Pi, e su ogni Raspberry Pi OS Desktop) cog non parte. Un kiosk è l'unica
+# cosa sullo schermo, quindi il desktop va tolto di mezzo.
+# display-manager.service è l'alias che Debian, Ubuntu e Raspberry Pi OS
+# puntano al display manager installato, qualunque sia: niente da indovinare
+# fra lightdm, gdm3 e sddm. Lo tira su graphical.target, quindi basta fermarlo
+# e spostare il target di default perché non torni al reboot.
+if systemctl is-active --quiet display-manager.service; then
+  systemctl stop display-manager.service
+  systemctl set-default multi-user.target
+  ok "Desktop fermato, boot su multi-user: lo schermo è del kiosk"
+  echo "    (per riavere il desktop: sudo systemctl set-default graphical.target && sudo reboot)"
+else
+  skip "Nessun display manager attivo"
+fi
+
 systemctl enable "$KIOSK_SERVICE"
 ok "Servizio $KIOSK_SERVICE abilitato"
 
 # --- STEP 5: config.txt — KMS on, SPI off ---
 echo ""
 echo "▶ [5/6] Configurazione $CONFIG_TXT..."
+
+# Solo Raspberry: altrove (Orange Pi, ogni altra scheda) non esiste config.txt
+# e il driver KMS è già quello del kernel, non serve alcun overlay.
+if [[ ! -f "$CONFIG_TXT" ]]; then
+  skip "Nessun $CONFIG_TXT: non è un Raspberry, KMS già attivo"
+else
 
 BACKUP="${CONFIG_TXT}.pimesh-bak.$(date +%Y%m%d%H%M%S)"
 cp "$CONFIG_TXT" "$BACKUP"
@@ -129,6 +199,8 @@ if grep -qE '^\s*gpu_mem=' "$CONFIG_TXT"; then
 else
   skip "gpu_mem non presente"
 fi
+
+fi  # config.txt presente
 
 # --- STEP 6: cmdline.txt — niente blanking console ---
 echo ""

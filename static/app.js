@@ -678,3 +678,28 @@ document.addEventListener('DOMContentLoaded', () => {
   // se la pagina è stata caricata direttamente sul tab mappa
   if (document.getElementById('map-container')) initMapIfNeeded()
 })
+
+// Colore batteria dai token del tema. Era duplicata in nodes.html e
+// metrics.html con le stesse soglie: una sola copia, chiamabile dalle
+// espressioni Alpine di qualsiasi pagina (app.js è incluso in base.html).
+function battColor(b) {
+  if (b == null) return 'var(--muted)'
+  if (b >= 60) return 'var(--accent)'
+  if (b >= 30) return 'var(--warn)'
+  return 'var(--danger)'
+}
+
+// Media oraria delle ultime 24 h da righe /api/telemetry: indice 0 = 23 ore
+// fa, indice 23 = ultima ora, null dove non sono arrivati dati. Il calcolo
+// dell'indice era scritto due volte (batteria in Nodi, utilizzo canale in
+// Telemetria); chi chiama arrotonda come gli serve.
+function hourlyBuckets(rows, field) {
+  const now = Math.floor(Date.now() / 1000)
+  const buckets = Array.from({ length: 24 }, () => [])
+  rows.forEach(row => {
+    const v = row.data && row.data[field]
+    if (v == null) return
+    buckets[23 - Math.min(23, Math.floor((now - row.ts) / 3600))].push(v)
+  })
+  return buckets.map(b => b.length ? b.reduce((a, v) => a + v, 0) / b.length : null)
+}

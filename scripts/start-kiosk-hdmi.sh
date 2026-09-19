@@ -74,6 +74,17 @@ if [ -z "$SCALE" ]; then
 fi
 echo "HDMI mode: ${MODE:-unknown}, scale: $SCALE" >&2
 
+# EGL_PLATFORM non viene forzato: il default (gbm) è quello che scansiona
+# davvero sul DRM, e imporne un altro qui trasformerebbe un kiosk che
+# funziona in uno schermo nero silenzioso.
+#
+# Vale la pena saperlo se il kiosk non parte: una libEGL compilata con X11
+# come piattaforma nativa, come quella che l'immagine Orange Pi 4 Pro
+# installa in /usr/local/lib, cerca un display X che qui non esiste e fa
+# morire in ciclo il processo di rendering di WebKit. EGL_PLATFORM=surfaceless
+# in config.env ferma i crash, ma non disegna niente: serve una EGL con
+# supporto GBM, non un'altra variabile d'ambiente.
+
 # --scale è supportato dal platform drm di cog; se la versione installata
 # non lo prevede, riparti senza (meglio una UI piccola che nessuna UI).
 if cog --help 2>&1 | grep -q -- '--scale'; then

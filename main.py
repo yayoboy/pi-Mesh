@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 
 import config as cfg
 import database
+import gpio
 import meshtasticd_client
 import mqtt_bridge
 import rpi_telemetry
@@ -42,6 +43,9 @@ async def _broadcast_task() -> None:
         try:
             event = await queue.get()
             await ws_router.manager.broadcast(event)
+            # Buzzer/LED locali sui messaggi in arrivo (is_outgoing distingue i propri).
+            if event.get('type') == 'message' and not event.get('is_outgoing'):
+                gpio.notify_soon(cfg.DB_PATH, 'message')
         except Exception as e:
             logging.getLogger(__name__).warning(f'Broadcast task error: {e}')
             await asyncio.sleep(0.1)

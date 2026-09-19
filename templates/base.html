@@ -97,6 +97,7 @@
     .hint { font-size: 10px; color: var(--muted); }
   </style>
   <script>window.MAP_LOCAL_TILES = "{{ map_local_tiles_fn() }}";</script>
+  <script>window.PIMESH_CAPS = {{ caps() | tojson }};</script>
   <script>
   // Restore saved theme on load — preset B1..B9 dal prototipo "Tattico".
   // Espone window.PIMESH_THEMES per il selettore in config (_ui.html).

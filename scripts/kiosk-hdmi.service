@@ -14,7 +14,10 @@ Group=pimesh
 # e tastiera via libinput senza seat manager.
 SupplementaryGroups=video render input
 Environment=HOME=/home/pimesh
-PAMName=login
+# Niente PAMName: aprire una sessione di login mette il processo sotto
+# systemd-logind, che consegna i device DRM solo alla sessione attiva del
+# seat. Il kiosk non lo è, quindi logind gli toglie /dev/dri e cog muore
+# all'avvio con "Failed to initialize DRM". I gruppi qui sopra bastano.
 ExecStartPre=/bin/sleep 3
 ExecStart=/home/pimesh/start-kiosk-hdmi.sh
 Restart=on-failure

@@ -72,6 +72,19 @@ function configPage() {
     status: { node: '', lora: '', channels: '', gpio: '', wifi: '', mqtt: '', serial: '' },
 
     async init() {
+      // Sezioni Pi che pilotano hardware assente: fuori dalla sidebar.
+      // window.PIMESH_CAPS arriva da base.html (config.capabilities());
+      // se manca, nessun filtro — la pagina resta quella di sempre.
+      const caps = window.PIMESH_CAPS
+      if (caps) {
+        const NEEDS = {
+          gpio: ['gpio', 'i2c'], rtc: ['i2c'], usb: ['usb_storage'],
+          wifi: ['wifi'], display: ['backlight', 'spi_display'],
+        }
+        this.groups = this.groups
+          .map(g => ({ ...g, sections: g.sections.filter(s => !NEEDS[s.id] || NEEDS[s.id].some(c => caps[c])) }))
+          .filter(g => g.sections.length)
+      }
       await this.loadNode()
       await this.scanSerialPorts()
       await this.loadTargets()

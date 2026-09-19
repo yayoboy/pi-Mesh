@@ -184,6 +184,12 @@
                           </div>
                         </div>
                       </template>
+                      <template x-if="gpioForm.type === 'buzzer'">
+                        <p style="font-size:10px;color:var(--muted);margin:0;">
+                          Suona a ogni messaggio ricevuto dalla mesh (max uno ogni 3 s).
+                          Per silenziarlo, disattiva la periferica.
+                        </p>
+                      </template>
                       <template x-if="gpioForm.type === 'encoder'">
                         <div style="display:flex;flex-direction:column;gap:3px;">
                           <label style="font-size:10px;color:var(--muted);">Azione</label>
