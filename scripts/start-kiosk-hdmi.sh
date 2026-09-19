@@ -74,6 +74,14 @@ if [ -z "$SCALE" ]; then
 fi
 echo "HDMI mode: ${MODE:-unknown}, scale: $SCALE" >&2
 
+# Un kiosk su DRM gira senza X server, ma una libEGL compilata con X11 come
+# piattaforma nativa (è il caso di quella che l'immagine Orange Pi installa in
+# /usr/local/lib) prova comunque ad aprire un display X: non lo trova, e il
+# processo di rendering di WebKit muore in ciclo senza dire perché. Chiedere
+# esplicitamente la piattaforma senza superficie evita del tutto la questione.
+# Sovrascrivibile da config.env dove il default va già bene.
+export EGL_PLATFORM="${EGL_PLATFORM:-surfaceless}"
+
 # --scale è supportato dal platform drm di cog; se la versione installata
 # non lo prevede, riparti senza (meglio una UI piccola che nessuna UI).
 if cog --help 2>&1 | grep -q -- '--scale'; then

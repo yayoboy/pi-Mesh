@@ -32,15 +32,15 @@ if [[ "${1:-}" == "--uninstall" ]]; then
   echo "▶ Rimozione kiosk HDMI..."
   systemctl disable --now "$KIOSK_SERVICE" 2>/dev/null && ok "Servizio $KIOSK_SERVICE disabilitato" || skip "Servizio non attivo"
   rm -f "/etc/systemd/system/${KIOSK_SERVICE}.service"
+  rm -rf "/etc/systemd/system/${KIOSK_SERVICE}.service.d"
   systemctl daemon-reload
   ok "Kiosk HDMI rimosso"
   echo ""
   echo "  Le modifiche a $CONFIG_TXT NON sono state toccate."
-  DM="$(ls /usr/sbin/lightdm /usr/sbin/gdm3 /usr/bin/sddm 2>/dev/null | head -1 || true)"
-  if [[ -n "$DM" ]] && [[ "$(systemctl get-default)" != graphical.target ]]; then
-    DM="$(basename "$DM")"
-    echo "  Il desktop era stato disabilitato per il kiosk. Per riaverlo:"
-    echo "    sudo systemctl enable --now $DM && sudo systemctl set-default graphical.target"
+  if [[ -e /etc/systemd/system/display-manager.service ]] && \
+     [[ "$(systemctl get-default)" != graphical.target ]]; then
+    echo "  Il desktop era stato fermato per il kiosk. Per riaverlo:"
+    echo "    sudo systemctl set-default graphical.target && sudo reboot"
   fi
   BACKUP=$(ls -t "${CONFIG_TXT}".pimesh-bak.* 2>/dev/null | head -1 || true)
   [[ -n "$BACKUP" ]] && echo "  Per ripristinare il display SPI: sudo cp $BACKUP $CONFIG_TXT && sudo reboot"
@@ -101,19 +101,54 @@ echo ""
 echo "▶ [4/6] Configurazione servizio systemd..."
 sed -E -e "s|/home/pimesh|/home/$PIMESH_USER|g" -e "s/^(User|Group)=pimesh/\1=$PIMESH_USER/" \
   "$PIMESH_DIR/scripts/kiosk-hdmi.service" > "/etc/systemd/system/${KIOSK_SERVICE}.service"
+
+# cog 0.18 non sa scegliere il device DRM: prende il primo che drmGetDevices2
+# gli restituisce con un nodo primario. Su un SoC dove display e GPU sono due
+# device separati (Allwinner, Rockchip, i.MX) è spesso la GPU, che non ha
+# connettori, e cog muore con "0 connectors available". Finché non esiste un
+# selettore, si nasconde al servizio ogni card che non ha un connettore
+# acceso: cog trova solo quella giusta. I nodi render restano accessibili,
+# servono a GBM.
+DROPIN="/etc/systemd/system/${KIOSK_SERVICE}.service.d"
+DISPLAY_CARD=""
+for st in /sys/class/drm/card*-*/status; do
+  [[ -e "$st" && "$(cat "$st")" == connected ]] || continue
+  DISPLAY_CARD="/dev/dri/$(basename "$(dirname "$st")" | cut -d- -f1)"
+  break
+done
+if [[ -n "$DISPLAY_CARD" ]]; then
+  mkdir -p "$DROPIN"
+  {
+    echo "# Generato da setup-display-hdmi.sh: lo schermo è su $DISPLAY_CARD."
+    echo "# Elencare un device accende la allowlist, quindi le altre card"
+    echo "# spariscono per questo servizio e cog non può sbagliare scheda."
+    echo "[Service]"
+    echo "DeviceAllow=$DISPLAY_CARD rw"
+    for rn in /dev/dri/renderD*; do
+      [[ -e "$rn" ]] && echo "DeviceAllow=$rn rw"
+    done
+  } > "$DROPIN/10-drm-device.conf"
+  ok "cog agganciato a $DISPLAY_CARD (le altre card gli sono nascoste)"
+else
+  err "Nessun connettore DRM acceso: collega lo schermo HDMI e rilancia"
+  exit 1
+fi
+
 systemctl daemon-reload
 
 # cog -P drm disegna direttamente sul DRM e deve esserne il master: se un
 # display manager possiede già lo schermo (LightDM+XFCE sull'immagine Orange
 # Pi, e su ogni Raspberry Pi OS Desktop) cog non parte. Un kiosk è l'unica
 # cosa sullo schermo, quindi il desktop va tolto di mezzo.
-DM="$(systemctl list-units --type=service --state=running --no-legend 2>/dev/null \
-      | grep -oE '^(lightdm|gdm3?|sddm|nodm)\.service' | head -1 || true)"
-if [[ -n "$DM" ]]; then
-  systemctl disable --now "$DM"
+# display-manager.service è l'alias che Debian, Ubuntu e Raspberry Pi OS
+# puntano al display manager installato, qualunque sia: niente da indovinare
+# fra lightdm, gdm3 e sddm. Lo tira su graphical.target, quindi basta fermarlo
+# e spostare il target di default perché non torni al reboot.
+if systemctl is-active --quiet display-manager.service; then
+  systemctl stop display-manager.service
   systemctl set-default multi-user.target
-  ok "$DM disabilitato, boot su multi-user: lo schermo è del kiosk"
-  echo "    (per riavere il desktop: sudo systemctl enable --now $DM && sudo systemctl set-default graphical.target)"
+  ok "Desktop fermato, boot su multi-user: lo schermo è del kiosk"
+  echo "    (per riavere il desktop: sudo systemctl set-default graphical.target && sudo reboot)"
 else
   skip "Nessun display manager attivo"
 fi
