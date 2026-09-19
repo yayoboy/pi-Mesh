@@ -1,7 +1,7 @@
 """Selezione dei dispositivi di uscita e cooldown del buzzer.
 
-L'I/O sui pin non è provabile senza hardware (lgpio ha wheel solo per
-Linux); quello che si può rompere in silenzio è la scelta di *quali*
+L'I/O sui pin non è provabile senza hardware (periphery apre davvero un
+/dev/gpiochip); quello che si può rompere in silenzio è la scelta di *quali*
 dispositivi azionare e il freno che evita un beep per ogni pacchetto.
 """
 import pytest
@@ -41,12 +41,12 @@ async def test_cooldown_swallows_the_second_message(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_notify_survives_missing_lgpio(monkeypatch):
+async def test_notify_survives_missing_periphery(monkeypatch):
     async def fake_devices(db_path):
         return [BUZZER]
 
     def boom(pin):
-        raise ImportError('No module named lgpio')
+        raise ImportError('No module named periphery')
 
     monkeypatch.setattr(gpio.database, 'get_gpio_devices', fake_devices)
     monkeypatch.setattr(gpio, 'pulse', boom)

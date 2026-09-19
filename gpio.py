@@ -1,11 +1,14 @@
 """GPIO locale: buzzer e LED sugli eventi della mesh, più le primitive
 che la pagina Settings usa per il pulsante "test".
 
-Qui si parla al GPIO con **lgpio**, non con RPi.GPIO: quest'ultima parla
-solo ai chip Broadcom, quindi non funziona sul Pi 5 (dove il chip è
-diverso) né su una scheda che Raspberry non è — Orange Pi, Allwinner,
-Rockchip. lgpio lavora sul gpiochip del kernel, che c'è su qualunque
-Linux, e ha wheel precompilate per armv7l e aarch64.
+Qui si parla al GPIO con **python-periphery**, non con RPi.GPIO:
+quest'ultima parla solo ai chip Broadcom, quindi non funziona sul Pi 5
+(dove il chip è diverso) né su una scheda che Raspberry non è — Orange
+Pi, Allwinner, Rockchip. periphery lavora sul gpiochip del kernel, che
+c'è su qualunque Linux, ed è Python puro: si installa senza compilatore.
+(lgpio farebbe lo stesso lavoro, ma PyPI lo distribuisce solo come
+sorgente e va linkato a una liblgpio che Debian e Ubuntu non
+impacchettano: su Orange Pi l'installazione si ferma lì.)
 
 Il numero di pin è il numero di LINEA del gpiochip, che su Raspberry
 coincide col numero BCM stampato sull'header. Se il tuo header sta su un
@@ -56,31 +59,27 @@ def devices_for(event_type: str, devices: list[dict]) -> list[dict]:
 
 def pulse(pin: int, times: int = 2, on_s: float = 0.08, off_s: float = 0.08) -> None:
     """Impulsi brevi su un pin di uscita. Bloccante: chiamare in un thread."""
-    import lgpio
-    handle = lgpio.gpiochip_open(cfg.GPIO_CHIP)
+    from periphery import GPIO
+    line = GPIO(f'/dev/gpiochip{cfg.GPIO_CHIP}', pin, 'out')
     try:
-        lgpio.gpio_claim_output(handle, pin, 0)
         for _ in range(times):
-            lgpio.gpio_write(handle, pin, 1)
+            line.write(True)
             time.sleep(on_s)
-            lgpio.gpio_write(handle, pin, 0)
+            line.write(False)
             time.sleep(off_s)
-        lgpio.gpio_free(handle, pin)
     finally:
-        lgpio.gpiochip_close(handle)
+        line.close()
 
 
 def read(pin: int, pull_up: bool = True) -> int:
     """Livello di un pin di ingresso (1/0). Bloccante: chiamare in un thread."""
-    import lgpio
-    handle = lgpio.gpiochip_open(cfg.GPIO_CHIP)
+    from periphery import GPIO
+    line = GPIO(f'/dev/gpiochip{cfg.GPIO_CHIP}', pin, 'in',
+                bias='pull_up' if pull_up else 'default')
     try:
-        lgpio.gpio_claim_input(handle, pin, lgpio.SET_BIAS_PULL_UP if pull_up else 0)
-        value = lgpio.gpio_read(handle, pin)
-        lgpio.gpio_free(handle, pin)
-        return value
+        return int(line.read())
     finally:
-        lgpio.gpiochip_close(handle)
+        line.close()
 
 
 async def notify(db_path: str, event_type: str) -> None:
@@ -97,7 +96,7 @@ async def notify(db_path: str, event_type: str) -> None:
         for dev in devices:
             await asyncio.to_thread(pulse, dev['pin_a'])
     except Exception as e:
-        # ImportError dove lgpio non è installato, o pin già occupato: mai
+        # ImportError dove periphery non è installato, o pin già occupato: mai
         # far cadere il task che inoltra gli eventi alla UI.
         logger.warning(f'GPIO output error: {e}')
 

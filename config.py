@@ -47,8 +47,8 @@ def capabilities() -> dict[str, bool]:
         'vcgencmd':    bool(which('vcgencmd')),                                   # metriche Pi + undervoltage
         'backlight':   bool(which('ddcutil')) or Path('/sys/class/backlight').exists(),
         # "pilotabile", non "esiste": su una scheda non-Raspberry il gpiochip
-        # c'è comunque, ma senza lgpio ogni comando fallirebbe al click.
-        'gpio':        Path(f'/dev/gpiochip{GPIO_CHIP}').exists() and find_spec('lgpio') is not None,
+        # c'è comunque, ma senza periphery ogni comando fallirebbe al click.
+        'gpio':        Path(f'/dev/gpiochip{GPIO_CHIP}').exists() and find_spec('periphery') is not None,
         'i2c':         any(Path('/dev').glob('i2c-*')),                           # sensori, RTC
         'wifi':        bool(which('nmcli')),                                      # rete Pi + access point
         'usb_storage': bool(which('lsblk')),                                      # tile su chiavetta

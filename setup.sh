@@ -75,8 +75,8 @@ install_core
 
 echo "==> Group membership (gpio, dialout)..."
 # Raspberry Pi OS ships a gpio group and a udev rule that hands /dev/gpiochip*
-# to it. Debian and Ubuntu (Orange Pi images included) ship neither, so lgpio
-# would only work as root there: create both.
+# to it. Debian and Ubuntu (Orange Pi images included) ship neither, so the
+# GPIO would only work as root there: create both.
 if ! getent group gpio >/dev/null; then
     groupadd gpio
     echo 'SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"' \
@@ -95,6 +95,12 @@ done
 
 echo "==> Creating data directory..."
 sudo -u "$USER" mkdir -p "$REPO_DIR/data"
+
+# The unit loads config.env as an EnvironmentFile and systemd refuses to start
+# a service whose EnvironmentFile is missing. A fresh clone only ships the
+# example, so seed it here; an existing config is never overwritten.
+[ -f "$REPO_DIR/config.env" ] || \
+    sudo -u "$USER" cp "$REPO_DIR/config.env.example" "$REPO_DIR/config.env"
 
 echo "==> Installing systemd services..."
 # The unit is written for user pimesh with the repo in /home/pimesh/pi-Mesh;
@@ -117,6 +123,13 @@ systemctl start  pimesh
 
 if [ "$PROFILE" = desktop ]; then
     echo "==> Installing desktop launcher..."
+    # Raspberry Pi OS Desktop ships Chromium, so the launcher finds a browser.
+    # The Orange Pi image ships a full XFCE session and no browser at all, and
+    # there the launcher would open nothing. Install one only when missing.
+    if ! command -v chromium-browser >/dev/null && ! command -v chromium >/dev/null; then
+        echo "    No browser installed: adding chromium..."
+        apt-get install -y --no-install-recommends chromium
+    fi
     install -m 644 "$REPO_DIR/pimesh.desktop" /usr/share/applications/pimesh.desktop
     if [ -d "$HOME_DIR/Desktop" ]; then
         install -m 755 -o "$USER" -g "$USER" "$REPO_DIR/pimesh.desktop" "$HOME_DIR/Desktop/pimesh.desktop"

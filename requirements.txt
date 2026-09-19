@@ -7,7 +7,8 @@ python-multipart>=0.0.9
 websockets>=13.0
 paho-mqtt>=2.0
 qrcode>=7.4
-# GPIO locale (buzzer, LED, test periferiche). Wheel precompilate per
-# armv7l e aarch64; su una macchina senza gpiochip l'import non avviene
+# GPIO locale (buzzer, LED, test periferiche). Python puro: parla al
+# gpiochip del kernel con delle ioctl, quindi si installa ovunque senza
+# compilatore. Su una macchina senza gpiochip l'import non avviene
 # proprio, perché la sezione GPIO resta nascosta.
-lgpio>=0.2
+python-periphery>=2.4
