@@ -3,11 +3,14 @@ Type=Application
 Name=pi-Mesh
 Comment=Terminale Meshtastic
 # App mode: finestra propria senza barra indirizzi, non una scheda del browser.
-# Due nomi perché il binario è chromium-browser su Raspberry Pi OS e chromium
-# su Debian/Ubuntu; senza Chromium (altre immagini desktop, es. Orange Pi)
-# xdg-open apre la UI nel browser predefinito. Il servizio pimesh serve la UI,
-# qui si apre soltanto la finestra.
-Exec=sh -c 'chromium-browser --app=http://localhost:8080 --window-size=1024,600 || chromium --app=http://localhost:8080 --window-size=1024,600 || xdg-open http://localhost:8080'
+# Il servizio pimesh serve la UI, qui si apre soltanto la finestra.
+#
+# Exec non è una riga di shell: ' | && ; $ sono caratteri riservati dalla
+# specifica e XFCE si rifiuta di avviare senza dire niente. Niente catena di
+# fallback, quindi: setup.sh riscrive questa riga col browser che la macchina
+# ha davvero (chromium-browser su Raspberry Pi OS, chromium su Debian e
+# Ubuntu, xdg-open dove non c'è nessuno dei due).
+Exec=chromium --app=http://localhost:8080 --window-size=1024,600
 Icon=network-wireless
 Terminal=false
 Categories=Network;HamRadio;

@@ -142,10 +142,21 @@ if [ "$PROFILE" = desktop ]; then
         echo "    No browser installed: adding chromium..."
         apt-get install -y --no-install-recommends chromium
     fi
-    install -m 644 "$REPO_DIR/pimesh.desktop" /usr/share/applications/pimesh.desktop
+    # Exec deve nominare un eseguibile, non una riga di shell: si scrive qui
+    # quello che la macchina ha, ora che sappiamo che c'è.
+    BROWSER="$(command -v chromium-browser || command -v chromium || command -v xdg-open)"
+    case "$BROWSER" in
+        */xdg-open) EXEC="$BROWSER http://localhost:8080" ;;
+        *)          EXEC="$BROWSER --app=http://localhost:8080 --window-size=1024,600" ;;
+    esac
+    LAUNCHER="$(mktemp)"
+    sed "s|^Exec=.*|Exec=$EXEC|" "$REPO_DIR/pimesh.desktop" > "$LAUNCHER"
+    install -m 644 "$LAUNCHER" /usr/share/applications/pimesh.desktop
     if [ -d "$HOME_DIR/Desktop" ]; then
-        install -m 755 -o "$USER" -g "$USER" "$REPO_DIR/pimesh.desktop" "$HOME_DIR/Desktop/pimesh.desktop"
+        install -m 755 -o "$USER" -g "$USER" "$LAUNCHER" "$HOME_DIR/Desktop/pimesh.desktop"
     fi
+    rm -f "$LAUNCHER"
+    echo "    launcher: $EXEC"
 fi
 
 echo
